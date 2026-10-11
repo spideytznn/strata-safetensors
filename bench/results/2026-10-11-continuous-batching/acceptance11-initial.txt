@@ -1,0 +1,14 @@
+greedy: two slots identical, overlapping, 256 tokens / 3.426 s
+seeded: two slots identical, overlapping, 256 tokens / 3.551 s
+penalties: two slots identical, overlapping, 256 tokens / 3.374 s
+4 slots, unequal output limits: identical (temperature=0)
+4 slots, unequal output limits: identical (temperature=0.7 top_p=0.95 top_k=20 seed=4129 penalty_last_n=128 penalty_freq=0.1)
+replaced batch slot restored from RAM: 30058 tokens, identical
+Traceback (most recent call last):
+  File "G:\Strata\Strata-Safetensors\tools\native_concurrency_acceptance.py", line 358, in <module>
+    main()
+    ~~~~^^
+  File "G:\Strata\Strata-Safetensors\tools\native_concurrency_acceptance.py", line 274, in main
+    assert moved_tokens and max(moved_tokens) > len(evict_ids) * 0.9, "destination overwrite lost its cached prefix"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: destination overwrite lost its cached prefix

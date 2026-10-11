@@ -1,0 +1,30 @@
+{
+  "parent": "1d309416307f21d295a9ef506825076e4f237750",
+  "branch": "codex/continuous-batching",
+  "hardware": {
+    "gpu": "RTX 5090 32GB",
+    "cpu": "Ryzen 9950X3D",
+    "ram_gb": 96,
+    "driver": "617.14",
+    "cuda": "13.0",
+    "backend": "CUDA SM120"
+  },
+  "files": {
+    "include/strata/core/conversation_snapshot.hpp": "1046a36fd2ea6870e2da5bf9db3a135a275d994ca2975b67ab01755044720252",
+    "include/strata/core/verify.hpp": "2e82fde4cb4f70a1ea962779f6c64622c1abd0f48039099a21ccefd98be75b2c",
+    "src/core/conversation_snapshot.cpp": "266741d29b8b76af7a13c9a52f1ec9dd9ee650fc35a9224e29b8c64a14ce0917",
+    "src/core/conversation_snapshot_test.cpp": "7af75d4c0c78bf95edc20124c66c7e00b61c32058eb8326a4396da78474a026a",
+    "src/core/verify.cpp": "f2129619cf1b1a0787e0549545b2915f1c7b62eacd00cc3b4e02699b68901409",
+    "src/program/generate.cpp": "77ef417c4e80a7bc6e8a1d911ffa30ee8d14419346a5463d2a0baf43f10005d5",
+    "serve/server.py": "cefa2203220e9b1a795f23cd27eb0d65565f63821345d009744c756abffe9e67",
+    "serve/test_parallel.py": "715125868c6c5c94e5bd01fb5e6f99846b295d64f16b9147a564906fdb17dfe9",
+    "tools/native_concurrency_acceptance.py": "cda6d05febfa5afc5ebcd72b97ee53ea8849a5ee09d7798fa9979d5f77c0deac",
+    "tools/native_concurrency_http.py": "68ce926283547d2b6b5dd5dcd20c7fd4fe5ebfcbbc249862e4cf3e6f42d2d60c",
+    "tools/native_continuous_screen.py": "58c457f7057f7270cd96aabf0dfe3fe1c2fbdad967fcf13e69f6fa1a0273e9b3",
+    "config/native/rtx5090-262k-parallel.json": "6d7849bf4967c5a900bbe7db2264fd43ab77a01791a1c9bbc71363c7ff0b1044"
+  },
+  "exe": {
+    "path": "build-native-engine/strata-continuous9.exe",
+    "sha256": "fb55d03f15d79635f11270445e4b778f916c99d7d9f3548bf678939a4e44dea3"
+  }
+}

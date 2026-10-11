@@ -1,0 +1,58 @@
+{
+  "verified_at": "2026-10-11T14:25:23.655830+08:00",
+  "http_runs": [
+    {
+      "name": "short-before",
+      "passed": true,
+      "expert_source_bytes": 0,
+      "mtp_source_bytes": 0
+    },
+    {
+      "name": "short-baseline4",
+      "passed": true,
+      "expert_source_bytes": 0,
+      "mtp_source_bytes": 0
+    },
+    {
+      "name": "short-continuous2",
+      "passed": true,
+      "expert_source_bytes": 0,
+      "mtp_source_bytes": 0
+    },
+    {
+      "name": "short-continuous4",
+      "passed": true,
+      "expert_source_bytes": 0,
+      "mtp_source_bytes": 0
+    },
+    {
+      "name": "short-after",
+      "passed": true,
+      "expert_source_bytes": 0,
+      "mtp_source_bytes": 0
+    },
+    {
+      "name": "long-baseline",
+      "passed": true,
+      "expert_source_bytes": 0,
+      "mtp_source_bytes": 0
+    },
+    {
+      "name": "long-continuous2",
+      "passed": true,
+      "expert_source_bytes": 0,
+      "mtp_source_bytes": 0
+    },
+    {
+      "name": "released-defaults",
+      "passed": true,
+      "expert_source_bytes": 0,
+      "mtp_source_bytes": 0
+    }
+  ],
+  "engine_source_hashes_match_build": true,
+  "installed_alias_matches_tested_exe": true,
+  "model_path_exists": true,
+  "pipeline_passed": true,
+  "gpu_idle_observation": "595 MiB, 0% utilization; no benchmark engine or vision process; no port 8880 listener"
+}

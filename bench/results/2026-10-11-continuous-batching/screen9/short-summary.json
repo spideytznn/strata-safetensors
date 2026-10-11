@@ -1,0 +1,102 @@
+{
+  "status": "short screen completed; remaining candidate-9 runs stopped because candidate 10 supersedes its state-ownership implementation",
+  "runs": [
+    {
+      "name": "short-before",
+      "exe_sha256": "fb55d03f15d79635f11270445e4b778f916c99d7d9f3548bf678939a4e44dea3",
+      "expert_slots": 5013,
+      "batch_graph_captures": 3,
+      "stats": {
+        "1": {
+          "tok_s": 63.129480759793694,
+          "last_ttft_s": 0.15959599999951024
+        },
+        "2": {
+          "tok_s": 77.51538131504691,
+          "last_ttft_s": 0.43137299999943934
+        },
+        "4": {
+          "tok_s": 79.85197689320859,
+          "last_ttft_s": 6.8245709000002535
+        },
+        "8": {
+          "tok_s": 76.09748127480887,
+          "last_ttft_s": 21.156209000000672
+        }
+      }
+    },
+    {
+      "name": "short-continuous2",
+      "exe_sha256": "fb55d03f15d79635f11270445e4b778f916c99d7d9f3548bf678939a4e44dea3",
+      "expert_slots": 5013,
+      "batch_graph_captures": 12,
+      "stats": {
+        "1": {
+          "tok_s": 62.76391182944314,
+          "last_ttft_s": 0.10658180000064021
+        },
+        "2": {
+          "tok_s": 77.97636706888494,
+          "last_ttft_s": 0.49602539999978035
+        },
+        "4": {
+          "tok_s": 77.84406424529347,
+          "last_ttft_s": 7.091743400000269
+        },
+        "8": {
+          "tok_s": 77.8541329906201,
+          "last_ttft_s": 20.453676299999643
+        }
+      }
+    },
+    {
+      "name": "short-continuous4",
+      "exe_sha256": "fb55d03f15d79635f11270445e4b778f916c99d7d9f3548bf678939a4e44dea3",
+      "expert_slots": 4396,
+      "batch_graph_captures": 24,
+      "stats": {
+        "1": {
+          "tok_s": 60.36481001332714,
+          "last_ttft_s": 0.11080439999932423
+        },
+        "2": {
+          "tok_s": 78.28791546055362,
+          "last_ttft_s": 0.23260880000088946
+        },
+        "4": {
+          "tok_s": 95.52585889197877,
+          "last_ttft_s": 1.0152689999995346
+        },
+        "8": {
+          "tok_s": 93.0354214968605,
+          "last_ttft_s": 12.564256400000886
+        }
+      }
+    },
+    {
+      "name": "short-after",
+      "exe_sha256": "fb55d03f15d79635f11270445e4b778f916c99d7d9f3548bf678939a4e44dea3",
+      "expert_slots": 5017,
+      "batch_graph_captures": 3,
+      "stats": {
+        "1": {
+          "tok_s": 63.03175037300973,
+          "last_ttft_s": 0.1521613000004436
+        },
+        "2": {
+          "tok_s": 78.40945321519219,
+          "last_ttft_s": 0.4295805999990989
+        },
+        "4": {
+          "tok_s": 78.93379984853635,
+          "last_ttft_s": 6.784967800000231
+        },
+        "8": {
+          "tok_s": 76.12370001637585,
+          "last_ttft_s": 20.86642640000173
+        }
+      }
+    }
+  ],
+  "cross_process_responses": 59
+}

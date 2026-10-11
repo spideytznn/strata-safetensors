@@ -1,0 +1,1 @@
+Stopped after short two/four-slot and BYIELD parity passed. Review found that admission retained only the latest checkpoint; candidate 9 transfers the bounded chain needed for sibling-prefix matching. Long-context acceptance was not completed for this intermediate build.

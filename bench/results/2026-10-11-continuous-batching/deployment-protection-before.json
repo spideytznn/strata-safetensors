@@ -1,0 +1,42 @@
+[
+  {
+    "path": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-parallel.json",
+    "sha256": "6d7849bf4967c5a900bbe7db2264fd43ab77a01791a1c9bbc71363c7ff0b1044"
+  },
+  {
+    "path": "G:\\Strata\\Strata-Official\\strata-official-q4kl.json",
+    "sha256": "268db8bbc592896cddacb772b3bac660bf9e3c3bda98daf98815f7e589590eaf"
+  },
+  {
+    "path": "G:\\Strata\\Strata\\strata-ud-q4_k_xl.json",
+    "sha256": "c269188737fa4f874567dd83c43003ba8392923f5d710a52c25a4efd41091c76"
+  },
+  {
+    "path": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast-v0142.shared-settings.json",
+    "sha256": "81fca7633f3c2f0433af821a52531eda32b2e0e592dfc6804b1d5821c4779941"
+  },
+  {
+    "path": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast.shared-settings.json",
+    "sha256": "81fca7633f3c2f0433af821a52531eda32b2e0e592dfc6804b1d5821c4779941"
+  },
+  {
+    "path": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-parallel.shared-settings.json",
+    "sha256": "81fca7633f3c2f0433af821a52531eda32b2e0e592dfc6804b1d5821c4779941"
+  },
+  {
+    "path": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast-v0142.json",
+    "sha256": "ac91c484afd5e81412d52b4970c7e274b4290bebdc96305447cd9a0252f24288"
+  },
+  {
+    "path": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast.json",
+    "sha256": "9554d6039838e35cf8244c2d42aa62766bee0377c2870f4402dd062243af7d05"
+  },
+  {
+    "path": "G:\\Strata\\Strata-Safetensors\\START-NATIVE-262K.bat",
+    "sha256": "881e3f80acc28f2debda42e6d3e067355ae04c5a101e007bd702030b6830bfa8"
+  },
+  {
+    "path": "G:\\Strata\\Strata-Safetensors\\START-NATIVE-262K-PARALLEL.bat",
+    "sha256": "2f34437d2b9d3464b001523ef1d1face4ee2502dc9e627708d87058976d97c00"
+  }
+]

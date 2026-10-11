@@ -1,0 +1,61 @@
+{
+  "method": "baseline pools six rounds from before/after; candidate median of three rounds; all four slots",
+  "identical_responses": 59,
+  "rows": [
+    {
+      "clients": 1,
+      "baseline_tok_s": 62.34253543757178,
+      "candidate_tok_s": 60.66425031794251,
+      "rate_change_pct": -2.6920386022956433,
+      "baseline_last_ttft_s": 0.15653959999963263,
+      "candidate_last_ttft_s": 0.11049090000051365,
+      "ttft_change_pct": -29.41664601112246
+    },
+    {
+      "clients": 2,
+      "baseline_tok_s": 75.20790776763144,
+      "candidate_tok_s": 78.7395423276334,
+      "rate_change_pct": 4.695828756350462,
+      "baseline_last_ttft_s": 0.43710434999957215,
+      "candidate_last_ttft_s": 0.2331938999996055,
+      "ttft_change_pct": -46.650290714372034
+    },
+    {
+      "clients": 4,
+      "baseline_tok_s": 96.8117044252929,
+      "candidate_tok_s": 101.88163743569297,
+      "rate_change_pct": 5.236900889718754,
+      "baseline_last_ttft_s": 0.766094399999929,
+      "candidate_last_ttft_s": 0.45683050000116054,
+      "ttft_change_pct": -40.3689023178863
+    },
+    {
+      "clients": 8,
+      "baseline_tok_s": 92.40175703514404,
+      "candidate_tok_s": 93.77334331817353,
+      "rate_change_pct": 1.4843725130765817,
+      "baseline_last_ttft_s": 12.338042200000018,
+      "candidate_last_ttft_s": 12.367186900000888,
+      "ttft_change_pct": 0.2362181902803906
+    }
+  ],
+  "cold_admission": {
+    "body_tokens": 30263,
+    "yielded": true,
+    "output_identical": true
+  },
+  "cold_latencies": {
+    "cold-reference": {
+      "first_content_s": 9.517621599999984,
+      "wall_s": 10.658900899999935
+    },
+    "cold-staggered": {
+      "first_content_s": 12.55872029999955,
+      "wall_s": 14.147326399999656
+    },
+    "cold-short": {
+      "first_content_s": 2.4630342000000383,
+      "wall_s": 15.155083000001468
+    }
+  }
+}

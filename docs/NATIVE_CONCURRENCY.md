@@ -13,11 +13,14 @@ Use `START-NATIVE-262K-PARALLEL.bat`, or the desktop
 using that port before launching this one. The profile keeps original safetensors
 weights, INT8 KV, 262144 context, a dedicated 4096-row prefill workspace, the
 existing external GPU vision encoder and unrestricted HTTP Host headers.
-It now uses `strata-upstream142.exe` with tail skipping explicitly off. The
-v0.1.42 checks are recorded in [the integration notes](UPSTREAM_V0142.md); the
-measurements below retain their named historical executables. It enables independent session KV and direct
-device slot copies, and keeps a 1536 MiB explicit reserve for runtime graph
+It now uses `strata-continuous-batching.exe` with tail skipping explicitly off.
+The local profile enables continuous request lifetime, complete sequence-state
+ownership transfer and in-place target-only batch commit, described in
+[native continuous batching](NATIVE_CONTINUOUS_BATCHING.md). It retains independent
+session KV and direct device copies for cases that still need copying, and keeps a 1536 MiB explicit reserve for runtime graph
 allocations. The profile contains this PC's paths; adapt them elsewhere.
+The v0.1.42 checks remain in [the integration notes](UPSTREAM_V0142.md); the
+measurements below retain their named historical executables.
 
 For a generic local config, `tools/native_config.py --parallel 2` adds the
 server setting; its default is still one request. The measured desktop profile
@@ -31,9 +34,11 @@ weight/state allocation; the earlier acceptance profile reported 2620 MiB for
 that allocation. The target-only acceptance below measures the resulting KV and
 cache sizing; WDDM allocation variation still affects the available cache.
 
-When another text request arrives, the server drains the solo generation and
-resumes it in an independent batch slot. Slots verify one target token each per
-window. A custom config can still load native MTP for solo requests, as in the
+In this continuous profile, text requests retain a batch slot from admission
+until completion or cancellation, including when running alone. New requests
+join at scheduling boundaries without stopping and reissuing the existing
+generation. Slots verify one target token each per window. Configs without the
+new flags retain the old solo-drain/batch-resume policy. A custom config can still load native MTP for solo requests, as in the
 initial acceptance runs below; concurrent slots remain target-only.
 `--batch-mtp` is explicitly refused for native weights until its combined state,
 sampling and performance are validated. No target weights or projections are
@@ -45,6 +50,17 @@ with chunk-level admission scheduling, not simultaneous prompt GEMMs. The
 maximum wait between those decode opportunities includes a full prefill chunk.
 Disk `/slots/0` save/restore remains unavailable while batch mode is enabled.
 In-memory live-slot, checkpoint and parked-conversation reuse remain available.
+
+On the RTX 5090 / 9950X3D / 96 GB PC, the 2026-10-11 same-binary tests measured
+two-slot short-request throughput at 79.40 -> 83.26 tok/s and two-slot mixed-long
+throughput at 63.33 -> 75.56 tok/s. The mixed workload combines a 124135-token
+prompt with a short prompt. Two-slot serving with only one short request was
+essentially unchanged (64.07 -> 63.86 tok/s). These are finite, warm-prompt HTTP
+tests with vision loaded and MTP off; [raw results and limits](../bench/results/2026-10-11-continuous-batching/README.md)
+include all client counts, ranges, parity checks and development failures.
+The default local parallel profile stays at two slots. Four-slot short-request
+throughput was measured, but four simultaneous near-262K contexts were not
+validated; the near-capacity acceptance contains two long active requests.
 
 ## State, sampling and memory
 

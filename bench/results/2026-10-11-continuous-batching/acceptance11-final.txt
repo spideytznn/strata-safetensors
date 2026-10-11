@@ -1,0 +1,12 @@
+greedy: two slots identical, overlapping, 256 tokens / 3.345 s
+seeded: two slots identical, overlapping, 256 tokens / 3.412 s
+penalties: two slots identical, overlapping, 256 tokens / 3.759 s
+4 slots, unequal output limits: identical (temperature=0)
+4 slots, unequal output limits: identical (temperature=0.7 top_p=0.95 top_k=20 seed=4129 penalty_last_n=128 penalty_freq=0.1)
+replaced batch slot restored from RAM: 30058 tokens, identical
+different-source admission preserved destination: 30058 tokens, identical
+real GEN BYIELD/resume: 11441 tokens, identical
+real BGEN 0 BYIELD/resume: 11441 tokens, identical
+near-capacity two long slots: 261000, 261007 tokens, identical
+long-slot grow/reuse beside short admission: 124135 tokens, identical
+cancel/resume, followup, caps: passed

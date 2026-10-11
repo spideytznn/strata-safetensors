@@ -105,3 +105,27 @@ Anthropic and disconnected-client recovery. Raw evidence is saved under
 Only CUDA SM120 on the RTX 5090 is being validated here. HIP, SYCL and multi-GPU
 are not validated by these runs. Finite token and state checks establish those
 tested paths, not general equivalence to unquantized weights.
+
+## Local build and measured profile
+
+Build the CUDA executable with:
+
+```powershell
+tools/build_safetensors_engine.ps1 -Jobs 4 -OutputName strata-continuous-batching
+```
+
+The local `rtx5090-262k-parallel.json` enables all three flags with two slots,
+independent KV and device slot copying. The existing desktop parallel launcher
+uses that config and port 8880. Its context, prefill, sampling, vision, PCIe and
+MTP settings are retained. Generic configs remain opt-in; an absent flag does
+not enable these changes. The native single-request and Q4XL entries are
+unchanged by this deployment.
+
+The accepted binary matches `strata-continuous12.exe` byte for byte; source
+commit, SHA-256, pre-change config backup and deployment checks are recorded
+in [the evidence](../bench/results/2026-10-11-continuous-batching/README.md).
+The performance matrix compares the same binary with the three flags off/on.
+Short two-slot throughput improves about 4-5%, with single-client throughput
+essentially unchanged; mixed-long two-request throughput improves about 19%.
+Three mixed-long clients queue behind two slots and have essentially unchanged
+throughput. Four-slot short-request results are separate from this local default.

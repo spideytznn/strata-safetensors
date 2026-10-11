@@ -1,0 +1,534 @@
+{
+  "exe_sha256": "87b1fc740dbc67c9b031c946b3ab2cfa884f006fccc6afc0ead6830af1153a2b",
+  "commands": [
+    [
+      "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+      "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+      "--config",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\baseline.json",
+      "--exe",
+      "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous12.exe",
+      "--output",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\short-before",
+      "--parallel",
+      "2",
+      "--rounds",
+      "3",
+      "--limit",
+      "256",
+      "--independent-kv",
+      "--device-slot-copy",
+      "--clients",
+      "1",
+      "2",
+      "4",
+      "8"
+    ],
+    [
+      "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+      "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+      "--config",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\baseline.json",
+      "--exe",
+      "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous12.exe",
+      "--output",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\short-baseline4",
+      "--parallel",
+      "4",
+      "--rounds",
+      "3",
+      "--limit",
+      "256",
+      "--independent-kv",
+      "--device-slot-copy",
+      "--clients",
+      "1",
+      "2",
+      "4",
+      "8"
+    ],
+    [
+      "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+      "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+      "--config",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\continuous.json",
+      "--exe",
+      "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous12.exe",
+      "--output",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\short-continuous2",
+      "--parallel",
+      "2",
+      "--rounds",
+      "3",
+      "--limit",
+      "256",
+      "--independent-kv",
+      "--device-slot-copy",
+      "--clients",
+      "1",
+      "2",
+      "4",
+      "8",
+      "--cold-admission-tokens",
+      "32768"
+    ],
+    [
+      "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+      "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+      "--config",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\continuous.json",
+      "--exe",
+      "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous12.exe",
+      "--output",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\short-continuous4",
+      "--parallel",
+      "4",
+      "--rounds",
+      "3",
+      "--limit",
+      "256",
+      "--independent-kv",
+      "--device-slot-copy",
+      "--clients",
+      "1",
+      "2",
+      "4",
+      "8",
+      "--cold-admission-tokens",
+      "32768"
+    ],
+    [
+      "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+      "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+      "--config",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\baseline.json",
+      "--exe",
+      "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous12.exe",
+      "--output",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\short-after",
+      "--parallel",
+      "2",
+      "--rounds",
+      "3",
+      "--limit",
+      "256",
+      "--independent-kv",
+      "--device-slot-copy",
+      "--clients",
+      "1",
+      "2",
+      "4",
+      "8"
+    ],
+    [
+      "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+      "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+      "--config",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\baseline.json",
+      "--exe",
+      "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous12.exe",
+      "--output",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\long-baseline",
+      "--parallel",
+      "2",
+      "--rounds",
+      "3",
+      "--limit",
+      "256",
+      "--independent-kv",
+      "--device-slot-copy",
+      "--clients",
+      "1",
+      "2",
+      "3",
+      "--long-tokens",
+      "131000"
+    ],
+    [
+      "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+      "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+      "--config",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\continuous.json",
+      "--exe",
+      "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous12.exe",
+      "--output",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\long-continuous2",
+      "--parallel",
+      "2",
+      "--rounds",
+      "3",
+      "--limit",
+      "256",
+      "--independent-kv",
+      "--device-slot-copy",
+      "--clients",
+      "1",
+      "2",
+      "3",
+      "--long-tokens",
+      "131000"
+    ],
+    [
+      "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+      "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+      "--config",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\baseline.json",
+      "--exe",
+      "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-upstream142.exe",
+      "--output",
+      "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-continuous-batching\\screen12\\released-defaults",
+      "--parallel",
+      "2",
+      "--rounds",
+      "1",
+      "--limit",
+      "256",
+      "--independent-kv",
+      "--device-slot-copy",
+      "--clients",
+      "1",
+      "2",
+      "4",
+      "8"
+    ]
+  ],
+  "runs": [
+    {
+      "name": "short-before",
+      "parallel": 2,
+      "stats": {
+        "1": {
+          "aggregate_tok_s": 63.57731733176382,
+          "aggregate_range_tok_s": [
+            57.47701284332043,
+            64.57234668065382
+          ],
+          "last_ttft_s": 0.16257669999868085
+        },
+        "2": {
+          "aggregate_tok_s": 79.31753089546338,
+          "aggregate_range_tok_s": [
+            75.41264858649558,
+            79.48145059732117
+          ],
+          "last_ttft_s": 0.41890889999922365
+        },
+        "4": {
+          "aggregate_tok_s": 80.9832249260077,
+          "aggregate_range_tok_s": [
+            77.61440602202808,
+            81.77042553761314
+          ],
+          "last_ttft_s": 6.788892599999599
+        },
+        "8": {
+          "aggregate_tok_s": 77.30999276200181,
+          "aggregate_range_tok_s": [
+            76.39563427896677,
+            77.87335088112683
+          ],
+          "last_ttft_s": 20.79120049999983
+        }
+      },
+      "batch_graph_captures": 3,
+      "cache_sizing": [
+        "strata generate: expert cache auto: 16.29 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5721 slots"
+      ],
+      "kv_mappings": []
+    },
+    {
+      "name": "short-baseline4",
+      "parallel": 4,
+      "stats": {
+        "1": {
+          "aggregate_tok_s": 62.72493381783126,
+          "aggregate_range_tok_s": [
+            56.195983668648935,
+            63.23628276577976
+          ],
+          "last_ttft_s": 0.1662720000003901
+        },
+        "2": {
+          "aggregate_tok_s": 74.70890630408068,
+          "aggregate_range_tok_s": [
+            71.09892949451742,
+            75.11215293361435
+          ],
+          "last_ttft_s": 0.4681041000003461
+        },
+        "4": {
+          "aggregate_tok_s": 95.3038382224819,
+          "aggregate_range_tok_s": [
+            90.1759851277222,
+            95.82331348839497
+          ],
+          "last_ttft_s": 0.8779334999999264
+        },
+        "8": {
+          "aggregate_tok_s": 90.06766826135754,
+          "aggregate_range_tok_s": [
+            89.32077071003319,
+            93.45502857323187
+          ],
+          "last_ttft_s": 12.975447699998767
+        }
+      },
+      "batch_graph_captures": 7,
+      "cache_sizing": [
+        "strata generate: expert cache auto: 14.70 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5103 slots"
+      ],
+      "kv_mappings": []
+    },
+    {
+      "name": "short-continuous2",
+      "parallel": 2,
+      "stats": {
+        "1": {
+          "aggregate_tok_s": 63.86460543983359,
+          "aggregate_range_tok_s": [
+            55.75821998677868,
+            63.93094498975433
+          ],
+          "last_ttft_s": 0.10669489999963844
+        },
+        "2": {
+          "aggregate_tok_s": 83.25602745587476,
+          "aggregate_range_tok_s": [
+            77.98057007482419,
+            83.31491834975603
+          ],
+          "last_ttft_s": 0.224055300001055
+        },
+        "4": {
+          "aggregate_tok_s": 83.08710326932021,
+          "aggregate_range_tok_s": [
+            80.70185584398885,
+            84.35352704873499
+          ],
+          "last_ttft_s": 6.453589200000351
+        },
+        "8": {
+          "aggregate_tok_s": 81.23189662599961,
+          "aggregate_range_tok_s": [
+            79.99875408190304,
+            84.2304721747225
+          ],
+          "last_ttft_s": 19.619791400000395
+        }
+      },
+      "batch_graph_captures": 3,
+      "cache_sizing": [
+        "strata generate: expert cache auto: 16.29 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5721 slots"
+      ],
+      "kv_mappings": [
+        "strata native K/V sessions: session0=32768 session1=16384 session2=16384 mapped_mib=912.0 expert_slots=4954",
+        "strata native K/V sessions: session0=16384 session1=16384 session2=16384 mapped_mib=720.0 expert_slots=5028",
+        "strata native K/V sessions: session0=32768 session1=16384 session2=16384 mapped_mib=912.0 expert_slots=4954"
+      ]
+    },
+    {
+      "name": "short-continuous4",
+      "parallel": 4,
+      "stats": {
+        "1": {
+          "aggregate_tok_s": 61.454260338205074,
+          "aggregate_range_tok_s": [
+            57.325941869706554,
+            61.62998502921112
+          ],
+          "last_ttft_s": 0.11044530000071973
+        },
+        "2": {
+          "aggregate_tok_s": 79.09976067996237,
+          "aggregate_range_tok_s": [
+            78.36958447037637,
+            79.63475395669194
+          ],
+          "last_ttft_s": 0.2341467999995075
+        },
+        "4": {
+          "aggregate_tok_s": 101.65154576760743,
+          "aggregate_range_tok_s": [
+            99.63984962285268,
+            101.8820925706114
+          ],
+          "last_ttft_s": 0.45800619999863557
+        },
+        "8": {
+          "aggregate_tok_s": 101.71856899695295,
+          "aggregate_range_tok_s": [
+            99.68215459161632,
+            102.18101943358569
+          ],
+          "last_ttft_s": 10.811640500000067
+        }
+      },
+      "batch_graph_captures": 7,
+      "cache_sizing": [
+        "strata generate: expert cache auto: 14.70 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5103 slots"
+      ],
+      "kv_mappings": [
+        "strata native K/V sessions: session0=32768 session1=16384 session2=16384 session3=16384 session4=16384 mapped_mib=1392.0 expert_slots=4337",
+        "strata native K/V sessions: session0=16384 session1=16384 session2=16384 session3=16384 session4=16384 mapped_mib=1200.0 expert_slots=4411",
+        "strata native K/V sessions: session0=32768 session1=16384 session2=16384 session3=16384 session4=16384 mapped_mib=1392.0 expert_slots=4337"
+      ]
+    },
+    {
+      "name": "short-after",
+      "parallel": 2,
+      "stats": {
+        "1": {
+          "aggregate_tok_s": 64.60669726651342,
+          "aggregate_range_tok_s": [
+            57.69004724093412,
+            64.61957082963552
+          ],
+          "last_ttft_s": 0.18266459999904328
+        },
+        "2": {
+          "aggregate_tok_s": 79.47583081774981,
+          "aggregate_range_tok_s": [
+            75.36746459859577,
+            79.57242008729838
+          ],
+          "last_ttft_s": 0.4166170999997121
+        },
+        "4": {
+          "aggregate_tok_s": 79.26741059130833,
+          "aggregate_range_tok_s": [
+            78.1457640268206,
+            80.3799175642728
+          ],
+          "last_ttft_s": 6.925894699999844
+        },
+        "8": {
+          "aggregate_tok_s": 78.68367407622404,
+          "aggregate_range_tok_s": [
+            76.24140249752963,
+            78.72833230900251
+          ],
+          "last_ttft_s": 20.14021810000122
+        }
+      },
+      "batch_graph_captures": 3,
+      "cache_sizing": [
+        "strata generate: expert cache auto: 16.29 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5721 slots"
+      ],
+      "kv_mappings": []
+    },
+    {
+      "name": "long-baseline",
+      "parallel": 2,
+      "stats": {
+        "1": {
+          "aggregate_tok_s": 55.23052010926507,
+          "aggregate_range_tok_s": [
+            53.13715648672275,
+            59.75139359037926
+          ],
+          "last_ttft_s": 0.4137028000004648
+        },
+        "2": {
+          "aggregate_tok_s": 63.325729793167156,
+          "aggregate_range_tok_s": [
+            61.493674630914185,
+            67.25091247142834
+          ],
+          "last_ttft_s": 1.337891099999979
+        },
+        "3": {
+          "aggregate_tok_s": 64.36666092926473,
+          "aggregate_range_tok_s": [
+            60.93683818964116,
+            65.61638192261145
+          ],
+          "last_ttft_s": 7.562818800000969
+        }
+      },
+      "batch_graph_captures": 3,
+      "cache_sizing": [
+        "strata generate: expert cache auto: 16.29 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5721 slots"
+      ],
+      "kv_mappings": [
+        "strata native K/V sessions: session0=131072 session1=16384 session2=16384 mapped_mib=2064.0 expert_slots=4518",
+        "strata native K/V sessions: session0=8192 session1=16384 session2=16384 mapped_mib=624.0 expert_slots=5028",
+        "strata native K/V sessions: session0=131072 session1=16384 session2=16384 mapped_mib=2064.0 expert_slots=4481",
+        "strata native K/V sessions: session0=8192 session1=16384 session2=16384 mapped_mib=624.0 expert_slots=5028",
+        "strata native K/V sessions: session0=131072 session1=16384 session2=16384 mapped_mib=2064.0 expert_slots=4481",
+        "strata native K/V sessions: session0=131072 session1=16384 session2=131072 mapped_mib=3408.0 expert_slots=3971",
+        "strata native K/V sessions: session0=8192 session1=16384 session2=131072 mapped_mib=1968.0 expert_slots=4518",
+        "strata native K/V sessions: session0=131072 session1=16384 session2=131072 mapped_mib=3408.0 expert_slots=3971",
+        "strata native K/V sessions: session0=131072 session1=131072 session2=131072 mapped_mib=4752.0 expert_slots=3462",
+        "strata native K/V sessions: session0=8192 session1=131072 session2=131072 mapped_mib=3312.0 expert_slots=4008",
+        "strata native K/V sessions: session0=8192 session1=131072 session2=8192 mapped_mib=1872.0 expert_slots=4554",
+        "strata native K/V sessions: session0=8192 session1=8192 session2=8192 mapped_mib=432.0 expert_slots=5028",
+        "strata native K/V sessions: session0=131072 session1=8192 session2=8192 mapped_mib=1872.0 expert_slots=4481",
+        "strata native K/V sessions: session0=131072 session1=8192 session2=131072 mapped_mib=3312.0 expert_slots=3935",
+        "strata native K/V sessions: session0=8192 session1=8192 session2=131072 mapped_mib=1872.0 expert_slots=4481",
+        "strata native K/V sessions: session0=8192 session1=8192 session2=8192 mapped_mib=432.0 expert_slots=5028",
+        "strata native K/V sessions: session0=131072 session1=8192 session2=8192 mapped_mib=1872.0 expert_slots=4481",
+        "strata native K/V sessions: session0=131072 session1=8192 session2=131072 mapped_mib=3312.0 expert_slots=3935",
+        "strata native K/V sessions: session0=8192 session1=8192 session2=131072 mapped_mib=1872.0 expert_slots=4481",
+        "strata native K/V sessions: session0=8192 session1=8192 session2=8192 mapped_mib=432.0 expert_slots=5028",
+        "strata native K/V sessions: session0=131072 session1=8192 session2=8192 mapped_mib=1872.0 expert_slots=4481",
+        "strata native K/V sessions: session0=131072 session1=131072 session2=8192 mapped_mib=3312.0 expert_slots=3935",
+        "strata native K/V sessions: session0=8192 session1=131072 session2=8192 mapped_mib=1872.0 expert_slots=4481",
+        "strata native K/V sessions: session0=131072 session1=131072 session2=8192 mapped_mib=3312.0 expert_slots=3935",
+        "strata native K/V sessions: session0=8192 session1=131072 session2=8192 mapped_mib=1872.0 expert_slots=4481",
+        "strata native K/V sessions: session0=131072 session1=131072 session2=8192 mapped_mib=3312.0 expert_slots=3935",
+        "strata native K/V sessions: session0=8192 session1=131072 session2=8192 mapped_mib=1872.0 expert_slots=4481",
+        "strata native K/V sessions: session0=131072 session1=131072 session2=8192 mapped_mib=3312.0 expert_slots=3935"
+      ]
+    },
+    {
+      "name": "long-continuous2",
+      "parallel": 2,
+      "stats": {
+        "1": {
+          "aggregate_tok_s": 59.99806037520602,
+          "aggregate_range_tok_s": [
+            52.11405657993454,
+            60.267906854611475
+          ],
+          "last_ttft_s": 0.14201409999986936
+        },
+        "2": {
+          "aggregate_tok_s": 75.55871314892302,
+          "aggregate_range_tok_s": [
+            74.57013267817129,
+            75.6295189930157
+          ],
+          "last_ttft_s": 0.27995299999929557
+        },
+        "3": {
+          "aggregate_tok_s": 64.46261758667474,
+          "aggregate_range_tok_s": [
+            64.27621363723138,
+            65.27165390943246
+          ],
+          "last_ttft_s": 7.300028400000883
+        }
+      },
+      "batch_graph_captures": 3,
+      "cache_sizing": [
+        "strata generate: expert cache auto: 16.29 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5721 slots"
+      ],
+      "kv_mappings": [
+        "strata native K/V sessions: session0=131072 session1=16384 session2=16384 mapped_mib=2064.0 expert_slots=4517",
+        "strata native K/V sessions: session0=8192 session1=16384 session2=16384 mapped_mib=624.0 expert_slots=5027",
+        "strata native K/V sessions: session0=131072 session1=8192 session2=16384 mapped_mib=1968.0 expert_slots=4517",
+        "strata native K/V sessions: session0=8192 session1=8192 session2=16384 mapped_mib=528.0 expert_slots=5027",
+        "strata native K/V sessions: session0=131072 session1=16384 session2=8192 mapped_mib=1968.0 expert_slots=4480",
+        "strata native K/V sessions: session0=8192 session1=16384 session2=8192 mapped_mib=528.0 expert_slots=5027",
+        "strata native K/V sessions: session0=131072 session1=8192 session2=16384 mapped_mib=1968.0 expert_slots=4480",
+        "strata native K/V sessions: session0=8192 session1=8192 session2=16384 mapped_mib=528.0 expert_slots=5027",
+        "strata native K/V sessions: session0=131072 session1=16384 session2=8192 mapped_mib=1968.0 expert_slots=4480"
+      ]
+    }
+  ],
+  "previous_default_parity": {
+    "exe_sha256": "7ccbe8580bc78b95d3747f72ef203b19b612a7ce444e08fc774306d55ae13307",
+    "responses": 29
+  },
+  "passed": true
+}

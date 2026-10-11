@@ -1,0 +1,1 @@
+Stopped after long-continuous2 client=3 round=0 showed a 43.302 s first-content wait: idle batch-slot eviction discarded reusable long context instead of parking it in RAM. Short A/B/A and long baseline completed; continuous long run is partial and this pipeline is not final acceptance. Candidate 11 adds bounded RAM parking of the replaced slot.

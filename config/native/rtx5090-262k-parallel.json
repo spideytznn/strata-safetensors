@@ -1,5 +1,5 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-upstream142.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous-batching.exe",
   "args": [
     "--model",
     "D:\\迅雷下载\\Qwen3.8-flash-next-nvfp4",
@@ -75,7 +75,10 @@
     "STRATA_NATIVE_WARM_WEIGHTS": "1",
     "STRATA_NATIVE_KV_INDEPENDENT": "1",
     "STRATA_NATIVE_SLOT_COPY": "1",
-    "STRATA_ROUTE_TAIL_SKIP": "0"
+    "STRATA_ROUTE_TAIL_SKIP": "0",
+    "STRATA_NATIVE_BATCH_INPLACE": "1",
+    "STRATA_NATIVE_KV_HANDOFF": "1",
+    "STRATA_NATIVE_CONTINUOUS": "1"
   },
   "allowed_hosts": [
     "*"

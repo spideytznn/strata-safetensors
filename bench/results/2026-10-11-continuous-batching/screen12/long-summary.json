@@ -1,0 +1,87 @@
+{
+  "comparisons": {
+    "1": {
+      "baseline": {
+        "aggregate_tok_s": 55.23052010926507,
+        "aggregate_range_tok_s": [
+          53.13715648672275,
+          59.75139359037926
+        ],
+        "last_ttft_s": 0.4137028000004648
+      },
+      "continuous": {
+        "aggregate_tok_s": 59.99806037520602,
+        "aggregate_range_tok_s": [
+          52.11405657993454,
+          60.267906854611475
+        ],
+        "last_ttft_s": 0.14201409999986936
+      },
+      "throughput_change_percent": 8.63207562867252,
+      "last_ttft_change_percent": -65.67243441434049
+    },
+    "2": {
+      "baseline": {
+        "aggregate_tok_s": 63.325729793167156,
+        "aggregate_range_tok_s": [
+          61.493674630914185,
+          67.25091247142834
+        ],
+        "last_ttft_s": 1.337891099999979
+      },
+      "continuous": {
+        "aggregate_tok_s": 75.55871314892302,
+        "aggregate_range_tok_s": [
+          74.57013267817129,
+          75.6295189930157
+        ],
+        "last_ttft_s": 0.27995299999929557
+      },
+      "throughput_change_percent": 19.317556064037333,
+      "last_ttft_change_percent": -79.07505326858816
+    },
+    "3": {
+      "baseline": {
+        "aggregate_tok_s": 64.36666092926473,
+        "aggregate_range_tok_s": [
+          60.93683818964116,
+          65.61638192261145
+        ],
+        "last_ttft_s": 7.562818800000969
+      },
+      "continuous": {
+        "aggregate_tok_s": 64.46261758667474,
+        "aggregate_range_tok_s": [
+          64.27621363723138,
+          65.27165390943246
+        ],
+        "last_ttft_s": 7.300028400000883
+      },
+      "throughput_change_percent": 0.14907819673211087,
+      "last_ttft_change_percent": -3.4747679000328824
+    }
+  },
+  "runs": {
+    "long-baseline": {
+      "identical_responses": 27,
+      "long_full_reads": 1,
+      "max_logged_kv_mapped_mib": 4752.0,
+      "fixture_body_tokens": [
+        124123,
+        14,
+        15
+      ]
+    },
+    "long-continuous2": {
+      "identical_responses": 27,
+      "long_full_reads": 1,
+      "max_logged_kv_mapped_mib": 2064.0,
+      "fixture_body_tokens": [
+        124123,
+        14,
+        15
+      ]
+    }
+  },
+  "long_matrix_passed": true
+}
