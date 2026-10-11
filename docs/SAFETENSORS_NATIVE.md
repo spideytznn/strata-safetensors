@@ -55,7 +55,10 @@ mode introduced in efficiency14: the 4096-row workspace is physically allocated
 and written before sizing the expert cache, and a temporary 512 MiB guard stays
 until late startup allocations finish. The residency recheck also budgets the
 late MTP head. Insufficient capacity refuses startup instead of shrinking the
-configured chunk. The current local explicit reserve is 256 MiB;
+configured chunk. The current local explicit reserve is 1024 MiB: the earlier
+256 MiB setting could leave only 379 MiB after startup, below the unchanged
+512 MiB readiness guard. The larger reserve fixes that startup refusal without
+reducing the dedicated prefill workspace or changing arithmetic;
 the accepted efficiency14 profile with reserve 3072 remains available through
 `START-NATIVE-262K-STABLE.bat`. Bare CLI and GGUF defaults remain unchanged.
 

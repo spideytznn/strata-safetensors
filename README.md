@@ -156,6 +156,7 @@ avoids those fixed paths.
 |---|---|
 | Context / dedicated prefill | 262,144 total tokens / 4,096 rows |
 | KV / vision | INT8 with elastic growth / external GPU encoder, at most 1,024 tokens per image |
+| Explicit VRAM reserve | 1,024 MiB single-request / 1,536 MiB two-request; the engine also checks final startup headroom |
 | MTP | Disabled; no draft weights loaded; suffix drafting also disabled |
 | CPU/PCIe allocation | Single-request automatic trial; explicit `--pcie-frac N` still fixes the share |
 | Target sampling | temperature **0.7**, top_p 0.95, top_k 20, min_p 0, presence_penalty 0, repetition_penalty 1 |

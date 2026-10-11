@@ -12,7 +12,7 @@
     "--expert-cache",
     "auto",
     "--vram-reserve-mib",
-    "256",
+    "1024",
     "--suffix-draft",
     "0",
     "--pcie-mode",

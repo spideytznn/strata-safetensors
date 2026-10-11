@@ -104,6 +104,7 @@ OpenAI 客户端地址为 **http://127.0.0.1:8880/v1**。
 |---|---|
 | 总上下文 / 专用 prefill | 262144 token / 4096 行 |
 | KV / 视觉 | INT8 按需增长 / 外部 GPU 编码器，每张图最多 1024 token |
+| 显存预留 | 单路 1024 MiB / 双路 1536 MiB；启动后仍检查最终显存余量 |
 | MTP | 关闭，不加载草稿权重；suffix drafting 同样关闭 |
 | 采样 | temperature **0.7**、top_p 0.95、top_k 20、min_p 0、presence_penalty 0、repetition_penalty 1 |
 | 模板 | Froggeric v22.5，默认开启思考；请求未指定强度时默认 medium |

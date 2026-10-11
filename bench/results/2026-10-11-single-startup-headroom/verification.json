@@ -1,0 +1,32 @@
+{
+  "status": "passed",
+  "failure_cause": "256 MiB explicit reserve left 379 MiB at final startup, below the unchanged 512 MiB guard",
+  "reserved_mib_before": 256,
+  "reserved_mib_after": 1024,
+  "startup_free_mib": 1249,
+  "startup_ms": 64182,
+  "prefill_rows": 4096,
+  "workspace_bytes": 2906123008,
+  "prompt_tokens": 11026,
+  "generated_tokens_per_request": 32,
+  "cold_done": "DONE 32 11026 4532.1 726.7 length 0 0 0 9785 13616 6343 0 0.0 11026 1744",
+  "warm_done": "DONE 32 11026 176.2 592.4 length 0 0 11019 13115 14906 2993 0 0.0 7 454",
+  "cold_warm_output_equal": true,
+  "warm_reused_tokens": 11019,
+  "warm_read_tokens": 7,
+  "post_residency_source_bytes": {
+    "expert": 0,
+    "MTP": 0
+  },
+  "info": [
+    "INFO logit_bias=1 context=262144 kv=int8 kv_resident=0 expert_slots=5719 expert_cache_mib=15080 expert_slots_primary=5719 expert_cache_primary_mib=15080 spec=2 mtp_max=0 lookup=0 vram_free_mib=1249 cvec=0 arena_mib=64800 pool_workers=15 pcie_frac=0.25 pcie_auto=1 pcie_balance=1 spec_min_p=0.00 conversation_cache_mib=4096 conversation_cache_slots=4 conversation_cache_min_free_mib=2560 conversation_cache_min_tokens=0 tail_role_token=-1 vram_elastic=0 route_tail_skip=0 engine=0.1.42",
+    "INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=67948118016 expert_cuda_pinned_bytes=67948118016 expert_os_locked_bytes=0 prefill_chunk=4096 prefill_workspace=dedicated",
+    "INFO startup_ms=64182"
+  ],
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-pcie-auto.exe",
+  "exe_sha256": "313bf50e8de4040acbd7ceea33be6f466c7a04f1a527d7f23099f70adbc72d13",
+  "engine_exit_confirmed_by_quit_counters": true,
+  "port_8880_started": false,
+  "profile_change_only_vram_reserve": true,
+  "harness_note": "Both GEN requests completed and the engine exited normally. The initial diagnostic helper then failed by parsing prompt_ms (DONE field 3) as an integer reuse count. This corrected independent record audit uses reused_tokens (DONE field 8); the original failed helper record remains local."
+}
