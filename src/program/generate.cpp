@@ -11100,7 +11100,7 @@ int strata_main(int argc, char** argv) {
                     std::swap(live_ok, idle.cached); std::swap(cvec_cached, idle.cvec);
                     live_imgs = std::move(reader_imgs);
                     std::string restore_err;
-                    if (!strata::core::conversation_session_handoff(storage, ss, g, {}, restore_err)) {
+                    if (!strata::core::conversation_session_handoff(storage, ss, g, live, restore_err)) {
                         std::printf("ERR unmounting the replaced batch slot: %s\n", restore_err.c_str());
                         return 1;
                     }
@@ -11113,7 +11113,8 @@ int strata_main(int argc, char** argv) {
                 kv_quiesce();
                 BSlot& idle = bs[(size_t) admit_slot];
                 auto& storage = *bslot_ss[0][(size_t) admit_slot];
-                if (!strata::core::conversation_session_handoff(storage, ss, g, {}, err)) {
+                const std::vector<int32_t> empty_ids;
+                if (!strata::core::conversation_session_handoff(storage, ss, g, idle.cached ? idle.ids : empty_ids, err)) {
                     std::printf("ERR borrowing admission KV: %s\n", err.c_str());
                     return 1;
                 }

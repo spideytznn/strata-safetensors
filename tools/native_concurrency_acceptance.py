@@ -277,6 +277,25 @@ def main():
             assert all(x["ids"] == y["ids"] for x, y in zip(initial["jobs"], moved["jobs"]))
             assert moved_tokens and max(moved_tokens) > len(evict_ids) * 0.9, "destination overwrite lost its cached prefix"
             print(f"different-source admission preserved destination: {max(moved_tokens)} tokens, identical", flush=True)
+            reader_ids = prompt("Explain the design of a journaled file system and its recovery process in detail.")
+            reader = eng.solo(reader_ids, 32, keys)
+            reader_follow = reader_ids + reader["ids"] + next_turn
+            before = len(eng.log_path.read_text(encoding="utf8"))
+            reader_batch = eng.batch([(reader_follow, 48, keys)])
+            log = eng.log_path.read_text(encoding="utf8")[before:]
+            assert reader_batch["jobs"][0]["continued"] and "reader borrowed idle slot" not in log
+            reader_ref = eng.solo(reader_follow, 48, keys)
+            assert reader_batch["jobs"][0]["ids"] == reader_ref["ids"], "parking changed the reader's live prefix"
+            before = len(eng.log_path.read_text(encoding="utf8"))
+            reader_evicted = eng.batch([(evict_ids, 48, keys), (prompts[1], 48, keys)])
+            log = eng.log_path.read_text(encoding="utf8")[before:]
+            reader_tokens = [int(x) for x in re.findall(r"conversation cache: restored (\d+) tokens", log)]
+            result["cases"].append({"name": "live_reader_destination_eviction", "batch": reader_batch,
+                                    "solo": reader_ref, "restored": reader_evicted, "ram_restored_tokens": reader_tokens})
+            save()
+            assert all(x["ids"] == y["ids"] for x, y in zip(initial["jobs"], reader_evicted["jobs"]))
+            assert reader_tokens and max(reader_tokens) > len(evict_ids) * 0.9, "live-reader admission lost its destination"
+            print("live-reader prefix and replaced destination both preserved, identical", flush=True)
         if a.yield_tokens:
             # No retained live/parked reference: the yielded request must really read from token zero.
             long_ids = prompt(("A separate admission checks persistent state ownership. " * a.yield_tokens)[:a.yield_tokens * 4])
