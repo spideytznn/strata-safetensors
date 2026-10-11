@@ -7922,31 +7922,6 @@ int strata_main(int argc, char** argv) {
         }
         ver.set_remote_expert_opt(remote_opt.get());
         if (pcie_balance() && n_stages == 1) ver.set_pcie_balance(&drive.d.pcie_model);
-        {
-            const char* warm = std::getenv("STRATA_NATIVE_WARM_AHEAD");
-            if (warm && std::atoi(warm) == 1) {
-                drive.d.cpu_warm_ahead = safetensors && n_stages == 1 && !multi_gpu && !remote_opt && o.batch_groups <= 1;
-                if (!drive.d.cpu_warm_ahead)
-                    std::fprintf(stderr, "strata warm ahead: disabled; requires single-GPU fully resident native experts\n");
-            }
-            const char* fetch = std::getenv("STRATA_UNIFIED_FETCH_OVERLAP");
-            if (!fetch) fetch = std::getenv("STRATA_UNIFIED_EXPERT_BATCH");
-            if (fetch && std::atoi(fetch) == 1 && safetensors && n_stages == 1 && !multi_gpu && !remote_opt && o.batch_groups <= 1)
-                ver.set_expert_fetch_overlap(true);
-            const char* v = std::getenv("STRATA_UNIFIED_EXPERT_PLAN");
-            if (!v) v = std::getenv("STRATA_UNIFIED_EXPERT_BATCH");
-            if (v && std::atoi(v) == 1) {
-                const char* canonical = std::getenv("STRATA_NVFP4_F32_CANONICAL");
-                const char* f32 = std::getenv("STRATA_NVFP4_F32");
-                const char* tc = std::getenv("STRATA_NVFP4_TC");
-                if (safetensors && n_stages == 1 && !multi_gpu && !remote_opt && o.batch_groups <= 1 &&
-                    canonical && std::strcmp(canonical, "1") == 0 && f32 && std::strcmp(f32, "1") == 0 &&
-                    (!tc || std::atoi(tc) == 0))
-                    ver.set_unified_expert_plan(&drive.d.unified_plan);
-                else
-                    std::fprintf(stderr, "strata unified experts: planner disabled; requires single-GPU native canonical FP32 decode\n");
-            }
-        }
         if (batch_mtp) ver.set_batch_graph_limit(64);   // --batch-mtp only: slot rotation makes many layouts (LRU); 0.1.39 keeps all
         if (!ver.init(wt, g, ss, vh, native_head.loaded() ? &native_head : nullptr,
                       batch_mtp ? strata::kernels::kVerifyMaxT : std::max(o.spec, o.batch), err) ||
@@ -9674,10 +9649,6 @@ int strata_main(int argc, char** argv) {
                             borrow != nullptr ? "borrowed" : "dedicated");
             if (safetensors && batch_mtp)
                 std::printf("INFO native_batch_mtp=1 mtp_enabled=1 mtp_slot_drafters=%zu\n", slot_mtp.size());
-            if (safetensors && (pool.native_ready_queue() || drive.d.unified_plan.on || ver.expert_fetch_overlap() || drive.d.cpu_warm_ahead))
-                std::printf("INFO unified_expert_plan=%d native_ready_queue=%d expert_fetch_overlap=%d cpu_warm_ahead=%d\n",
-                            drive.d.unified_plan.on ? 1 : 0, pool.native_ready_queue() ? 1 : 0, ver.expert_fetch_overlap() ? 1 : 0,
-                            drive.d.cpu_warm_ahead ? 1 : 0);
         }
         // issue #29: a request whose heartbeat (tokens, prompt chunks, verify windows) stops for this long is stuck on
         // a flag nobody will raise - end the engine with where it was, so the server starts it again instead of the
@@ -13183,27 +13154,6 @@ int strata_main(int argc, char** argv) {
             }
         }
         save_profile("exit");   // #477: QUIT, or the server closed stdin
-        pool.finish_warm_ahead();
-        if (drive.d.cpu_warm_ahead)
-            std::fprintf(stderr, "strata warm ahead: batches=%llu RAM_bytes=%llu join_ms=%.3f\n",
-                         (unsigned long long) pool.warm_batches, (unsigned long long) pool.warm_bytes(), pool.ms_warm_join);
-        if (pool.native_ready_queue())
-            std::fprintf(stderr, "strata native ready queue: batches=%lld wall_ms=%.3f\n",
-                         (long long) pool.native_ready_batches, pool.ms_native_ready);
-        if (drive.d.unified_plan.on) {
-            const auto& model = drive.d.unified_plan;
-            std::fprintf(stderr, "strata unified experts: samples=%llu decisions=%llu changed=%llu\n",
-                         (unsigned long long) model.samples, (unsigned long long) model.decisions,
-                         (unsigned long long) model.changed);
-            for (int width = 1; width <= 8; ++width) {
-                const auto& f = model.widths[width - 1];
-                if (!f.cpu.samples) continue;
-                std::fprintf(stderr, "strata unified fit: width=%d samples=%d ready=%d cpu=%.6f,%.6f,%.6f,%.6f gpu=%.6f,%.6f,%.6f,%.6f,%.6f\n",
-                             width, f.cpu.samples, f.ready() ? 1 : 0,
-                             f.cpu.coef[0], f.cpu.coef[1], f.cpu.coef[2], f.cpu.coef[3],
-                             f.gpu.coef[0], f.gpu.coef[1], f.gpu.coef[2], f.gpu.coef[3], f.gpu.coef[4]);
-            }
-        }
         return 0;
     }
 
@@ -14149,10 +14099,7 @@ int strata_main(int argc, char** argv) {
                         ver.ms_commit / rounds,
                         (double) (drive.d.multi_misses - misses0) / (double) (rounds * g.n_layers),
                         (double) (drive.d.multi_entries - entries0) / (double) (rounds * g.n_layers));
-        if (rounds > 0 && pool.native_ready_batches > 0)
-            std::printf("%-24s dependency queue %.3f ms/round (overlapping gate/up and down); CPU pool call %.3f ms/round\n",
-                        "pool multi", pool.ms_native_ready / rounds, (drive.cpu_ms - pool_ms0) / rounds);
-        else if (rounds > 0)
+        if (rounds > 0)
             std::printf("%-24s gate/up %.3f  quantize %.3f  down %.3f ms/round; %.1f GB/s over the rows phases; "
                         "CPU pool call %.3f ms/round\n", "pool multi", pool.ms_multi_gu / rounds,
                         pool.ms_multi_q / rounds, pool.ms_multi_down / rounds,

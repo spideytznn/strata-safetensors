@@ -437,9 +437,6 @@ void ExpertPool::diag(std::FILE* f) const {
 ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks)
     : tasks_(tasks), host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
     if (tasks < 0 || tasks > kMaxTasks) throw std::invalid_argument("expert pool tasks must be in 0..4096");
-    const char* ready = std::getenv("STRATA_NATIVE_READY_QUEUE");
-    if (!ready) ready = std::getenv("STRATA_UNIFIED_EXPERT_BATCH");
-    if (ready) native_ready_queue_ = std::atoi(ready) == 1;
     if (const char* e = std::getenv("STRATA_POOL_SPIN_US"))   // a test knob; see kSpinBeforeSleep
         spin_before_sleep_ = std::chrono::microseconds((std::max)(0, std::atoi(e)));
     if (n_workers > 0) {
@@ -470,7 +467,6 @@ ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity af
 }
 
 ExpertPool::~ExpertPool() {
-    finish_warm_ahead();
     const ExpertPool* self = this;
     g_diag_pool.compare_exchange_strong(self, nullptr);
     stop_.store(true, std::memory_order_release);
@@ -617,25 +613,9 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
         const int ci = claim(epoch);
         if (ci < 0) break;
         const uint32_t i = (uint32_t) ci;
-        if (mode_ == 7) { drain_native_ready(id, epoch, ci); return; }
         if (id >= 0) wstate_[(size_t) id].store(ci, std::memory_order_relaxed);
         else { hstate_.store(ci, std::memory_order_relaxed); hstate_ms_.store(now_ms(), std::memory_order_relaxed); }
-        if (mode_ == 8) {
-            const auto job = warm_jobs_[i];
-            size_t bytes = 0;
-            for (size_t p = 0; p < job.bytes; p += 1024) {
-                if (warm_cancel_.load(std::memory_order_relaxed)) break;
-                const size_t end = (std::min)(p + 1024, job.bytes);
-                for (size_t q = p; q < end; q += 64) {
-                    // A volatile read materializes the line in CPU caches. The
-                    // destination is private; model weights remain untouched.
-                    const volatile uint8_t value = job.data[q];
-                    (void) value;
-                }
-                bytes += end - p;
-            }
-            warm_bytes_.fetch_add(bytes, std::memory_order_relaxed);
-        } else if (mode_ == 0) {
+        if (mode_ == 0) {
             const ExpertJob& j = jobs_[i];
             s2_expert_vnni_q(j.blob, *j.act, j.out, scratch);
         } else if (mode_ == 1) {
@@ -720,7 +700,6 @@ void ExpertPool::run_phase(int mode, int n_tasks) {
 }
 
 void ExpertPool::run_split(ExpertJob* jobs, int n) {
-    finish_warm_ahead();
     if (n <= 0) return;
     if (n > kMaxSplit || n_ == 1 || expert_oracle_q8_0_enabled()) { run(jobs, n); return; }
     const auto t0 = std::chrono::steady_clock::now();
@@ -741,7 +720,6 @@ int ExpertPool::phase_tasks(int64_t rows) const {
 }
 
 void ExpertPool::run_split_multi(ExpertJobMulti* jobs, int n) {
-    finish_warm_ahead();
     if (n <= 0) return;
     if (n > kMaxSplitMulti || expert_oracle_q8_0_enabled()) {
         // one token at a time through the single-token path (the oracle contract has no multi kernel)
@@ -781,13 +759,7 @@ void ExpertPool::run_split_multi(ExpertJobMulti* jobs, int n) {
 }
 
 void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs, int n) {
-    finish_warm_ahead();
     if (n <= 0) return;
-    if (native_ready_queue_ && f.fp32_activations && f.gu_type == kNvfp4Type && f.d_type == kNvfp4Type &&
-        f.n_embd == H && f.n_ff == FF) {
-        run_native_ready(f, jobs, n);
-        return;
-    }
     const auto t0 = std::chrono::steady_clock::now();
     // more distinct experts than buffers: run them in batches
     for (int b0 = 0; b0 < n; b0 += kMaxSplitMulti) {
@@ -817,146 +789,7 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
     ms_drain_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
 
-void ExpertPool::drain_native_ready(int id, uint32_t epoch, int first) {
-    int gu = first;
-    for (;;) {
-        int down = -1;
-        if (gu < 0) {
-            int h = native_ready_head_.load(std::memory_order_relaxed);
-            if (h < native_ready_tail_.load(std::memory_order_acquire)) {
-                const int task = native_ready_[h].load(std::memory_order_acquire);
-                if (task >= 0 && native_ready_head_.compare_exchange_strong(h, h + 1, std::memory_order_relaxed)) down = task;
-            }
-            if (down < 0) gu = claim(epoch);
-        }
-        if (gu >= 0) {
-            const NativeTile tile = native_gu_[(size_t) gu];
-            auto& job = mjobs_[tile.expert];
-            auto& sb = split_multi_[(size_t) tile.expert];
-            float* ff[MAXT];
-            for (int t = 0; t < job.nt; ++t) ff[t] = sb.ff[t];
-            if (id >= 0) wstate_[(size_t) id].store(gu, std::memory_order_relaxed);
-            native_gu_rows(*nfmt_, job.blob, job.nact, job.nt, ff, tile.r0, tile.r1);
-            auto& dep = native_dep_[tile.expert];
-            // The last tile acquires every gate/up write before publishing down
-            // work. Down reads ff directly: FP32 activations need no quantization.
-            if (dep.remaining.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-                const int count = dep.down_end - dep.down_begin;
-                const int slot = native_ready_tail_.fetch_add(count, std::memory_order_acq_rel);
-                for (int j = 0; j < count; ++j)
-                    native_ready_[slot + j].store(dep.down_begin + j, std::memory_order_release);
-            }
-            done_.fetch_add(1, std::memory_order_release);
-            gu = -1;
-        } else if (down >= 0) {
-            const NativeTile tile = native_down_[(size_t) down];
-            auto& job = mjobs_[tile.expert];
-            const void* h[MAXT];
-            for (int t = 0; t < job.nt; ++t) h[t] = split_multi_[(size_t) tile.expert].ff[t];
-            if (id >= 0) wstate_[(size_t) id].store((int) native_gu_.size() + down, std::memory_order_relaxed);
-            native_down_rows(*nfmt_, job.blob, h, job.nt, job.out, tile.r0, tile.r1);
-            done_.fetch_add(1, std::memory_order_release);
-        } else {
-            if (done_.load(std::memory_order_acquire) >= (uint32_t) native_total_) break;
-            _mm_pause();
-        }
-    }
-}
-
-void ExpertPool::run_native_ready(const NativeFmt& f, ExpertJobMulti* jobs, int n) {
-    const auto start = std::chrono::steady_clock::now();
-    if (!native_ready_) native_ready_.reset(new std::atomic<int>[kMaxTasks + kMaxSplitMulti]);
-    for (int base = 0; base < n; base += kMaxSplitMulti) {
-        const int count = (std::min)(kMaxSplitMulti, n - base);
-        wait_parked("before a native ready queue");
-        mjobs_ = jobs + base;
-        nfmt_ = &f;
-        native_gu_.clear();
-        native_down_.clear();
-        int cost = 0;
-        for (int e = 0; e < count; ++e) {
-            if (mjobs_[e].nt < 1 || mjobs_[e].nt > MAXT)
-                throw std::invalid_argument("native ready queue token count out of range");
-            cost += mjobs_[e].nt;
-        }
-        const int target = (std::min)(kMaxTasks, phase_tasks((int64_t) count * FF));
-        for (int e = 0; e < count; ++e) {
-            // A shared expert has more FMA work despite reading its weights once.
-            // Partition by actual token count instead of equal rows per expert.
-            const int parts = (std::min)(FF, (std::max)(1, (target * mjobs_[e].nt + cost - 1) / cost));
-            native_dep_[e].remaining.store(parts, std::memory_order_relaxed);
-            native_dep_[e].down_begin = (int) native_down_.size();
-            for (int p = 0; p < parts; ++p) {
-                native_gu_.push_back({e, FF * p / parts, FF * (p + 1) / parts});
-                native_down_.push_back({e, H * p / parts, H * (p + 1) / parts});
-            }
-            native_dep_[e].down_end = (int) native_down_.size();
-        }
-        for (size_t i = 0; i < native_down_.size(); ++i) native_ready_[i].store(-1, std::memory_order_relaxed);
-        native_ready_head_.store(0, std::memory_order_relaxed);
-        native_ready_tail_.store(0, std::memory_order_relaxed);
-        native_total_ = (int) (native_gu_.size() + native_down_.size());
-        mode_ = 7;
-        njobs_ = (int) native_gu_.size();
-        const uint32_t epoch = begin_batch(njobs_);
-        if (host_works_) drain(-1, host_scratch_, epoch);
-        wait_done(native_total_);
-        wait_parked("after a native ready queue");
-        ++native_ready_batches;
-    }
-    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-    ms_native_ready += ms;
-    ms_drain_ += ms;
-    multi_bytes += (int64_t) n * (int64_t) f.bytes;
-    mode_ = 0;
-    hstate_.store(kIdle, std::memory_order_relaxed);
-    hstate_ms_.store(now_ms(), std::memory_order_relaxed);
-}
-
-void ExpertPool::start_warm_ahead(const WarmBlob* blobs, int count) {
-    finish_warm_ahead();
-    if (count <= 0 || n_ <= 1) return;
-    wait_parked("before cache warming");
-    warm_jobs_.clear();
-    // Interleave slices of distinct experts instead of filling one large blob
-    // on one worker. Bounded by the same limit as ordinary pool work.
-    for (int slice = 0; slice < 8; ++slice)
-        for (int b = 0; b < count && warm_jobs_.size() < kMaxTasks; ++b) {
-            const auto blob = blobs[b];
-            if (!blob.data || !blob.bytes) continue;
-            const size_t lines = (blob.bytes + 63) / 64;
-            const size_t start = (lines * (size_t) slice / 8) * 64;
-            const size_t end = (std::min)(blob.bytes, (lines * (size_t) (slice + 1) / 8) * 64);
-            if (start < end) warm_jobs_.push_back({blob.data + start, end - start});
-        }
-    if (warm_jobs_.empty()) return;
-    warm_cancel_.store(false, std::memory_order_relaxed);
-    mode_ = 8;
-    njobs_ = (int) warm_jobs_.size();
-    warm_epoch_ = begin_batch(njobs_);
-    warm_active_ = true;
-    ++warm_batches;
-    // The host returns immediately to release the GPU and wait for its router.
-}
-
-void ExpertPool::finish_warm_ahead() {
-    if (!warm_active_) return;
-    const auto begin = std::chrono::steady_clock::now();
-    warm_cancel_.store(true, std::memory_order_relaxed);
-    // Also retire jobs if workers have not woken yet. Every claim carries its
-    // epoch; no late sleeper can access a subsequent batch's descriptors.
-    drain(-1, host_scratch_, warm_epoch_);
-    wait_done(njobs_);
-    wait_parked("after cache warming");
-    mode_ = 0;
-    warm_active_ = false;
-    ms_warm_join += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
-    hstate_.store(kIdle, std::memory_order_relaxed);
-    hstate_ms_.store(now_ms(), std::memory_order_relaxed);
-}
-
 void ExpertPool::run(ExpertJob* jobs, int n) {
-    finish_warm_ahead();
     if (n <= 0) return;
     if (n_ == 1) {   // no workers: run inline, so a single-core machine still produces a token
         for (int i = 0; i < n; ++i) s2_expert_vnni_q(jobs[i].blob, *jobs[i].act, jobs[i].out, scratch_[0]);

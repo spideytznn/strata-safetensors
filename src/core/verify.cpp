@@ -414,7 +414,6 @@ Verifier::~Verifier() {
     }
     if (cs_) cudaStreamSynchronize(cs_);
     if (sh_cs_) cudaStreamSynchronize(sh_cs_);
-    if (fetch_cs_) cudaStreamSynchronize(fetch_cs_);
     for (auto& e : exec_)
         if (e) cudaGraphExecDestroy(e);
     for (auto& e : exec_nr_)
@@ -431,9 +430,6 @@ Verifier::~Verifier() {
     if (logit_bias_device_) cudaFree(logit_bias_device_);
     if (cs_ && cs_ != ext_stream_) cudaStreamDestroy(cs_);   // set_stream: the stage's stream, shared, not ours
     if (sh_cs_) cudaStreamDestroy(sh_cs_);
-    if (fetch_cs_) cudaStreamDestroy(fetch_cs_);
-    if (fetch_fork_) cudaEventDestroy(fetch_fork_);
-    if (fetch_join_) cudaEventDestroy(fetch_join_);
     if (copy_) { cudaStreamSynchronize(copy_); cudaStreamDestroy(copy_); }
     if (commit_done_) cudaEventDestroy(commit_done_);
     if (ev_done_) cudaEventDestroy(ev_done_);
@@ -539,14 +535,6 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
     max_blocks_ = ss.qsa_states[ss.qsa_primary()].max_cells / s.idx_block + 2;
     attn_scratch_floats_ = (int64_t) strata::kernels::qsa_decode_attn_scratch_floats(cap_, s);
 
-    if (expert_fetch_overlap_) {
-        if (cudaStreamCreateWithFlags(&fetch_cs_, cudaStreamNonBlocking) != cudaSuccess ||
-            cudaEventCreateWithFlags(&fetch_fork_, cudaEventDisableTiming) != cudaSuccess ||
-            cudaEventCreateWithFlags(&fetch_join_, cudaEventDisableTiming) != cudaSuccess) {
-            err = "verify: expert fetch overlap stream/events allocation failed";
-            return false;
-        }
-    }
     const uint64_t T = (uint64_t) max_t, N = (uint64_t) g.n_embd, HC = (uint64_t) g.hc, K = (uint64_t) ss.k;
     const uint64_t C = (uint64_t) g.ssm_conv_channels, ZV = (uint64_t) g.ssm_value_dim, HV = (uint64_t) g.ssm_v_heads;
     const uint64_t NH = (uint64_t) g.n_head, HD = (uint64_t) g.head_dim, NKV = (uint64_t) g.n_head_kv;
@@ -573,7 +561,7 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
               mapped(64, (void**) &h_plan_err_, (void**) &m_plan_err_) &&
               mapped(T * K * N * 4, (void**) &h_ymiss_, (void**) &m_ymiss_);
     if (!ok) { err = "verify: mapped staging allocation failed"; return false; }
-    if (bal_ != nullptr || unified_plan_ != nullptr) {   // four stamp words per (layer, group)
+    if (bal_ != nullptr) {   // set_pcie_balance: four stamp words per (layer, group)
         if (!mapped((size_t) g.n_layers * 2 * 4 * 8, (void**) &h_bal_, (void**) &m_bal_)) {
             err = "verify: mapped balance stamps allocation failed";
             return false;
@@ -582,9 +570,7 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
         bal_nc_.assign((size_t) g.n_layers * 2, 0);
         bal_np_.assign((size_t) g.n_layers * 2, 0);
         bal_ok_.assign((size_t) g.n_layers * 2, 0);
-        bal_work_.resize((size_t) g.n_layers * 2);
-        if (bal_) bal_->on = true;
-        if (unified_plan_) unified_plan_->on = true;
+        bal_->on = true;
     }
     // the GPU plan: counts(4) | start(cap+1) | dst(cap) | tok(cap) | pad | ptr(cap u64) | ptr2(cap u64) | start2(cap+1)
     // | pad | dst2(staging_blobs_ u64)
@@ -1576,24 +1562,6 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
                     wait_flag_ge(m_flagA_, ring, cs);              // the pool published this group's GPU plan
                 copy_i32_from_mapped(pl, m_plan_ + (size_t) grp * (size_t) plan_i32_, plan_i32_, cs);
             }
-            // Fork after the device's plan snapshot. PCIe staging touches ptr2
-            // and its own staging blobs, while resident GEMVs read ptr and VRAM.
-            // The join precedes every PCIe consumer and next-layer reuse.
-            const bool fetch_overlap = expert_fetch_overlap() && !prof_on_ && !device_plan_;
-            auto stage_pcie = [&](cudaStream_t stage_cs) {
-                const int64_t per = G == 2 ? staging_blobs_ / 2 : staging_blobs_;
-                uint8_t* stage = staging_ + (size_t) (grp * per) * lay.max_blob;
-                const auto* p_dst2 = (const unsigned long long*) (pl + dst2_off_);
-                fetch_blobs(p_ptr2, p_counts + 2, stage, (int64_t) lay.blob_bytes(l), (int) per, stage_cs, p_dst2);
-                rebase_ptrs((unsigned long long*) p_ptr2, p_counts + 2, stage, (int64_t) lay.blob_bytes(l), stage_cs, p_dst2);
-            };
-            if (fetch_overlap) {
-                cudaEventRecord(fetch_fork_, cs);
-                cudaStreamWaitEvent(fetch_cs_, fetch_fork_, 0);
-                wait_flag_ge(m_flagB_, ring, fetch_cs_);
-                stage_pcie(fetch_cs_);
-                cudaEventRecord(fetch_join_, fetch_cs_);
-            }
             stamp(l, 19, grp);
             grouped(p_ptr, p_start, p_counts, 0, hit_out);
             stamp(l, 20, grp);
@@ -1602,8 +1570,11 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
                 wait_flag_ge_stamped(m_flagB_, ring, m_bal_ + ((l - lb_) * 2 + grp) * 4 + 1, nullptr, cs);
             else wait_flag_ge(m_flagB_, ring, cs);                 // the PCIe share is in staging (DMA) or mapped
             if (sink_.pcie_mode == 2) {                            // stage it with a copy kernel, then point at staging
-                if (fetch_overlap) cudaStreamWaitEvent(cs, fetch_join_, 0);
-                else stage_pcie(cs);
+                const int64_t per = G == 2 ? staging_blobs_ / 2 : staging_blobs_;
+                uint8_t* stage = staging_ + (size_t) (grp * per) * lay.max_blob;
+                const unsigned long long* p_dst2 = (const unsigned long long*) (pl + dst2_off_);   // STRATA_ADAPT_FETCH
+                fetch_blobs(p_ptr2, p_counts + 2, stage, (int64_t) lay.blob_bytes(l), (int) per, cs, p_dst2);
+                rebase_ptrs((unsigned long long*) p_ptr2, p_counts + 2, stage, (int64_t) lay.blob_bytes(l), cs, p_dst2);
             }
             stamp(l, 21, grp);
             // the PCIe share is pcie_frac of the misses: a few groups when the cache is cold, usually none (always none at
@@ -2183,7 +2154,6 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
             bal_ok_[bi] = *(volatile uint32_t*) h_flagA_ == want;
             bal_nc_[bi] = bal_ok_[bi] ? sink_.cpu_jobs : 0;
             bal_np_[bi] = bal_ok_[bi] ? sink_.counts[2] : 0;
-            bal_work_[bi] = sink_.work;
             sink_.cpu_jobs = 0;
         }
         if (*(volatile uint32_t*) h_flagA_ != want) {        // the pool did not publish a plan: an empty one
@@ -2318,17 +2288,15 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
 // set_pcie_balance: each stamped step's times into the model's fits (PcieModel::sample), solved once a window.
 void Verifier::pcie_balance_window(int64_t steps, int G) {
     const volatile unsigned long long* st = h_bal_;
+    PcieModel& M = *bal_;
     for (int64_t k = 0; k < steps; ++k) {
         const size_t i = (size_t) ((k / G) * 2 + k % G);
         if (!bal_ok_[i]) continue;
         const unsigned long long ta = st[4 * i], tb = st[4 * i + 1], tw = st[4 * i + 2];
         if (ta == 0 || tb < ta || tw < tb || tw - ta > 1000000000ull) continue;   // not stamped in this window
-        const double gpu_ms = (double) (tw - ta) * 1e-6;
-        if (bal_) bal_->sample(bal_nc_[i], bal_np_[i], bal_p_[i], gpu_ms);
-        if (unified_plan_) unified_plan_->sample(last_t_, bal_work_[i], bal_p_[i], gpu_ms);
+        M.sample(bal_nc_[i], bal_np_[i], bal_p_[i], (double) (tw - ta) * 1e-6);
     }
-    if (bal_) bal_->solve();
-    if (unified_plan_) unified_plan_->solve(last_t_);
+    M.solve();
 }
 
 void Verifier::set_plan_slot(int grp) {
@@ -2823,7 +2791,6 @@ bool Verifier::run_slot_rows(const int* rows, int S, const int32_t* tokens, cons
     const ModelGeometry& g = *g_;
     if (pre_launch_ && !pre_launch_(cs_, err)) return false;
     if (!stage_batch(rows, S, 0, tokens, pos, err)) return false;
-    if (h_bal_ && unified_plan_) std::memset(h_bal_, 0, (size_t) bal_p_.size() * 4 * 8);
     const cudaError_t le = cudaGraphLaunch(exec_bm_[bkey(rows, S, 0)], cs_);
     if (le != cudaSuccess) { err = std::string("verify: batch launch: ") + cudaGetErrorString(le); return false; }
     (void) cudaStreamQuery(cs_);
@@ -2890,15 +2857,6 @@ bool Verifier::run_slot_rows(const int* rows, int S, const int32_t* tokens, cons
         if (remote_opt_) remote_opt_->begin(h_w_, 0, S);
         if (pool != nullptr) pool(user, h_x_, h_ids_, S, ss_->k, h_ymiss_, l);
         if (remote_opt_) remote_opt_->end();
-        if (h_bal_ && unified_plan_) {
-            const size_t bi = (size_t) k * 2;
-            bal_ok_[bi] = *(volatile uint32_t*) h_flagA_ == want;
-            bal_nc_[bi] = bal_ok_[bi] ? sink_.cpu_jobs : 0;
-            bal_np_[bi] = bal_ok_[bi] ? sink_.counts[2] : 0;
-            bal_work_[bi] = sink_.work;
-            bal_p_[bi] = ms_since(b);
-            sink_.cpu_jobs = 0;
-        }
         progress_tick();
         std::atomic_thread_fence(std::memory_order_seq_cst);
         _mm_sfence();
@@ -2919,7 +2877,6 @@ bool Verifier::run_slot_rows(const int* rows, int S, const int32_t* tokens, cons
     const cudaError_t se = cudaStreamSynchronize(cs_);
     if (se != cudaSuccess) { err = std::string("verify batch: ") + cudaGetErrorString(se); return false; }
     cudaStreamSynchronize(copy_);
-    if (h_bal_ && unified_plan_ && !bal_paused_) pcie_balance_window(steps, 1);
     if (prof_on_) collect_profile();
     ++windows;
     if (le_ < g.n_layers) return next_ == nullptr || next_->run_slot_rows(rows, S, tokens, pos, pool, next_user_, out, err);
