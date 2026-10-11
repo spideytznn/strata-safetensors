@@ -1,0 +1,41 @@
+name: Native CPU regression
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-cpu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: CPU regression (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements-native.txt
+      - name: Install Python runtime dependencies
+        run: python -m pip install -r requirements-native.txt
+      - name: Server, concurrency and saved-settings regression
+        run: python -m unittest serve.test_parallel serve.test_native_concurrency serve.test_slot_alloc serve.test_control_cancel serve.test_restart_waiters serve.test_runconfig
+      - name: Configure standalone weight-reader tests (no CUDA or model)
+        run: cmake -S native_safetensors -B build-ci -DCMAKE_BUILD_TYPE=Release
+      - name: Build standalone weight-reader tests
+        run: cmake --build build-ci --config Release --parallel 4
+      - name: Weight layout, source guards, segmented ngram and malformed-input tests
+        run: ctest --test-dir build-ci -C Release --output-on-failure

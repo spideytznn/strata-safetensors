@@ -16,6 +16,14 @@ converted expert pack is required.
 The validated deployment is **Windows + RTX 5090 32 GB + Ryzen 9950X3D + 96 GB RAM**.
 The active branch is `main`; the executable and CLI retain the name `strata`.
 
+`main` is the maintained stable line. Its validated native deployment supports
+one or two text requests, adaptive hot-expert promotion, INT8 KV and vision,
+with MTP unloaded. The later vLLM-style scheduler experiments were rolled back;
+no warm-decode speedup is claimed for them. See the
+[stable validation record](bench/results/2026-10-11-two-slot-rollback/README.md),
+[release checks](docs/STABLE_NATIVE.md)
+and [automated CPU checks](https://github.com/spideytznn/strata-safetensors/actions/workflows/native-stability.yml).
+
 ## What it does
 
 | Capability | Current native implementation |
@@ -76,9 +84,11 @@ over English, Chinese and code. It used one fresh engine per profile and is
 not a repeated throughput estimate. That candidate used four drafts, a 0.7
 confidence gate and a two-draft floor.
 
-**The current temperature-0.7 / two-draft / gate-0.5 desktop trial has not been
-remeasured.** These figures are evidence for the archived configurations, not
-a speed promise for every prompt or the current trial.
+**The stable desktop deployment uses temperature 0.7 with MTP unloaded.** The
+figures above describe archived MTP configurations, not the current target-only
+deployment, and are not a speed promise for every prompt. The rollback's latest
+checks establish tested correctness and adaptive promotion, not a new throughput
+improvement.
 
 ## Build and run on Windows
 
@@ -97,7 +107,7 @@ python -m venv .venv-native
 cmake -S . -B build-native-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTRATA_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 -DSTRATA_NVFP4_TC=ON -DSTRATA_BUILD_TESTS=OFF "-DCMAKE_CXX_FLAGS=/utf-8 /EHsc"
 cmake --build build-native-engine --target strata --parallel 2
 
-.\.venv-native\Scripts\python.exe tools\native_config.py --model "D:\Models\Qwen3.8-Flash-Next-NVFP4" --output strata-native-local.json --exe build-native-engine\strata.exe --context 262144 --prefill 4096 --kv int8 --dedicated-prefill --mtp 2 --spec-min-p 0.5 --load-batch 64 --load-workers 4
+.\.venv-native\Scripts\python.exe tools\native_config.py --model "D:\Models\Qwen3.8-Flash-Next-NVFP4" --output strata-native-local.json --exe build-native-engine\strata.exe --context 262144 --prefill 4096 --kv int8 --dedicated-prefill --mtp 0 --parallel 2 --load-batch 64 --load-workers 4
 ```
 
 CMake fetches its pinned ggml dependency unless `STRATA_GGML_DIR` is supplied.
@@ -142,7 +152,7 @@ This checked-in profile and the local build helper contain deployment-specific
 Windows paths; adapt them before use on another PC. The generic build above
 avoids those fixed paths.
 
-| Setting | Current desktop trial |
+| Setting | Current desktop deployment |
 |---|---|
 | Context / dedicated prefill | 262,144 total tokens / 4,096 rows |
 | KV / vision | INT8 with elastic growth / external GPU encoder, at most 1,024 tokens per image |
@@ -159,7 +169,7 @@ Explicit client parameters and persisted shared web settings can override
 server defaults. Output-budget fitting does not change a client's compaction
 policy; set the client context to 262,144 as well.
 
-The fully unloaded MTP alternative is
+The older unloaded MTP comparison is
 [`rtx5090-262k-no-mtp.json`](config/native/rtx5090-262k-no-mtp.json).
 `START-NATIVE-262K-STABLE.bat` retains the earlier efficiency14 profile.
 
@@ -170,9 +180,19 @@ Native target-only batching also offers independent per-session elastic KV and
 direct device slot migration; the measured local profile enables both.
 See [native concurrency](docs/NATIVE_CONCURRENCY.md) for tests, memory costs and
 latency/throughput measurements. The original desktop launcher is unchanged.
+The checked-in parallel profile selects `build-native-engine/strata-two-slot.exe`.
+To build that exact executable name, add `-DSTRATA_EXECUTABLE_NAME=strata-two-slot`
+to the CMake configure command above, or use the generic config's `strata.exe`.
+Prebuilt local executables and machine-specific visual assets are not distributed
+by Git clone.
 
 ## Validation and limits
 
+- The stable rollback passes 54 server tests and seven real-model cases on the
+  validated Windows/CUDA machine. It records 98 two-row adaptive rounds and
+  9370 promotions, with zero post-residency expert/MTP source bytes. GitHub's CPU
+  workflow runs server and standalone reader tests on Windows and Linux; it does
+  not run CUDA inference or certify model quality. See [stable checks](bench/results/2026-10-11-two-slot-rollback/README.md).
 - Weight-layout roundtrips, real-expert FP64 checks, full-logit comparisons,
   seeded sampling, output caps/EOS and cancellation/resume have recorded evidence.
 - Final efficiency17 acceptance covers 80 completed requests and four

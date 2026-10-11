@@ -14,6 +14,12 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 当前实际验证的平台是 **Windows + RTX 5090 32 GB + Ryzen 9950X3D + 96 GB RAM**。
 主分支为 `main`，引擎程序和命令仍叫 `strata`。
 
+`main` 维护稳定版本：已验证单路或双路文本请求、热专家晋升、INT8 KV 和视觉，
+桌面配置不加载 MTP。后续类 vLLM 调度实验已回退，不宣称它们带来热态解码提速。
+见[稳定版验收记录](bench/results/2026-10-11-two-slot-rollback/README.md)、
+[主分支验收要求](docs/STABLE_NATIVE.md)与
+[自动 CPU 回归检查](https://github.com/spideytznn/strata-safetensors/actions/workflows/native-stability.yml)。
+
 ## 当前能力
 
 | 能力 | 实现范围 |
@@ -62,8 +68,9 @@ dense 投影保留 BF16。此前 FP4 decode 未测出明确的端到端优势，
 另一次英文、中文、代码长回答筛查测得 warm aggregate decode **91.93 → 100.82 tok/s**。
 每套配置只启动一台引擎，不能当成多轮稳定吞吐估计；该候选使用四枚草稿、0.7 草稿门槛及两枚强制草稿。
 
-**当前温度 0.7、两枚草稿、门槛 0.5 的桌面试用组合尚未重新测速。**
-上述成绩只对应归档配置，不构成当前配置或所有任务的速度承诺。
+**当前稳定桌面配置使用温度 0.7，完全不加载 MTP。**
+上述成绩对应历史 MTP 配置，不是当前纯主模型解码配置的成绩，也不是所有任务的速度承诺。
+回退后的最新验收检查正确性和实际热专家晋升，不构成新的吞吐提升证据。
 
 完整命令、全部样本和验收范围见
 [P10](bench/results/2026-10-10-safetensors-runtime/p10-native-performance/README.md)、
@@ -86,18 +93,18 @@ CMake 3.24+ 和 Ninja。原始模型下载到仓库外，使用配置生成器�
 .\START-NATIVE-262K.bat
 ```
 
-该脚本读取 [桌面配置](config/native/rtx5090-262k-fast.json)。
+该脚本读取 [桌面配置](config/native/rtx5090-262k-fast-v0142.json)。
 配置和本地构建辅助脚本含部署机器的绝对路径，其他机器必须适配。
 服务在前台运行，Ctrl+C 停止。网页地址为 **http://127.0.0.1:8880**，
 OpenAI 客户端地址为 **http://127.0.0.1:8880/v1**。
 可用 `/health`、`/v1/models` 检查就绪状态和模型 ID。
 对外监听前需配置 `--api-key`。
 
-| 参数 | 当前桌面试用配置 |
+| 参数 | 当前桌面部署配置 |
 |---|---|
 | 总上下文 / 专用 prefill | 262144 token / 4096 行 |
 | KV / 视觉 | INT8 按需增长 / 外部 GPU 编码器，每张图最多 1024 token |
-| MTP | `--mtp native --spec 3 --spec-min-p 0.5`，最多两枚草稿，无强制最小数量 |
+| MTP | 关闭，不加载草稿权重；suffix drafting 同样关闭 |
 | 采样 | temperature **0.7**、top_p 0.95、top_k 20、min_p 0、presence_penalty 0、repetition_penalty 1 |
 | 模板 | Froggeric v22.5，默认开启思考；请求未指定强度时默认 medium |
 | 服务 | 127.0.0.1:8880，HTTP Host 头不设白名单 |
@@ -107,16 +114,24 @@ OpenAI 客户端地址为 **http://127.0.0.1:8880/v1**。
 其模板默认思考强度 **xhigh**。客户端显式参数及网页持久化设置可以覆盖服务默认值。
 输出预算适配不改变 ZCode 等客户端自己的压缩策略，客户端上下文也应设为 262144。
 
-完整关闭 MTP 可选 [no-mtp 配置](config/native/rtx5090-262k-no-mtp.json)；
+[no-mtp 配置](config/native/rtx5090-262k-no-mtp.json)保留了较早的卸载 MTP 对照；
 `START-NATIVE-262K-STABLE.bat` 保留较早的 efficiency14 配置。
 
 `START-NATIVE-262K-PARALLEL.bat` 选择可选的**两路文本并发**，仍为 262K 上下文、
 4096 行专用 prefill。图片请求独占引擎；并发配置完全不加载 MTP，所有请求直接由主模型解码。
 本机并发配置还启用了按会话长度独立伸缩的 KV 和显存内槽位迁移。
 内存开销、验收及首字/吞吐测量见[原生并发说明](docs/NATIVE_CONCURRENCY.md)。原桌面入口不变。
+仓库中的双路配置指向 `build-native-engine/strata-two-slot.exe`。
+构建此程序名时，在英文 CMake 配置命令中加上
+`-DSTRATA_EXECUTABLE_NAME=strata-two-slot`；通用配置示例则使用 `strata.exe`。
+Git clone 不包含本机预编译程序或视觉资源，其他机器需要自行构建并适配路径。
 
 ## 验收与边界
 
+- 稳定回退版在本机通过 54 项服务测试和 7 类实机检查，记录到 98 轮双路热专家晋升、
+  9370 次晋升，专家与 MTP 常驻后的源读取为零。GitHub 自动检查在 Windows/Linux
+  执行服务和独立读取接口测试；不运行 CUDA 推理，也不代表全面质量认证。
+  详见[稳定版记录](bench/results/2026-10-11-two-slot-rollback/README.md)。
 - 已记录权重布局往返、真实专家 FP64 对照、完整 logits 比较，以及采样、EOS、
   输出上限、取消与恢复检查。
 - efficiency17 最终验收覆盖 80 个完成请求和 4 次取消，跨零/两/四/六枚草稿，
