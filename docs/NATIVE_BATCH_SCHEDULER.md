@@ -220,6 +220,22 @@ divided by request wall time, not isolated prompt-processing rates.
 | Four cold clients, about 1.7–2K prompt tokens each, 128 output tokens each, two rounds | 55.80 / 55.43 tok/s | Ragged prefill: 65.16 tok/s | +17.2% |
 | Last client's first-token wait in the cold workload | 4.751 / 4.755 s | Ragged prefill: 3.484 s | −26.7% |
 
+The warmed CPU-DAG screen left adaptive expert promotion enabled. Its logs show
+different VRAM/CPU routing shares between arms (about 72–76% VRAM hits in sampled
+two-client windows). The small +2.1% and +3.4% differences therefore do not isolate
+the queue change from cache variation. They do not demonstrate a noticeable
+improvement over the previous two-client warm throughput in the eighties.
+Future CPU comparisons must reuse one private learned profile, fix expert-cache
+capacity, disable promotion and check identical output and routed expert counts.
+`tools/native_hot_decode_screen.py` performs that off/on/off comparison (CPU DAG
+by default). A subsequent paired-row CPU experiment with vision allocated gave
+81.00 / 86.72 / 87.13 aggregate tok/s over the overlapping two-client decode
+interval. Since the following original baseline matched the enabled path, that
+experiment was rejected and its source changes removed. Its byte comparisons,
+frozen routing audit and full result are archived under
+`bench/results/2026-10-11-hot-decode-pair2/`. It does not establish a warm-decode
+speed improvement.
+
 CPU-DAG replies were identical across all three variants. Ragged replies matched
 their individual canonical references but differed from the released arithmetic
 path. This is not evidence of unchanged model quality; the path remains opt-in.

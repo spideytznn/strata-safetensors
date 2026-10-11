@@ -1,0 +1,9 @@
+nt=1 pair=0 ms=0.19085
+nt=1 pair=1 ms=0.18457
+nt=1 pair=1 ms=0.17154
+nt=1 pair=0 ms=0.19257
+nt=2 pair=0 ms=0.23464
+nt=2 pair=1 ms=0.21096
+nt=2 pair=1 ms=0.20744
+nt=2 pair=0 ms=0.23090
+CPU row pair: 120 byte comparisons passed

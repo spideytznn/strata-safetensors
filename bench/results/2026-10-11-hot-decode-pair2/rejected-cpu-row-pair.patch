@@ -1,0 +1,238 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5e0671fc..fc95a2b7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -582,6 +582,10 @@ if(STRATA_ENABLE_CUDA OR STRATA_ENABLE_HIP)
+     add_executable(conversation_snapshot_test src/core/conversation_snapshot_test.cpp)
+     add_executable(native_expert_dag_test src/kernels/cpu/native_expert_dag_test.cpp)
+     target_link_libraries(native_expert_dag_test PRIVATE strata_kernels_cpu)
++    add_executable(native_cpu_row_pair_test src/kernels/cpu/native_cpu_row_pair_test.cpp)
++    target_link_libraries(native_cpu_row_pair_test PRIVATE strata_kernels_cpu)
++    add_test(NAME native_cpu_row_pair_test COMMAND native_cpu_row_pair_test)
++    set_tests_properties(native_cpu_row_pair_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+     add_executable(native_prefix_pages_test src/core/native_prefix_pages_test.cpp)
+     target_link_libraries(native_prefix_pages_test PRIVATE strata_engine)
+     add_test(NAME native_expert_dag_test COMMAND native_expert_dag_test)
+diff --git a/include/strata/kernels/cpu/nvfp4_avx512.hpp b/include/strata/kernels/cpu/nvfp4_avx512.hpp
+index b4be6f5f..5a49f16d 100644
+--- a/include/strata/kernels/cpu/nvfp4_avx512.hpp
++++ b/include/strata/kernels/cpu/nvfp4_avx512.hpp
+@@ -17,6 +17,12 @@ void nvfp4_512_f32_gu_rows(const uint8_t*, size_t, size_t, int, const void* cons
+                           float* const*, int, int, float, float);
+ void nvfp4_512_f32_rows(const uint8_t*, size_t, int, const void* const*, int,
+                        float* const*, int, int, float);
++/// Paired canonical dot products: reuse activation loads, preserving each
++/// dot's FMA and reduction order. Other arithmetic and token counts fall back.
++void nvfp4_512_f32_gu_rows_pair(const uint8_t*, size_t, size_t, int, const void* const*, int,
++                               float* const*, int, int, float, float);
++void nvfp4_512_f32_rows_pair(const uint8_t*, size_t, int, const void* const*, int,
++                            float* const*, int, int, float);
+ /// Explicit experiment for parity/timing; production enables it only with
+ /// STRATA_NVFP4_F32_UNROLL=1. Both layouts retain the original FP32 FMA order.
+ void nvfp4_512_f32_rows_layout(const uint8_t*, size_t, int, const void* const*, int,
+diff --git a/src/kernels/cpu/native_expert.cpp b/src/kernels/cpu/native_expert.cpp
+index 6503d98d..e56bb523 100644
+--- a/src/kernels/cpu/native_expert.cpp
++++ b/src/kernels/cpu/native_expert.cpp
+@@ -207,7 +207,12 @@ void native_gu_rows(const NativeFmt& f, const uint8_t* blob, const void* const*
+     // (nvfp4_avx512_parity). STRATA_NO_NVFP4_512 falls back to ggml-cpu.
+     static const bool nvfp4_512 = cpu_avx512_ok() && std::getenv("STRATA_NO_NVFP4_512") == nullptr;
+     if (f.fp32_activations) {
+-        if (nvfp4_512) { nvfp4_512_f32_gu_rows(blob,f.gu_row,f.up_off,n,act,nt,ff,r0,r1,sg,su); return; }
++        if (nvfp4_512) {
++            static const bool paired = [] { const char* e = std::getenv("STRATA_NVFP4_CPU_ROW_PAIR"); return e && std::strcmp(e,"1")==0; }();
++            if (paired) nvfp4_512_f32_gu_rows_pair(blob,f.gu_row,f.up_off,n,act,nt,ff,r0,r1,sg,su);
++            else nvfp4_512_f32_gu_rows(blob,f.gu_row,f.up_off,n,act,nt,ff,r0,r1,sg,su);
++            return;
++        }
+         float gw[2560],uw[2560];
+         const auto deq=ggml_get_type_traits((ggml_type)f.gu_type)->to_float;
+         for(int r=r0;r<r1;++r) {
+@@ -275,7 +280,10 @@ void native_down_rows(const NativeFmt& f, const uint8_t* blob, const void* const
+     if (f.tail_off) std::memcpy(&sd, blob + f.tail_off + 2 * sizeof(float), sizeof sd);
+     if (f.fp32_activations) {
+         if(cpu_avx512_ok() && std::getenv("STRATA_NO_NVFP4_512")==nullptr) {
+-            nvfp4_512_f32_rows(blob+f.down_off,f.d_row,n,hq,nt,out,r0,r1,sd); return;
++            static const bool paired = [] { const char* e = std::getenv("STRATA_NVFP4_CPU_ROW_PAIR"); return e && std::strcmp(e,"1")==0; }();
++            if (paired) nvfp4_512_f32_rows_pair(blob+f.down_off,f.d_row,n,hq,nt,out,r0,r1,sd);
++            else nvfp4_512_f32_rows(blob+f.down_off,f.d_row,n,hq,nt,out,r0,r1,sd);
++            return;
+         }
+         float w[640]; const auto deq=ggml_get_type_traits((ggml_type)f.d_type)->to_float;
+         for(int r=r0;r<r1;++r) {
+diff --git a/src/kernels/cpu/nvfp4_avx512.cpp b/src/kernels/cpu/nvfp4_avx512.cpp
+index 84720899..806e7b09 100644
+--- a/src/kernels/cpu/nvfp4_avx512.cpp
++++ b/src/kernels/cpu/nvfp4_avx512.cpp
+@@ -248,6 +248,56 @@ bool f32_unroll_on() {
+     static const bool enabled=[] { const char* v=std::getenv("STRATA_NVFP4_F32_UNROLL"); return v && std::strcmp(v,"1")==0; }();
+     return enabled;
+ }
++template<int NT, int SUB>
++void f32_pair_sub(__m512i ca, __m512i cb, const block_nvfp4& a, const block_nvfp4& b,
++                  const void* const* acts, int block, __m512 lut, __m512* aa, __m512* ab) {
++    const __m512 va = _mm512_mul_ps(_mm512_permutexvar_ps(
++        _mm512_cvtepu8_epi32(_mm512_extracti32x4_epi32(ca, SUB)), lut),
++        _mm512_set1_ps(kUe4m3.v[a.d[SUB]] * 2.f));
++    const __m512 vb = _mm512_mul_ps(_mm512_permutexvar_ps(
++        _mm512_cvtepu8_epi32(_mm512_extracti32x4_epi32(cb, SUB)), lut),
++        _mm512_set1_ps(kUe4m3.v[b.d[SUB]] * 2.f));
++    for (int t = 0; t < NT; ++t) {
++        const __m512 x = _mm512_loadu_ps(static_cast<const float*>(acts[t]) + block * 64 + SUB * 16);
++        aa[t] = _mm512_fmadd_ps(va, x, aa[t]);
++        ab[t] = _mm512_fmadd_ps(vb, x, ab[t]);
++    }
++}
++// CPU dispatch already requires VBMI. Expand the same packed nibbles with one
++// 64-bit lane permutation and one byte multishift, instead of unpacking two
++// AVX2 halves. Only the opt-in paired path uses this layout-preserving decode.
++__m512i codes64_pair(const uint8_t* packed) {
++    const __m256i q = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(packed));
++    const __m512i repeat = _mm512_permutexvar_epi64(_mm512_setr_epi64(0,0,1,1,2,2,3,3),
++                                                   _mm512_castsi256_si512(q));
++    const __m512i shifts = _mm512_setr_epi64(0x3830282018100800ll,0x3c342c241c140c04ll,
++        0x3830282018100800ll,0x3c342c241c140c04ll,0x3830282018100800ll,0x3c342c241c140c04ll,
++        0x3830282018100800ll,0x3c342c241c140c04ll);
++    return _mm512_and_si512(_mm512_multishift_epi64_epi8(shifts,repeat),_mm512_set1_epi8(15));
++}
++template<int NT>
++void f32_dot_pair(const uint8_t* ra, const uint8_t* rb, int n, const void* const* acts, float* ya, float* yb) {
++    const __m512 lut = _mm512_setr_ps(0,.5f,1,1.5f,2,3,4,6,-0.f,-.5f,-1,-1.5f,-2,-3,-4,-6);
++    __m512 alo[NT], ahi[NT], blo[NT], bhi[NT];
++    for (int t = 0; t < NT; ++t) alo[t] = ahi[t] = blo[t] = bhi[t] = _mm512_setzero_ps();
++    const auto* a = reinterpret_cast<const block_nvfp4*>(ra);
++    const auto* b = reinterpret_cast<const block_nvfp4*>(rb);
++    for (int k = 0; k < n / 64; ++k) {
++        const __m512i ca = codes64_pair(a[k].qs), cb = codes64_pair(b[k].qs);
++        f32_pair_sub<NT,0>(ca,cb,a[k],b[k],acts,k,lut,alo,blo);
++        f32_pair_sub<NT,1>(ca,cb,a[k],b[k],acts,k,lut,ahi,bhi);
++        f32_pair_sub<NT,2>(ca,cb,a[k],b[k],acts,k,lut,alo,blo);
++        f32_pair_sub<NT,3>(ca,cb,a[k],b[k],acts,k,lut,ahi,bhi);
++    }
++    for (int t = 0; t < NT; ++t) {
++        ya[t] = gpu_order_reduce(alo[t], ahi[t]);
++        yb[t] = gpu_order_reduce(blo[t], bhi[t]);
++    }
++}
++void f32_pair(const uint8_t* a, const uint8_t* b, int n, const void* const* acts, int nt, float* ya, float* yb) {
++    if (nt == 1) f32_dot_pair<1>(a,b,n,acts,ya,yb);
++    else f32_dot_pair<2>(a,b,n,acts,ya,yb);
++}
+ bool f32_gpu_order_on() {
+     static const bool enabled=[] { const char* v=std::getenv("STRATA_NVFP4_F32_GPU_ORDER");
+         const char* c=std::getenv("STRATA_NVFP4_F32_CANONICAL");
+@@ -320,4 +370,34 @@ void nvfp4_512_f32_rows_layout(const uint8_t* w,size_t stride,int n,const void*
+         for(int t=0;t<nt;++t) out[t][r]=y[t]*scale;
+     }
+ }
++void nvfp4_512_f32_gu_rows_pair(const uint8_t* blob, size_t stride, size_t up, int n,
++                               const void* const* acts, int nt, float* const* ff,
++                               int r0, int r1, float sg, float su) {
++    if (!f32_gpu_order_on() || nt < 1 || nt > 2) {
++        nvfp4_512_f32_gu_rows(blob,stride,up,n,acts,nt,ff,r0,r1,sg,su); return;
++    }
++    const bool canonical = f32_canonical_on();
++    float g[2], u[2];
++    for (int r = r0; r < r1; ++r) {
++        f32_pair(blob+r*stride,blob+up+r*stride,n,acts,nt,g,u);
++        for (int t = 0; t < nt; ++t) {
++            const float v = g[t] * sg;
++            const float e = canonical ? static_cast<float>(std::exp(-static_cast<double>(v))) : std::exp(-v);
++            ff[t][r] = (v / (1.f + e)) * (u[t] * su);
++        }
++    }
++}
++void nvfp4_512_f32_rows_pair(const uint8_t* w, size_t stride, int n, const void* const* acts,
++                            int nt, float* const* out, int r0, int r1, float scale) {
++    if (!f32_gpu_order_on() || nt < 1 || nt > 2) {
++        nvfp4_512_f32_rows(w,stride,n,acts,nt,out,r0,r1,scale); return;
++    }
++    float a[2], b[2];
++    int r = r0;
++    for (; r + 1 < r1; r += 2) {
++        f32_pair(w+r*stride,w+(r+1)*stride,n,acts,nt,a,b);
++        for (int t = 0; t < nt; ++t) { out[t][r] = a[t]*scale; out[t][r+1] = b[t]*scale; }
++    }
++    if (r < r1) nvfp4_512_f32_rows(w,stride,n,acts,nt,out,r,r1,scale);
++}
+ }  // namespace strata::kernels::cpu
+diff --git a/src/kernels/cpu/native_cpu_row_pair_test.cpp b/src/kernels/cpu/native_cpu_row_pair_test.cpp
+new file mode 100644
+--- /dev/null
++++ b/src/kernels/cpu/native_cpu_row_pair_test.cpp
+@@ -0,0 +1,75 @@
++#include "strata/kernels/cpu/expert_layout.hpp"
++#include "strata/kernels/cpu/nvfp4_avx512.hpp"
++#include "strata/kernels/cpu/pool.hpp"
++#include <chrono>
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <random>
++#include <vector>
++
++namespace cpu = strata::kernels::cpu;
++int main() {
++    if (!cpu::cpu_avx512_ok()) return 77;
++#ifdef _WIN32
++    _putenv_s("STRATA_NVFP4_F32_CANONICAL", "1");
++#else
++    setenv("STRATA_NVFP4_F32_CANONICAL", "1", 1);
++#endif
++    cpu::NativeFmt f;
++    std::string err;
++    if (!cpu::native_fmt(cpu::kNvfp4Type,cpu::kNvfp4Type,cpu::H,cpu::FF,f,err)) return 1;
++    std::mt19937 rng(20261011);
++    std::vector<uint8_t> blob(f.bytes);
++    std::vector<float> x(cpu::MAXT*cpu::H), ff0(cpu::MAXT*cpu::FF), ff1(ff0.size());
++    std::vector<float> y0(cpu::MAXT*cpu::H), y1(y0.size());
++    const void* acts[cpu::MAXT], *hidden[cpu::MAXT];
++    float* a[cpu::MAXT], *b[cpu::MAXT], *c[cpu::MAXT], *d[cpu::MAXT];
++    for (int t=0;t<cpu::MAXT;++t) {
++        acts[t]=x.data()+t*cpu::H; hidden[t]=ff0.data()+t*cpu::FF;
++        a[t]=ff0.data()+t*cpu::FF; b[t]=ff1.data()+t*cpu::FF;
++        c[t]=y0.data()+t*cpu::H; d[t]=y1.data()+t*cpu::H;
++    }
++    int checks=0;
++    for (int seed=0;seed<4;++seed) {
++        for (auto& v:blob) v=uint8_t(rng());
++        for (size_t off=0;off<f.tail_off;off+=36)
++            for (int j=0;j<4;++j) blob[off+j]=uint8_t(16+rng()%48);
++        for (auto& v:x) v=float(int(rng()%2001)-1000)*.001f;
++        for (int nt:{1,2,3,4,8}) for (int edge:{0,1,2}) {
++            std::fill(ff0.begin(),ff0.end(),-123.5f); ff1=ff0;
++            const int lo=edge==0?0:1, hi=cpu::FF-(edge==2?2:0);
++            const float sg=.031f*(seed+1), su=-.023f, sd=.017f;
++            cpu::nvfp4_512_f32_gu_rows(blob.data(),f.gu_row,f.up_off,cpu::H,acts,nt,a,lo,hi,sg,su);
++            cpu::nvfp4_512_f32_gu_rows_pair(blob.data(),f.gu_row,f.up_off,cpu::H,acts,nt,b,lo,hi,sg,su);
++            if (std::memcmp(ff0.data(),ff1.data(),ff0.size()*sizeof(float))) {
++                std::fprintf(stderr,"gate/up mismatch seed=%d nt=%d edge=%d\n",seed,nt,edge); return 2;
++            }
++            ++checks;
++            std::fill(y0.begin(),y0.end(),-321.5f); y1=y0;
++            const int end=cpu::H-(edge==2?2:0);
++            cpu::nvfp4_512_f32_rows(blob.data()+f.down_off,f.d_row,cpu::FF,hidden,nt,c,lo,end,sd);
++            cpu::nvfp4_512_f32_rows_pair(blob.data()+f.down_off,f.d_row,cpu::FF,hidden,nt,d,lo,end,sd);
++            if (std::memcmp(y0.data(),y1.data(),y0.size()*sizeof(float))) {
++                std::fprintf(stderr,"down mismatch seed=%d nt=%d edge=%d\n",seed,nt,edge); return 3;
++            }
++            ++checks;
++        }
++    }
++    const auto affinity=cpu::pin_current_thread(cpu::planned_host_core());
++    for (int nt:{1,2}) for (bool pair:{false,true,true,false}) {
++        const auto gu=pair?cpu::nvfp4_512_f32_gu_rows_pair:cpu::nvfp4_512_f32_gu_rows;
++        const auto down=pair?cpu::nvfp4_512_f32_rows_pair:cpu::nvfp4_512_f32_rows;
++        for (int i=0;i<4;++i) gu(blob.data(),f.gu_row,f.up_off,cpu::H,acts,nt,a,0,cpu::FF,.031f,.023f);
++        const auto start=std::chrono::steady_clock::now();
++        for (int i=0;i<40;++i) {
++            gu(blob.data(),f.gu_row,f.up_off,cpu::H,acts,nt,a,0,cpu::FF,.031f,.023f);
++            down(blob.data()+f.down_off,f.d_row,cpu::FF,hidden,nt,c,0,cpu::H,.017f);
++        }
++        std::printf("nt=%d pair=%d ms=%.5f\n",nt,int(pair),
++            std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count()/40);
++    }
++    cpu::restore_thread_affinity(affinity);
++    std::printf("CPU row pair: %d byte comparisons passed\n",checks);
++}
