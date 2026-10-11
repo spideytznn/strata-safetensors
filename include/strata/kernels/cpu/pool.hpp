@@ -183,11 +183,6 @@ public:
     void run_split_multi(ExpertJobMulti* jobs, int n);
     /// Plan v0.3 P6: the same for a native pack's layer (ggml-cpu arithmetic, `nact` activations).
     void run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs, int n);
-    /// Original FP32 activations: one publication, per-expert gate/up dependencies and
-    /// weighted row tasks. No global gate/up barrier or intermediate memcpy. Opt-in.
-    void set_native_dag(bool on) { native_dag_ = on; }
-    bool native_dag() const { return native_dag_; }
-    double ms_native_dag = 0;
     static constexpr int kMaxSplitMulti = 96;
     /// run_split_multi's phases, accumulated ms: gate/up rows, the intermediate quantization, down rows.
     double ms_multi_gu = 0, ms_multi_q = 0, ms_multi_down = 0;
@@ -301,12 +296,6 @@ private:
     };
     const NativeFmt* nfmt_ = nullptr;
     std::vector<SplitBufMulti> split_multi_;
-    struct NativeTask { int expert, begin, end; bool down; };
-    struct alignas(64) ExpertReady { std::atomic<int> remaining{0}; };
-    std::vector<NativeTask> native_tasks_;
-    ExpertReady native_ready_[kMaxSplitMulti];
-    bool native_dag_ = false;
-    void run_native_dag(const NativeFmt& f, ExpertJobMulti* jobs, int n);
     PoolAffinity affinity_ = PoolAffinity::All;
     CpuTopology topo_;
 };

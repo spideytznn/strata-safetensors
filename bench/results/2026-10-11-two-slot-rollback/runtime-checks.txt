@@ -1,0 +1,4 @@
+greedy: two slots identical, overlapping, 256 tokens / 3.342 s
+seeded: two slots identical, overlapping, 256 tokens / 3.465 s
+penalties: two slots identical, overlapping, 256 tokens / 3.263 s
+cancel/resume, followup, caps: passed

@@ -1,0 +1,64 @@
+{
+  "status": "passed",
+  "restored_source_commit": "34541c37aac608115f7c6c7d3c5a3b3b1ccc6c44",
+  "archived_experiment_head": "9b27f3f3",
+  "archive_branch": "archive/vllm-experiments-20261011",
+  "source_matches_baseline": true,
+  "engine": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-two-slot.exe",
+  "engine_sha256": "3e1d34b276a00190adff0f32cd99b5ed2c611f5fddf5e741ec866f8362a69389",
+  "config_sha256": "d8b34635f6acb365380b6691c98687b3da85658c772d391b0e7c1bdb1f75bfd7",
+  "parallel": 2,
+  "context": 262144,
+  "prefill": 4096,
+  "kv": "int8",
+  "vision": true,
+  "mtp_loaded": false,
+  "route_tail_skip": false,
+  "adapt_every": 4,
+  "adapt_swaps": 96,
+  "port": 8880,
+  "host_whitelist": "disabled (* allowed)",
+  "unit_tests": 54,
+  "runtime_cases": [
+    "greedy",
+    "seeded",
+    "penalties",
+    "cancel_resume",
+    "followup",
+    "caps",
+    "eos"
+  ],
+  "two_row_adaptation": {
+    "two_row_rounds": 98,
+    "promoted": 9370
+  },
+  "post_residency_source_bytes": {
+    "expert": [
+      0
+    ],
+    "MTP": [
+      0
+    ]
+  },
+  "protected_files_sha256": {
+    "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast.json": "9554d6039838e35cf8244c2d42aa62766bee0377c2870f4402dd062243af7d05",
+    "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast-v0142.json": "ac91c484afd5e81412d52b4970c7e274b4290bebdc96305447cd9a0252f24288",
+    "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast.json.bak": "cc0ff41643cc0e4007ebee3475990fa334a83ff11f90bc5e99182b1b16596864",
+    "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast.shared-settings.json": "81fca7633f3c2f0433af821a52531eda32b2e0e592dfc6804b1d5821c4779941",
+    "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-parallel.shared-settings.json": "81fca7633f3c2f0433af821a52531eda32b2e0e592dfc6804b1d5821c4779941",
+    "G:\\Strata\\Strata-Safetensors\\data\\expert-profile.bin": "8f59b4aa8873209dff11c11e37bcda9529a1335b724a1afeea37bf6388975baf",
+    "C:\\Users\\spideytznn\\Desktop\\Start-Strata-Fusion-Q4KL.bat": "8ba9334627b3ee77da1e696dd96642c6a7acdfc9a3b48e1e005ff7066cedc30c",
+    "C:\\Users\\spideytznn\\Desktop\\Start-Strata-Official-Q4KL.bat": "5f2583c34fa9a123b6de223aa6a6601eaa4c88268be3da9f5b3a1c651b2513c0",
+    "C:\\Users\\spideytznn\\Desktop\\Start-Strata-Safetensors-Parallel.bat": "5933ed426abbc54a02068628f446d1b94e2dcc79ca59553551a67ac02e92dfcd",
+    "C:\\Users\\spideytznn\\Desktop\\Start-Strata-Safetensors.bat": "68a43bd72a80d6cab6a7f720c0d669880e68968756b097cc528092a679b3335f",
+    "C:\\Users\\spideytznn\\Desktop\\Strata-Safetensors-调度版.bat": "6cb4f77b6bfdfcd60b0ee1c0f73b8a8d6c1d1c4899cb2647ac47def34211856a"
+  },
+  "protected_files_preserved": true,
+  "scheduler_desktop_archived_to": "G:\\Strata\\Strata-Safetensors\\outputs\\rollback-2026-10-11\\Strata-Safetensors-调度版.bat",
+  "tested_backend": "Windows CUDA 13 SM120",
+  "not_tested": [
+    "HIP",
+    "SYCL",
+    "fresh throughput comparison"
+  ]
+}

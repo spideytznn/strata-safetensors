@@ -1,0 +1,9 @@
+/*
+!/.gitignore
+!/README.md
+!/verification.json
+!/server-tests.txt
+!/runtime-checks.txt
+!/runtime/
+/runtime/*
+!/runtime/results.json

@@ -8,15 +8,6 @@
 #include <string>
 
 namespace strata::core {
-// Move resident elastic KV backing from a prompt reader into a request slot (and the slot's old
-// backing into the reader). Caller quiesces the GPU, transfers running state separately, invalidates
-// the source's token-cache identity and rebinds graphs/pool ownership before another forward pass.
-// KV and indexer backing pointers move together; allocations are never copied or remapped.
-bool conversation_kv_handoff(QsaState& from, QsaState& to, const ModelGeometry& g,
-                             int64_t upto, std::string& error);
-// Transfer the complete sequence state (GDN, PLE, KV, indexer), preserving each executor's scratch/rope.
-bool conversation_session_handoff(SessionState& from, SessionState& to, const ModelGeometry& g,
-                                  const std::vector<int32_t>& ids, std::string& error);
 
 // Caller synchronizes the device before saving, and after restoring all layers.
 // include_index is false for the draft layer (its attention has no indexer).

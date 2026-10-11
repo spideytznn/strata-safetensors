@@ -788,19 +788,6 @@ struct PeerPrefill {
     }
 };
 
-namespace {
-// Only host views move; GPU backing and captured decode pointers stay fixed.
-struct RowPointerScope {
-    std::vector<std::function<void()>> restore;
-    template<class T> void shift(T*& p, int64_t elements) {
-        if (!elements) return;
-        const auto old = p;
-        if (p) p += elements;
-        restore.emplace_back([&p, old] { p = old; });
-    }
-    ~RowPointerScope() { for (auto& f : restore) f(); }
-};
-}
 struct Prefill::Impl {
     const core::WeightTable* wt = nullptr;
     const core::ModelGeometry* g = nullptr;
@@ -2167,7 +2154,6 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
     const core::OnDevice on_device(m.device);
     const core::ModelGeometry& g = *m.g;
     core::SessionState& ss = *m.ss;
-    if (packed_rows_.empty() && prepare_kv_write && !prepare_kv_write(ss, pos0, pos0 + n, err)) return false;
     const auto t_start = Clock::now();
     const int64_t LB = stage_lb_, LE = stage_le_;
     // The direct successor's future lives on the Prefill object. Intermediate
@@ -2238,15 +2224,11 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                            (ss.ple.w.key_bf16 != nullptr || ss.ple.w.key_native_data != nullptr) &&
                            m.region_bytes / ((uint64_t) (3 * strata::kernels::NG_HC_DIM + N + 4) * 4 + (uint64_t) N * 2 + 4096) >= 64;
     const int32_t prev0[2] = {prev[0], prev[1]};
-    auto ple_gather = [this, &m, &ss, tokens, n, prev0](int64_t c0, int buf, std::string& e) -> bool {
+    auto ple_gather = [&m, &ss, tokens, n, prev0](int64_t c0, int buf, std::string& e) -> bool {
         const int64_t T = std::min(m.T, n - c0);
         auto at = [&](int64_t i) { return i < 2 ? prev0[i] : (int32_t) tokens[i - 2]; };   // prev0, then the tokens
         int32_t pv[2] = {at(c0), at(c0 + 1)};
         for (int64_t t = 0; t < T; ++t) {
-            for (const auto& sequence : packed_rows_) if (sequence.offset == c0 + t) {
-                pv[0] = sequence.state->ple_prev[0];
-                pv[1] = sequence.state->ple_prev[1];
-            }
             const int32_t tok = (int32_t) tokens[c0 + t];
             strata::kernels::ngram_rows(&tok, pv, 1, ss.ple.consts,
                                         m.ple_rows[buf].data() + t * strata::kernels::PLE_N_HEADS);
@@ -2267,49 +2249,6 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
         if (should_stop && should_stop()) { err = "cancelled"; return false; }
         if (std::getenv("STRATA_TRACE")) { std::fprintf(stderr, "strata trace: prompt chunk %lld of %lld\n", (long long) c0, (long long) n); std::fflush(stderr); }
         const int64_t T = std::min(m.T, n - c0), p0 = pos0 + c0;
-        const std::vector<PackedRows> single{{&ss, 0, T, p0}};
-        const auto& sequences = packed_rows_.empty() ? single : packed_rows_;
-        auto sequence_at = [&](int64_t row) -> const PackedRows& {
-            for (const auto& sequence : sequences)
-                if (row >= sequence.offset && row < sequence.offset + sequence.count) return sequence;
-            throw std::logic_error("prefill: missing packed row owner");
-        };
-        // Canonical blocks keep each owner's cuBLAS shapes independent of how
-        // a queued burst divides the workspace. Tiny shape-dependent changes
-        // can amplify through routing. This opt-in rule applies to ordinary
-        // prefill too; the flag-off path retains the released GEMM shapes.
-        // Expert grouping below combines all rows and reuses expert weights.
-        static const bool join_dense = [] {
-            const char* v = std::getenv("STRATA_NATIVE_RAGGED_DENSE"); return v && std::atoi(v) == 1;
-        }();
-        static const bool stable_dense = [] {
-            const char* v = std::getenv("STRATA_NATIVE_RAGGED_PREFILL"); return v && std::atoi(v) == 1;
-        }();
-        auto native_project = [&](Gemm& gm, const core::WeightRef* w, const uint16_t* x, float* y,
-                                  int64_t rows, const std::string& name, std::string& e,
-                                  int64_t ldy = 0, int64_t ldx = 0, const float* xf = nullptr) -> bool {
-            if (!stable_dense || join_dense) return native_proj(gm, w, x, y, rows, name, e, ldy, ldx, xf);
-            for (const auto& owner : sequences) for (int64_t begin = 0; begin < owner.count; begin += 256) {
-                const int64_t offset = owner.offset + begin, count = std::min<int64_t>(256, owner.count - begin);
-                if (!native_proj(gm, w, x + offset * (ldx ? ldx : w->ne0),
-                                 y + offset * (ldy ? ldy : w->ne1), count, name, e, ldy, ldx,
-                                 xf ? xf + offset * w->ne0 : nullptr)) return false;
-            }
-            return true;
-        };
-        auto bf16_project = [&](Gemm& gm, const core::WeightRef* w, const uint16_t* x, float* y,
-                                int64_t rows, const std::string& name, std::string& e,
-                                int64_t ldy = 0, const uint16_t* low = nullptr, int64_t ldx = 0) -> bool {
-            if (!stable_dense || join_dense) return bf16_proj(gm, w, x, y, rows, name, e, ldy, low, ldx);
-            for (const auto& owner : sequences) for (int64_t begin = 0; begin < owner.count; begin += 256) {
-                const int64_t stride = ldx ? ldx : w->ne0;
-                const int64_t offset = owner.offset + begin, count = std::min<int64_t>(256, owner.count - begin);
-                if (!bf16_proj(gm, w, x + offset * stride,
-                               y + offset * (ldy ? ldy : std::max<int64_t>(1, w->ne1)), count, name, e,
-                               ldy, low ? low + offset * stride : nullptr, ldx)) return false;
-            }
-            return true;
-        };
         core::progress_at("reading the prompt (batched): preparing the chunk from token", p0);   // #251
         ++stats_.chunks;
         pt.mark(kPfStart, cs);
@@ -2416,11 +2355,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
         };
         for (int64_t t = 0; t < T; ++t) { prev[0] = prev[1]; prev[1] = (int32_t) tokens[c0 + t]; }
         // ---- the QSA step records of every position in the chunk
-        for (int64_t t = 0; t < T; ++t) {
-            const auto& owner = sequence_at(t);
-            strata::kernels::qsa_step_fill(m.steps_host.data() + t * strata::kernels::kStepCount,
-                                          owner.position + t - owner.offset, s);
-        }
+        for (int64_t t = 0; t < T; ++t) strata::kernels::qsa_step_fill(m.steps_host.data() + t * strata::kernels::kStepCount, p0 + t, s);
         cudaMemcpyAsync(m.steps_dev, m.steps_host.data(), (size_t) T * strata::kernels::kStepCount * 4,
                         cudaMemcpyHostToDevice, m.cs);
 
@@ -2674,11 +2609,9 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                 const strata::kernels::PleWeights& pw = ss.ple.w;
                 constexpr int64_t HD = strata::kernels::NG_HC_DIM;
                 const uint64_t per_token = (uint64_t) (3 * HD + N + 4) * 4 + (uint64_t) N * (bf16x2(m.f16_io) ? 4 : 2) + 4096;
-                const int64_t SB = std::min<int64_t>(stable_dense ? std::min<int64_t>(T, 256) : T,
-                                                    (int64_t) (m.region_bytes / per_token));
+                const int64_t SB = std::min<int64_t>(T, (int64_t) (m.region_bytes / per_token));
                 for (int64_t s0 = 0; s0 < T; s0 += SB) {
-                    const auto& owner = sequence_at(s0);
-                    const int64_t nb = std::min(SB, owner.offset + owner.count - s0);
+                    const int64_t nb = std::min(SB, T - s0);
                     uint8_t* q = m.region;
                     auto carve_f = [&](size_t n) { float* p = (float*) q; q += (n * 4 + 255) & ~(size_t) 255; return p; };
                     float* key = carve_f((size_t) nb * HD);
@@ -2701,27 +2634,23 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                     m.gemm.bf16(e16, pw.value_bf16, val, nb, N, N);
                     if (e16_lo) m.gemm.bf16(e16_lo, pw.value_bf16, val, nb, N, N, 0, 1.0f);
                     try {
-                        strata::kernels::native_ple_postops_batch(key, m.R + s0 * D, val, owner.state->ple_hist, pw, qn, gated,
+                        strata::kernels::native_ple_postops_batch(key, m.R + s0 * D, val, ss.ple.hist, pw, qn, gated,
                                                                   gate, (int) nb, m.cs);
                     } catch (const std::exception& e) { err = std::string("prefill PLE: ") + e.what(); return false; }
-                    // A sub-batch must end at its sequence boundary, even when
-                    // the next sequence would fit in this GEMM's scratch region.
-                    s0 += nb - SB;
                 }
                 stats_.ms_ple += ms_since(tp);
             } else if (l == 1 && ple_on) {
                 pt.mark(kPfPle, cs);
                 const auto tp = Clock::now();
                 for (int64_t t = 0; t < T; ++t) {
-                    const auto& owner = sequence_at(t);
                     strata::kernels::PleOut po;
                     po.normalized = m.ple_norm;
                     po.result = m.R + t * D;
                     try {
-                        strata::kernels::ple_block(m.ple_emb + t * N, m.R + t * D, owner.state->ple_hist, ss.ple.w, po,
+                        strata::kernels::ple_block(m.ple_emb + t * N, m.R + t * D, ss.ple.hist, ss.ple.w, po,
                                                    ss.ple.scratch, m.cs);
                     } catch (const std::exception& e) { err = std::string("prefill PLE: ") + e.what(); return false; }
-                    strata::kernels::ple_history_advance(owner.state->ple_hist, m.ple_norm, m.cs);
+                    strata::kernels::ple_history_advance(ss.ple.hist, m.ple_norm, m.cs);
                 }
                 stats_.ms_ple += ms_since(tp);
             }
@@ -2756,7 +2685,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                     }
                     hcd = true;
                 }
-                if (!hcd && !hdown && !bf16_project(m.gemm, wd, m.xn16, m.lo, T, sd, err, 0, m.xn16_lo, ldx != D ? ldx : 0)) return false;
+                if (!hcd && !hdown && !bf16_proj(m.gemm, wd, m.xn16, m.lo, T, sd, err, 0, m.xn16_lo, ldx != D ? ldx : 0)) return false;
                 gr_silu(m.lo, m.lo16, T, m.cs, m.lo16_lo);
                 bool upmixed = false;
                 if (hc_upmix() && T >= std::max(pf_switch_min_t(), hc_upmix_min_t()) && !gr_unfused() && !m.lo16_lo &&
@@ -2764,7 +2693,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                     static int checks = [] { const char* e = std::getenv("STRATA_HC_UPMIX_CHECK"); return e ? std::atoi(e) : 0; }();
                     if (checks > 0) {   // the default pair first, kept for the comparison
                         --checks;
-                        if (!bf16_project(m.gemm, wu, m.lo16, m.gated, T, su, err)) return false;
+                        if (!bf16_proj(m.gemm, wu, m.lo16, m.gated, T, su, err)) return false;
                         gr_mix_r(m.R, m.grs, (const float*) wn->data, m.gated, m.mixed, m.mixed_bf, T, m.cs, m.mixed_h,
                                  m.mixed_bf_lo);
                         std::vector<float> ref((size_t) T * N), got((size_t) T * N);
@@ -2786,8 +2715,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                            m.mixed, m.mixed_bf, m.mixed_h, T, m.cs, m.mixed_bf_lo);
                     }
                 }
-                if (!upmixed && !bf16_project(m.gemm, wu, m.lo16, m.gated, T, su, err, 0, m.lo16_lo)) return false;
-                if (!hcd && !bf16_project(m.gemm, wi, m.xn16, m.inj, T, si, err, 0, m.xn16_lo, ldx != D ? ldx : 0)) return false;
+                if (!upmixed && !bf16_proj(m.gemm, wu, m.lo16, m.gated, T, su, err, 0, m.lo16_lo)) return false;
+                if (!hcd && !bf16_proj(m.gemm, wi, m.xn16, m.inj, T, si, err, 0, m.xn16_lo, ldx != D ? ldx : 0)) return false;
                 if (upmixed) {
                 } else if (gr_unfused()) {
                     gr_mix(m.xn, m.gated, m.mixed, m.mixed_bf, T, m.cs, m.mixed_h, m.mixed_bf_lo);
@@ -2805,28 +2734,25 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                           *wsa = need(v, "ssm_a", err);
                     if (!wqkv || !wg || !wo || !wa || !wb || !wc || !wnm || !wdt || !wsa) return false;
                     pt.mark(kPfGdn, cs);
-                    if (!native_project(m.gemm, wqkv, m.mixed_h, m.qkv, T, v.name("attn_qkv.weight"), err, 0, 0, m.mixed)) return false;
-                    if (!native_project(m.gemm, wg, m.mixed_h, m.z, T, v.name("attn_gate.weight"), err, 0, 0, m.mixed)) return false;
-                    if (!bf16_project(m.gemm, wa, m.mixed_bf, m.ab, T, v.name("ssm_alpha.weight"), err, 2 * HV, m.mixed_bf_lo)) return false;
-                    if (!bf16_project(m.gemm, wb, m.mixed_bf, m.ab + HV, T, v.name("ssm_beta.weight"), err, 2 * HV, m.mixed_bf_lo)) return false;
+                    float* state = ss.gdn_state + (size_t) (gdn_index - ss.gdn_ord0) * gdn_floats;
+                    float* conv = state + (uint64_t) g.ssm_state_size * g.ssm_v_heads * g.ssm_state_size;
+                    if (!native_proj(m.gemm, wqkv, m.mixed_h, m.qkv, T, v.name("attn_qkv.weight"), err, 0, 0, m.mixed)) return false;
+                    if (!native_proj(m.gemm, wg, m.mixed_h, m.z, T, v.name("attn_gate.weight"), err, 0, 0, m.mixed)) return false;
+                    if (!bf16_proj(m.gemm, wa, m.mixed_bf, m.ab, T, v.name("ssm_alpha.weight"), err, 2 * HV, m.mixed_bf_lo)) return false;
+                    if (!bf16_proj(m.gemm, wb, m.mixed_bf, m.ab + HV, T, v.name("ssm_beta.weight"), err, 2 * HV, m.mixed_bf_lo)) return false;
                     pt.mark(kPfGdnConv, cs);   // "gdn" is the projections in; the rest on their own lines
                     gdn_gates(m.ab, (const float*) wdt->data, (const float*) wsa->data, m.gate, m.beta, T, m.cs);
+                    gdn_conv(conv, m.qkv, (const float*) wc->data, m.hbuf, T, EPS, m.cs);
                     pt.mark(kPfGdnRec, cs);
                     const int64_t ld_y = pf_pad() && T >= std::max<int64_t>(pf_switch_min_t(), 64) ? ZV + ZV_PAD : 0;
-                    for (const auto& owner : sequences) {
-                        const int64_t off = owner.offset;
-                        float* state = owner.state->gdn_state + (size_t) (gdn_index - owner.state->gdn_ord0) * gdn_floats;
-                        float* conv = state + (uint64_t) g.ssm_state_size * g.ssm_v_heads * g.ssm_state_size;
-                        gdn_conv(conv, m.qkv + off * C, (const float*) wc->data, m.hbuf + off * C, owner.count, EPS, m.cs);
-                        gdn_recurrence(state, m.hbuf + off * C, m.gate + off * HV, m.beta + off * HV,
-                                       m.z + off * ZV, (const float*) wnm->data, EPS, m.y + off * ZV,
-                                       m.y_h + off * (ld_y ? ld_y : ZV), owner.count, m.cs, ld_y, wo->native_type == 30);
-                    }
+                    gdn_recurrence(state, m.hbuf, m.gate, m.beta, m.z, (const float*) wnm->data, EPS, m.y, m.y_h, T, m.cs,
+                                   ld_y, wo->native_type == 30);
                     pt.mark(kPfGdnOut, cs);
-                    if (!native_project(m.gemm, wo, m.y_h, m.bo, T, v.name("ssm_out.weight"), err, 0, ld_y, m.y)) return false;
+                    if (!native_proj(m.gemm, wo, m.y_h, m.bo, T, v.name("ssm_out.weight"), err, 0, ld_y, m.y)) return false;
                     ++gdn_index;
                 } else if (half == 0) {
                     // ======================= QSA =======================
+                    const core::QsaState& st = ss.qsa_states[qsa_index];
                     const core::WeightRef *wq = need(v, "attn_q.weight", err), *wk = need(v, "attn_k.weight", err),
                                           *wv = need(v, "attn_v.weight", err), *wo = need(v, "attn_output.weight", err),
                                           *wik = need(v, "indexer.k_proj.weight", err),
@@ -2836,27 +2762,11 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                           *wikn = need(v, "indexer.k_norm.weight", err);
                     if (!wq || !wk || !wv || !wo || !wik || !wiq || !wqn || !wkn || !wiqn || !wikn) return false;
                     pt.mark(kPfQsa, cs);
-                    if (!native_project(m.gemm, wk, m.mixed_h, m.Kc, T, v.name("attn_k.weight"), err, 0, 0, m.mixed)) return false;
-                    if (!native_project(m.gemm, wv, m.mixed_h, m.Vc, T, v.name("attn_v.weight"), err, 0, 0, m.mixed)) return false;
-                    if (!native_project(m.gemm, wq, m.mixed_h, m.Qf, T, v.name("attn_q.weight"), err, 0, 0, m.mixed)) return false;
-                    if (!bf16_project(m.gemm, wik, m.mixed_bf, m.idx_raw, T, v.name("indexer.k_proj.weight"), err, 0, m.mixed_bf_lo)) return false;
-                    if (!bf16_project(m.gemm, wiq, m.mixed_bf, m.q_idx, T, v.name("indexer.q_proj.weight"), err, 0, m.mixed_bf_lo)) return false;
-                    const int64_t ld_a = pf_pad() && T >= std::max<int64_t>(pf_switch_min_t(), 64) ? ZV + ZV_PAD : 0;
-                    for (const auto& owner : sequences) {
-                    const int64_t row_offset = owner.offset;
-                    const int64_t T = owner.count, p0 = owner.position;
-                    const core::QsaState& st = owner.state->qsa_states[qsa_index];
-                    RowPointerScope views;
-                    views.shift(m.Kc, row_offset * 512);
-                    views.shift(m.Vc, row_offset * 512);
-                    views.shift(m.Qf, row_offset * 12288);
-                    views.shift(m.q, row_offset * 6144);
-                    views.shift(m.idx_raw, row_offset * 128);
-                    views.shift(m.q_idx, row_offset * 512);
-                    views.shift(m.attn, row_offset * ZV);
-                    views.shift(m.attn_h, row_offset * (ld_a ? ld_a : ZV));
-                    views.shift(m.steps_dev, row_offset * strata::kernels::kStepCount);
-                    views.shift(m.sel_ids, row_offset * m.cap);
+                    if (!native_proj(m.gemm, wk, m.mixed_h, m.Kc, T, v.name("attn_k.weight"), err, 0, 0, m.mixed)) return false;
+                    if (!native_proj(m.gemm, wv, m.mixed_h, m.Vc, T, v.name("attn_v.weight"), err, 0, 0, m.mixed)) return false;
+                    if (!native_proj(m.gemm, wq, m.mixed_h, m.Qf, T, v.name("attn_q.weight"), err, 0, 0, m.mixed)) return false;
+                    if (!bf16_proj(m.gemm, wik, m.mixed_bf, m.idx_raw, T, v.name("indexer.k_proj.weight"), err, 0, m.mixed_bf_lo)) return false;
+                    if (!bf16_proj(m.gemm, wiq, m.mixed_bf, m.q_idx, T, v.name("indexer.q_proj.weight"), err, 0, m.mixed_bf_lo)) return false;
                     rms_rows(m.Kc, (const float*) wkn->data, T * 2, 256, 256, EPS, m.cs);
                     rope(m.Kc, T, 2, 256, 512, p0, strata::kernels::rope_scaling(), m.cs);
                     // KV streaming: this layer's cells [0, p0) come in from the host copy to the staging pool, and the
@@ -2950,7 +2860,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                         const int64_t nb = std::min(m.sel_batch, T - t0);
                         const int32_t* steps0 = m.steps_dev + t0 * strata::kernels::kStepCount;
                         // C-1: the grid reaches the batch's last query's n_bid (they rise with the position)
-                        const int64_t active = (int64_t) m.steps_host[(size_t) ((row_offset + t0 + nb - 1) * strata::kernels::kStepCount +
+                        const int64_t active = (int64_t) m.steps_host[(size_t) ((t0 + nb - 1) * strata::kernels::kStepCount +
                                                                                 strata::kernels::kStepNBid)] + 1;
                         // the scores on tensor cores (3xTF32: FP32-level, not bitwise), below sm_80 the FP32 tiled kernel with STRATA_SELECT_SIMT=1;
                         // STRATA_SELECT_OLD=1: the warp kernel
@@ -2973,7 +2883,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                         for (int64_t t0 = 0; t0 + 16 <= T; t0 += 16) {
                             std::vector<int32_t> u;
                             for (int64_t t = t0; t < t0 + 16; ++t) {
-                                const int64_t w = m.steps_host[(size_t) ((row_offset + t) * strata::kernels::kStepCount + strata::kernels::kStepWidth)];
+                                const int64_t w = m.steps_host[(size_t) (t * strata::kernels::kStepCount + strata::kernels::kStepWidth)];
                                 sum_w += (double) w;
                                 u.insert(u.end(), ids.begin() + t * m.cap, ids.begin() + t * m.cap + w);
                             }
@@ -3015,7 +2925,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                         cudaMemcpyAsync(b.data(), ids16, b.size() * 4, cudaMemcpyDeviceToHost, m.cs);
                         cudaStreamSynchronize(m.cs);
                         for (int64_t t = 0; t < T; ++t) {
-                            const int64_t w = m.steps_host[(size_t) ((row_offset + t) * strata::kernels::kStepCount + strata::kernels::kStepWidth)];
+                            const int64_t w = m.steps_host[(size_t) (t * strata::kernels::kStepCount + strata::kernels::kStepWidth)];
                             const int32_t *x = a.data() + t * m.cap, *y = b.data() + t * m.cap;
                             int64_t i = 0, j = 0, c = 0;
                             while (i < w && j < w) {
@@ -3066,9 +2976,9 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                         }
                     if (st.kv_rot || st.kv_hybrid) strata::kernels::fwht256_inplace_cuda(m.attn, T * 24, m.cs);
                     pt.mark(kPfQsa, cs);
+                    const int64_t ld_a = pf_pad() && T >= std::max<int64_t>(pf_switch_min_t(), 64) ? ZV + ZV_PAD : 0;
                     gate_attn(m.attn, m.Qf, m.attn_h, T, m.cs, ld_a, wo->native_type == 30 ? m.attn : nullptr);
-                    }
-                    if (!native_project(m.gemm, wo, m.attn_h, m.bo, T, v.name("attn_output.weight"), err, 0, ld_a, m.attn)) return false;
+                    if (!native_proj(m.gemm, wo, m.attn_h, m.bo, T, v.name("attn_output.weight"), err, 0, ld_a, m.attn)) return false;
                     ++qsa_index;
                     if (!kv_prefetch_after(l + 1, qsa_index)) return false;
                 } else {
@@ -3080,7 +2990,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                           *wsd = need(v, "ffn_down_shexp.weight", err);
                     if (!wr || !wgi || !wsg || !wsu || !wsd) return false;
                     pt.mark(kPfRouter, cs);
-                    if (!bf16_project(m.gemm, wr, m.mixed_bf, m.logits, T, v.name("ffn_gate_inp.weight"), err, 0, m.mixed_bf_lo)) return false;
+                    if (!bf16_proj(m.gemm, wr, m.mixed_bf, m.logits, T, v.name("ffn_gate_inp.weight"), err, 0, m.mixed_bf_lo)) return false;
                     route(m.logits, m.ids, m.w, T, m.g->n_expert, m.cs);
                     // RESEARCH HOOK (141-research, opt-in, never on by default): STRATA_DBG_FEAT=<file> dumps, per MoE layer and chunk,
                     // the routed ids + weights (and for the layers in STRATA_DBG_FEAT_LAYERS the router-input hidden state, bf16);
@@ -3144,18 +3054,13 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                     }
                     // the shared expert and its scalar gate
                     auto shared_expert = [&]() -> bool {
-                        if (!native_project(m.gemm, wsg, m.mixed_h, m.sgate, T, v.name("ffn_gate_shexp.weight"), err, 0, 0, m.mixed)) return false;
-                        if (!native_project(m.gemm, wsu, m.mixed_h, m.sup, T, v.name("ffn_up_shexp.weight"), err, 0, 0, m.mixed)) return false;
+                        if (!native_proj(m.gemm, wsg, m.mixed_h, m.sgate, T, v.name("ffn_gate_shexp.weight"), err, 0, 0, m.mixed)) return false;
+                        if (!native_proj(m.gemm, wsu, m.mixed_h, m.sup, T, v.name("ffn_up_shexp.weight"), err, 0, 0, m.mixed)) return false;
                         swiglu_pair(m.sgate, m.sup, m.sh_h, T, m.cs, wsd->native_type == 30 ? m.sgate : nullptr);
-                        if (!native_project(m.gemm, wsd, m.sh_h, m.shared, T, v.name("ffn_down_shexp.weight"), err, 0, 0, m.sgate)) return false;
+                        if (!native_proj(m.gemm, wsd, m.sh_h, m.shared, T, v.name("ffn_down_shexp.weight"), err, 0, 0, m.sgate)) return false;
                         if (wgi->kind != core::WeightKind::Bf16InF32) { err = "prefill: shared gate is not BF16"; return false; }
-                        if (stable_dense) {
-                            if (!bf16_project(m.gemm, wgi, m.mixed_bf, m.sg, T, v.name("ffn_gate_inp_shexp.weight"), err,
-                                              0, m.mixed_bf_lo)) return false;
-                        } else {
-                            m.gemm.bf16(m.mixed_bf, (const uint16_t*) wgi->data, m.sg, T, 1, N);
-                            if (m.mixed_bf_lo) m.gemm.bf16(m.mixed_bf_lo, (const uint16_t*) wgi->data, m.sg, T, 1, N, 0, 1.0f);
-                        }
+                        m.gemm.bf16(m.mixed_bf, (const uint16_t*) wgi->data, m.sg, T, 1, N);
+                        if (m.mixed_bf_lo) m.gemm.bf16(m.mixed_bf_lo, (const uint16_t*) wgi->data, m.sg, T, 1, N, 0, 1.0f);
                         return true;
                     };
                     // Only the router needs to finish before readback. Queue the shared expert afterwards
@@ -4443,15 +4348,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
     }
     // Do not drain the successor here. This is the overlap: an intermediate
     // stage can return while later GPUs are still processing the previous chunk.
-    if (packed_rows_.empty()) {
-        ss.ple_prev[0] = prev[0];
-        ss.ple_prev[1] = prev[1];
-    } else for (const auto& owner : packed_rows_) {
-        auto* previous = owner.state->ple_prev;
-        for (int64_t t = 0; t < owner.count; ++t) {
-            previous[0] = previous[1]; previous[1] = (int32_t) tokens[owner.offset + t];
-        }
-    }
+    ss.ple_prev[0] = prev[0];
+    ss.ple_prev[1] = prev[1];
     if (std::getenv("STRATA_DBG_NAN") != nullptr) {   // debug: the state the prompt leaves for the token path
         cudaStreamSynchronize(m.cs);
         auto bad = [&](const float* d, int64_t n) {
@@ -4573,58 +4471,6 @@ bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& e
         return false;
     }
     return true;
-}
-
-bool Prefill::run_packed(const std::vector<PackedSequence>& sequences, std::string& err) {
-    if (!impl_ || sequences.empty() || !packed_rows_.empty() || next_ || stage_lb_ || embd_rows ||
-        hand_in_ || impl_->pp || helper_ || core::native_embed() == nullptr) {
-        err = "packed prefill: requires native text, one GPU and an idle workspace";
-        return false;
-    }
-    auto& main = *impl_->ss;
-    int64_t total = 0;
-    std::vector<core::SessionState*> owners;
-    for (const auto& sequence : sequences) {
-        const auto* state = sequence.state;
-        if (!state || !sequence.tokens || sequence.count <= 0 || sequence.position < 0 ||
-            sequence.count > impl_->T - total || sequence.position > state->max_cells - sequence.count ||
-            state->max_cells != main.max_cells || state->gdn_alloc != main.gdn_alloc ||
-            state->qsa_alloc != main.qsa_alloc || state->gdn_ord0 != main.gdn_ord0 || state->qsa_ord0 != main.qsa_ord0 ||
-            std::find(owners.begin(), owners.end(), state) != owners.end()) {
-            err = "packed prefill: invalid, overlapping or oversized sequence";
-            return false;
-        }
-        for (int64_t q = 0; q < state->qsa_alloc; ++q)
-            if (state->qsa_states[state->qsa_ord0 + q].kv_mode) {
-                err = "packed prefill: requires resident KV";
-                return false;
-            }
-        owners.push_back(sequence.state);
-        total += sequence.count;
-    }
-    std::vector<int64_t> tokens;
-    tokens.reserve((size_t) total);
-    for (const auto& sequence : sequences) {
-        if (prepare_kv_write && !prepare_kv_write(*sequence.state, sequence.position,
-                                                 sequence.position + sequence.count, err)) return false;
-        tokens.insert(tokens.end(), sequence.tokens, sequence.tokens + sequence.count);
-    }
-    // Checkpoint and MTP callbacks describe the ordinary reader, not these
-    // independent sequences. The admission scheduler checkpoints their owners.
-    auto chunk_callback = std::move(on_chunk);
-    auto stage_callback = std::move(on_stage_chunk);
-    struct Reset {
-        Prefill& self;
-        decltype(on_chunk)& chunk;
-        decltype(on_stage_chunk)& stage;
-        ~Reset() { self.packed_rows_.clear(); self.on_chunk = std::move(chunk); self.on_stage_chunk = std::move(stage); }
-    } reset{*this, chunk_callback, stage_callback};
-    total = 0;
-    for (const auto& sequence : sequences) {
-        packed_rows_.push_back({sequence.state, total, sequence.count, sequence.position});
-        total += sequence.count;
-    }
-    return run(tokens.data(), total, 0, err);
 }
 
 }  // namespace strata::prefill

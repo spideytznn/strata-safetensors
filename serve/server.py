@@ -743,11 +743,6 @@ class StrataEngine:
         self.slot_gs = gs if groups > 1 and groups_run > 1 else 0
         self.slot_q = [queue.Queue() for _ in range(self.batch)]
         self.slot_busy = [False] * self.batch
-        # Reserve prompt + requested output before admission, rounded to the
-        # elastic KV growth step. More short sequences can share the same live
-        # token budget as fewer long ones; idle RAM/VRAM prefix caches are separate.
-        self.kv_token_budget = int(self.info.get("kv_token_budget") or 0)
-        self.slot_tokens = [0] * self.batch
         # #1603: who owns a busy flag.  slot_claims: slots a request of this server picked or reserved and has not
         # given back; slot_releasing: slots handed to the background BDONE wait.  A busy slot in neither has no owner
         # (its flag leaked) and would keep every later request waiting for a slot that nothing will free.
@@ -757,7 +752,6 @@ class StrataEngine:
         # what each slot's sessions hold (prompt + every token a window fed), so a conversation's next turn goes to
         # the slot that has its start (the engine checks it again); when the slot was last used
         self.slot_held: list[list[int]] = [[] for _ in range(self.batch)]
-        self.slot_prompts: list[list[int]] = [[] for _ in range(self.batch)]
         self.slot_used = [0.0] * self.batch
         self.slot_live: list[dict | None] = [None] * self.batch   # /metrics: the request in each slot
         # #1012: the admission state belongs to the server, not to one engine process.  restart() runs this again
@@ -766,9 +760,6 @@ class StrataEngine:
         # new lists.
         if "slot_cv" not in self.__dict__:
             self.slot_cv = threading.Condition()
-            self.pack_cv = threading.Condition()
-            self.pack_wait = []
-            self.pack_running = False
             self.waiting = 0                            # requests waiting for the control lines (ctl)
             self.admitting = 0                          # #1603: ... and those that gave the lines back to wait for a slot
             self.wait_lens: list[list[int]] = []        # ... their prompt lengths (a long read gives way to short ones)
@@ -1235,16 +1226,11 @@ class StrataEngine:
     SOLO_AGAIN_MAX = 2      # how often a request left alone in a slot goes back to the solo path
     SOLO_AGAIN_MIN_LEFT = 32  # ... only with at least this many tokens still allowed (max_tokens)
 
-    def _continuous_slots(self) -> bool:
-        """A target-only native request keeps its slot for its whole decode lifetime."""
-        return ((self.info or {}).get("weight_source") == "safetensors" and
-                (self.info or {}).get("continuous_batch") == 1)
-
     def _may_go_solo(self, left: int, times: int, embeddings) -> bool:
         """A request decoding in a slot that is alone now (no other slot busy, nobody waiting) goes back to the solo
         path with its MTP drafts: the engine continues it from the slot's sessions (its slot cache; INFO
         slot_cache=1).  STRATA_PARALLEL_SOLO=0 keeps it in the slot."""
-        if (self._continuous_slots() or embeddings or times >= self.SOLO_AGAIN_MAX or left < self.SOLO_AGAIN_MIN_LEFT or
+        if (embeddings or times >= self.SOLO_AGAIN_MAX or left < self.SOLO_AGAIN_MIN_LEFT or
                 not (self.info or {}).get("slot_cache") or os.environ.get("STRATA_PARALLEL_SOLO") == "0"):
             return False
         with self.slot_cv:
@@ -1254,203 +1240,6 @@ class StrataEngine:
         """#656: someone waits for the control lines with a prompt under half this one's: worth giving way to."""
         with self.slot_cv:
             return any(e[0] * 2 <= plen for e in self.wait_lens)
-
-    def _packed_prefill(self, ids, max_new, sampling, cancel, embeddings):
-        """Gather a bounded burst before ordinary BGEN admission; each owner keeps its reserved slot."""
-        capacity = int((self.info or {}).get("prefill_chunk") or 0)
-        if (not self._continuous_slots() or (self.info or {}).get("ragged_prefill") != 1 or embeddings or
-                len(ids) < 2 or capacity < 2 or (sampling or {}).get("experimental_speed_projection") is False):
-            return None
-        end = len(ids) - 1
-        launch_args = self.spawn[1]
-        def option(name, default):
-            return int(launch_args[launch_args.index(name) + 1]) if name in launch_args else default
-        turn, cache = option("--turn-token", 248045), option("--prompt-cache", 6)
-        ckpt = (sampling or {}).get("strata_checkpoint") is not False
-        child_environment = self.spawn[4] or os.environ
-        if ((sampling or {}).get("strata_prefix") or option("--tail-role-token", -1) >= 0 or
-                child_environment.get("STRATA_CACHE_MESSAGE_BOUNDARY", "0") != "0" or
-                "--prompt-cache-tail" in launch_args):
-            return None  # retain the ordinary reader's explicit checkpoint policy
-        last_turn = next((i for i in range(end, 0, -1) if ids[i] == turn), end) if cache > 0 and turn >= 0 else end
-        if ckpt:
-            end = last_turn
-        short_read = int(launch_args[launch_args.index("--short-read") + 1]) if "--short-read" in launch_args else 64
-        if end <= short_read:
-            return None  # ordinary admission uses the FP32 verifier for these rows
-        cuts = [end]
-        root_min = option("--prompt-cache-root", 2048)
-        if cache > 0 and turn >= 0 and root_min > 0:
-            root = next((i for i in range(1, last_turn) if ids[i] == turn), 0)
-            if root >= root_min:
-                if root <= short_read or end - root <= short_read:
-                    return None
-                cuts.insert(0, root)
-        if len(cuts) > 1 and (self.info or {}).get("ragged_boundaries") != 1:
-            return None
-        every = option("--prompt-cache-every", 16384) if ckpt and cache > 0 else 0
-        entry = {"ids": list(ids), "max_new": max_new, "cancel": cancel, "born": self.gen,
-                 "done": False, "slot": None, "error": None, "offset": 0, "end": end,
-                 "cuts": cuts, "every": every, "next_check": every,
-                 "abandoned": threading.Event()}
-        with self.pack_cv:
-            self.pack_wait.append(entry)
-            if not self.pack_running:
-                self.pack_running = True
-                threading.Thread(target=self._pack_worker, daemon=True).start()
-        delivered = False
-        try:
-            while True:
-                with self.pack_cv:
-                    if entry["done"]:
-                        break
-                    self.pack_cv.wait(timeout=0.1)
-                yield None
-            if entry["error"]:
-                raise entry["error"]
-            delivered = True
-            return entry["slot"]
-        finally:
-            if not delivered:
-                entry["abandoned"].set()
-                with self.slot_cv:
-                    if entry["done"] and entry["slot"] is not None and entry["born"] == self.gen:
-                        self.slot_busy[entry["slot"]] = False
-                        self.slot_claims.discard(entry["slot"])
-                        self.slot_live[entry["slot"]] = None
-                        self.slot_cv.notify_all()
-
-    def _pack_worker(self):
-        # This worker owns the same control lock as GEN/BGEN. Decode BT lines
-        # continue to their independent queues while the packed chunk runs.
-        while True:
-            time.sleep(0.002)
-            with self.pack_cv:
-                group, self.pack_wait = self.pack_wait, []
-                if not group:
-                    self.pack_running = False
-                    return
-            holding = False
-            selected = []
-            again = []
-            try:
-                class GroupCancel:
-                    def is_set(group_cancel):
-                        return all(e["cancel"].is_set() or e["abandoned"].is_set() or e["born"] != self.gen for e in group)
-                cancelled = GroupCancel()
-                if cancelled.is_set():
-                    continue
-                control = self._take_control(cancelled, min(len(e["ids"]) for e in group))
-                while True:
-                    try:
-                        next(control)
-                    except StopIteration as stop:
-                        holding = bool(stop.value)
-                        break
-                if not holding:
-                    raise EngineDied("engine ended before packed admission")
-                # Requests can finish tokenizing while this collector waits for
-                # the current reader. Include them before choosing row quotas;
-                # otherwise an early single arrival fragments a queued burst.
-                with self.pack_cv:
-                    group.extend(self.pack_wait)
-                    self.pack_wait = []
-                capacity = int((self.info or {}).get("prefill_chunk") or 0)
-                total = 0
-                with self.slot_cv:
-                    for entry in group:
-                        if entry["born"] != self.gen or entry["cancel"].is_set() or entry["abandoned"].is_set():
-                            continue
-                        ids = entry["ids"]
-                        slot = entry["slot"]
-                        if slot is None:
-                            slot = self.pick_slot(ids, entry["max_new"])
-                        if slot is None:
-                            continue
-                        held = self.slot_held[slot]
-                        repeated = self.slot_prompts[slot] == ids
-                        if entry["offset"] == 0 and (repeated or (len(held) >= 512 and ids[:len(held)] == held)):
-                            continue
-                        self.slot_busy[slot] = True
-                        self.slot_claims.add(slot)
-                        self.slot_tokens[slot] = self._slot_charge(ids, entry["max_new"])
-                        entry["slot"] = slot
-                        if entry["offset"] == 0:
-                            self.slot_live[slot] = {"slot": slot, "state": "reading", "prompt_tokens": len(ids),
-                                                   "generated": 0, "started": time.time(), "first_token": None}
-                        selected.append(entry)
-                if len(selected) >= 2:
-                    fields = []
-                    for i, entry in enumerate(selected):
-                        # Divide a single bounded workspace fairly; short owners
-                        # return unused rows to the owners that follow them.
-                        quota = (capacity - total) // (len(selected) - i)
-                        if quota >= 256:
-                            quota = quota // 256 * 256
-                        boundary = next(cut for cut in entry["cuts"] if cut > entry["offset"])
-                        count = min(boundary - entry["offset"], quota)
-                        entry["chunk"] = count
-                        offset = entry["offset"]
-                        checkpoint = offset + count == boundary or (entry["every"] and offset + count >= entry["next_check"])
-                        entry["checkpoint"] = checkpoint
-                        marker = '!' if checkpoint and (self.info or {}).get("ragged_boundaries") == 1 else ''
-                        fields.append(f"{entry['slot']}@{offset}{marker}:" + ','.join(map(str, entry["ids"][offset:offset+count])))
-                        total += count
-                    self._send("BPREF " + ';'.join(fields))
-                    deadline = time.monotonic() + 300
-                    while True:
-                        try:
-                            line = self.lines.get(timeout=0.25)
-                        except queue.Empty:
-                            if time.monotonic() < deadline and self.alive():
-                                continue
-                            raise EngineDied("packed prefill did not finish")
-                        if line is None or line.startswith(FATAL_PREFIXES):
-                            raise EngineDied("engine failed during packed prefill")
-                        if line.startswith("PREFDONE "):
-                            accepted = int(line.split()[1])
-                            if accepted == len(selected):
-                                for entry in selected:
-                                    entry["offset"] += entry["chunk"]
-                                    if entry["every"] and entry["offset"] >= entry["next_check"]:
-                                        entry["next_check"] = entry["offset"] + entry["every"]
-                                    self.slot_held[entry["slot"]] = entry["ids"][:entry["offset"]]
-                                    if entry["offset"] < entry["end"] and not entry["cancel"].is_set():
-                                        again.append(entry)
-                            elif accepted == 0:
-                                selected = []  # reservations below are released for ordinary admission
-                            else:
-                                raise EngineDied("invalid packed prefill completion")
-                            break
-                else:
-                    selected = []
-            except BaseException as error:
-                selected = []
-                again = []
-                for entry in group:
-                    entry["error"] = error
-            finally:
-                selected = [e for e in selected if not e["cancel"].is_set() and not e["abandoned"].is_set()]
-                again = [e for e in again if any(e is kept for kept in selected)]
-                if holding:
-                    self.ctl.release()
-                with self.slot_cv:
-                    for entry in group:
-                        if entry not in selected and entry["slot"] is not None:
-                            slot = entry["slot"]
-                            if entry["born"] == self.gen:
-                                self.slot_busy[slot] = False
-                                self.slot_claims.discard(slot)
-                                self.slot_live[slot] = None
-                            entry["slot"] = None
-                    self.slot_cv.notify_all()
-                with self.pack_cv:
-                    for entry in group:
-                        if any(entry is item for item in again):
-                            self.pack_wait.append(entry)
-                        else:
-                            entry["done"] = True
-                    self.pack_cv.notify_all()
 
     def generate_batched(self, ids, max_new, sampling, cancel, embeddings=None):
         """--batch.  Alone (no slot busy, nobody waiting): the solo path (GEN, with drafts: the fastest stream)
@@ -1469,33 +1258,13 @@ class StrataEngine:
         out: list[int] = []
         pending: list[int] = []
         prompt, left = list(ids), int(max_new)
-        if (getattr(self, "kv_token_budget", 0) and self._slot_charge(prompt, left) > self.kv_token_budget):
-            raise ValueError("request exceeds the native live KV token budget")
-        pre_gen = self.gen
-        pre_slot = yield from self._packed_prefill(prompt, left, sampling, cancel, embeddings)
         reused0 = None      # the first read's reused tokens: a continued leg's count includes this request's own output
-        def release_prefill():
-            if pre_slot is not None and pre_gen == self.gen:
-                with self.slot_cv:
-                    self.slot_busy[pre_slot] = False
-                    self.slot_claims.discard(pre_slot)
-                    self.slot_live[pre_slot] = None
-                    self.slot_cv.notify_all()
-        try:
-            ok = yield from self._take_control(cancel, len(prompt))
-        except BaseException:
-            release_prefill()
-            raise
-        if not ok or cancel.is_set():
-            release_prefill()
-            if ok:
-                self.ctl.release()
+        ok = yield from self._take_control(cancel, len(prompt))
+        if not ok:
             return
-        if pre_gen != self.gen:
-            pre_slot = None  # restart invalidated all old sequence reservations
         holding, born = True, self.gen                  # (the engine it now has the control lines of)
         btrace("ctl acquired")
-        slot, gen0, reserved = pre_slot, None, None
+        slot, gen0, reserved = None, None, None
         phase = "none"            # solo -> (admit -> slot) ; "done" once the engine has finished with this request
         stop_sent = False
         yields, solo_again = 0, 0
@@ -1509,7 +1278,7 @@ class StrataEngine:
                     holding, born = True, self.gen                  # (the engine it now has the control lines of)
                 with self.slot_cv:
                     alone = not any(self.slot_busy) and self.waiting == 0
-                if alone and left > 1 and (embeddings or not self._continuous_slots()):
+                if alone and left > 1:
                     head = f"GENI {left}{keys} {embeddings}" if embeddings else f"GEN {left}{keys}"
                     self._send(f"{head} {','.join(str(int(t)) for t in prompt)}")
                     phase = "solo"
@@ -1527,9 +1296,8 @@ class StrataEngine:
                             if (reserved is None and not out and not embeddings and yields < self.YIELDS_MAX and
                                     self._shorter_waiting(len(prompt))):
                                 with self.slot_cv:          # the slot the part read will wait in
-                                    reserved = self.pick_slot(prompt, left)
+                                    reserved = self.pick_slot(prompt)
                                     if reserved is not None:
-                                        self.slot_tokens[reserved] = self._slot_charge(prompt, left)
                                         self.slot_busy[reserved] = True
                                         self.slot_claims.add(reserved)
                                 if reserved is not None:
@@ -1565,9 +1333,8 @@ class StrataEngine:
                         # long, short at 0.25 s steps under parallel: 2 (ENGINE_REVIEW finding 1, reproduced in 0.1.41).
                         while True:
                             with self.slot_cv:
-                                slot = self.pick_slot(prompt, left)
+                                slot = self.pick_slot(prompt)
                                 if slot is not None:
-                                    self.slot_tokens[slot] = self._slot_charge(prompt, left)
                                     self.slot_busy[slot] = True
                                     self.slot_claims.add(slot)
                                     if admit_wait:
@@ -1581,7 +1348,7 @@ class StrataEngine:
                                 self.ctl.release()
                                 holding = False
                             with self.slot_cv:
-                                if self.pick_slot(prompt, left) is None:
+                                if self.pick_slot(prompt) is None:
                                     if (ENGINE_STALL_S or 0) > 0 and time.monotonic() - admit_since >= ENGINE_STALL_S:
                                         # the stall check of #1317 only watches a request on the control lines; one
                                         # waiting here is covered by looking for a slot nobody owns, and by saying so
@@ -1592,7 +1359,7 @@ class StrataEngine:
                                                   f"for a free slot (busy: {busy}, in use: {sorted(self.slot_claims)}, "
                                                   f"ending: {sorted(self.slot_releasing)}) (issue #1603)", flush=True)
                                     self._reap_orphan_slots()
-                                if self.pick_slot(prompt, left) is None:
+                                if self.pick_slot(prompt) is None:
                                     self.slot_cv.wait(timeout=1.0)
                             if cancel.is_set():
                                 return
@@ -1621,7 +1388,6 @@ class StrataEngine:
                     self.slot_live[slot] = live
                     self._send(f"{head} {','.join(str(int(t)) for t in prompt)}")
                     self.slot_held[slot] = []               # the admission overwrites what the slot held
-                    self.slot_prompts[slot] = list(prompt) if not embeddings and self._continuous_slots() else []
                     phase = "admit"
                     self._ctl_mode, self._ctl_result, self._yielded = "batch", None, None
                     self._ctl_erred = False
@@ -1751,21 +1517,11 @@ class StrataEngine:
     slot_groups = 1         # --batch-groups (set when the engine starts)
     SLOT_PREFIX_MIN = 512   # a held prefix shorter than this is not worth unbalancing the pipeline's groups
 
-    def _slot_charge(self, prompt, max_new: int) -> int:
-        context = int((self.info or {}).get("context") or getattr(self, "max_context", 262144))
-        cells = min(context, len(prompt) + max_new) if max_new > 0 else context
-        return (cells + 8191) // 8192 * 8192
-
-    def pick_slot(self, prompt: list[int], max_new: int = 0) -> int | None:
+    def pick_slot(self, prompt: list[int]) -> int | None:
         """A free slot for `prompt` (the caller holds slot_cv): the one whose held tokens are the longest start of the
         prompt (the engine then reads only the rest), else an empty one, else the one used longest ago - so the
         conversations other slots hold stay for their next turns.  None: every slot is busy."""
         free = [b for b in self.slot_order if not self.slot_busy[b]]
-        budget = getattr(self, "kv_token_budget", 0)
-        if budget:
-            reserved = sum(n for b, n in enumerate(self.slot_tokens) if self.slot_busy[b])
-            if reserved + self._slot_charge(prompt, max_new) > budget:
-                return None
         if not free:
             return None
         gs = getattr(self, "slot_gs", 0)
@@ -1785,15 +1541,6 @@ class StrataEngine:
         # without --batch-groups a held prefix of any length is taken, as before
         if held_prefix(best) >= (self.SLOT_PREFIX_MIN if self.slot_groups > 1 else 1):
             return best
-        # A repeated prompt is shorter than the completed conversation in slot_held. Its turn
-        # checkpoint is still useful. Keep this request on that slot instead of moving its backing
-        # into the LRU slot and creating another graph binding. The engine remains authoritative
-        # about whether a checkpoint actually exists (e.g. ckpt=0 may have disabled it).
-        prompts = getattr(self, "slot_prompts", None)
-        if prompts is not None and self._continuous_slots():
-            for b in free:
-                if prompts[b] and prompts[b] == prompt:
-                    return b
         # with --batch-groups: the group with the fewest busy slots first, so the requests spread over the
         # pipeline's stages (two requests in one group leave the other stage idle); then empty, then least recent
         busy_in = {}
@@ -1813,7 +1560,6 @@ class StrataEngine:
                 continue
             ft = r.get("first_token")
             view.append({"slot": b, "state": r["state"], "prompt_tokens": r["prompt_tokens"],
-                         "reserved_kv_tokens": getattr(self, "slot_tokens", [0] * self.batch)[b],
                          "generated": r["generated"], "elapsed_s": round(now - r["started"], 1),
                          "tok_s": round(r["generated"] / max(1e-6, now - ft), 1) if ft else None})
         return view

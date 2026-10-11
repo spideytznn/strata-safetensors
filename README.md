@@ -166,17 +166,10 @@ The fully unloaded MTP alternative is
 `START-NATIVE-262K-PARALLEL.bat` selects an opt-in **two-request text batch**,
 with the same 262K context and dedicated 4096-row prefill. Images run exclusively;
 this profile leaves MTP weights unloaded and uses target-only decode for all requests.
-The measured local profile now enables [continuous batching](docs/NATIVE_CONTINUOUS_BATCHING.md):
-requests keep their slots, idle sequence state changes owners without copying,
-replaced conversations are parked in bounded RAM, and ordinary batch tokens
-commit in place. Independent per-session elastic KV and direct device copying
-remain available for the paths that need them.
+Native target-only batching also offers independent per-session elastic KV and
+direct device slot migration; the measured local profile enables both.
 See [native concurrency](docs/NATIVE_CONCURRENCY.md) for tests, memory costs and
 latency/throughput measurements. The original desktop launcher is unchanged.
-
-The [scheduler extensions](docs/NATIVE_BATCH_SCHEDULER.md) add opt-in CPU expert
-dependencies, live-token admission, shared prefix pages and experimental ragged
-prefill. The added four-slot launchers leave the existing desktop profiles alone.
 
 ## Validation and limits
 

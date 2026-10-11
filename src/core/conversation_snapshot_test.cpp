@@ -461,59 +461,6 @@ int main(int argc, char** argv) {
         uint8_t sentinel = 0;
         cuda_check(cudaMemcpy(&sentinel, states[1].k_q, 1, cudaMemcpyDeviceToHost));
         check(sentinel == 91, "another session's KV bytes survive growth and shrink");
-        {
-            std::string err;
-            check(qsa_kv_elastic_grow(24576, [] { return VmmChunk(0); }, &a), "handoff long source growth");
-            const auto mapped_before = qsa_kv_elastic_mapped_bytes();
-            const auto handles_before = qsa_kv_elastic_handles();
-            auto* source_k = states[0].k_q;
-            auto* target_k = states[1].k_q;
-            cuda_check(cudaMemset(source_k, 43, 64));
-            cuda_check(cudaMemset(states[0].idx_pooled, 67, 64));
-            ConversationKv before, after;
-            check(conversation_kv_save(before, states[0], g, 24001, true, err), "save handoff source");
-            auto bad = states[1]; bad.kv_rot = !bad.kv_rot;
-            check(!conversation_kv_handoff(states[0], bad, g, 24001, err), "reject incompatible handoff");
-            check(states[0].k_q == source_k, "rejection preserves source ownership");
-            check(conversation_kv_handoff(states[0], states[1], g, 24001, err), "long KV into short-mapped slot");
-            cuda_check(cudaDeviceSynchronize());
-            check(states[1].k_q == source_k && states[0].k_q == target_k &&
-                  states[1].kv_elastic == a[0] && states[0].kv_elastic == b[0], "backing pointers and IDs move together");
-            check(qsa_kv_elastic_mapped_bytes() == mapped_before && qsa_kv_elastic_handles() == handles_before,
-                  "handoff allocates and remaps no physical KV pages");
-            check(conversation_kv_save(after, states[1], g, 24001, true, err) && equal(before, after),
-                  "handoff preserves every KV and indexer byte");
-            check(conversation_kv_handoff(states[1], states[0], g, 24001, err), "reverse handoff");
-            cuda_check(cudaDeviceSynchronize());
-            check(states[0].k_q == source_k && states[1].k_q == target_k, "original owners restored");
-            check(qsa_kv_elastic_cells(&c) == initial_c, "third session mapping unaffected by handoff");
-            ModelGeometry small = g;
-            small.n_layers = 4; small.ssm_state_size = 2; small.ssm_v_heads = 2; small.ssm_conv_channels = 8;
-            ConversationStateSizes z;
-            check(conversation_state_sizes(small, z, err), "handoff running-state sizes");
-            SessionState x, y;
-            std::array<void*, 4> owned{};
-            for (int i = 0; i < 4; ++i) cuda_check(cudaMalloc(&owned[i], i % 2 ? z.ple : z.gdn));
-            x.max_cells = y.max_cells = 32768;
-            x.layer_hi = y.layer_hi = 4; x.gdn_alloc = y.gdn_alloc = 3; x.qsa_alloc = y.qsa_alloc = 1;
-            x.qsa_states = &states[0]; y.qsa_states = &states[1];
-            x.gdn_state = (float*) owned[0]; x.ple_hist = (float*) owned[1];
-            y.gdn_state = (float*) owned[2]; y.ple_hist = (float*) owned[3];
-            cuda_check(cudaMemset(x.gdn_state, 17, z.gdn)); cuda_check(cudaMemset(x.ple_hist, 29, z.ple));
-            ConversationCheckpoint run_before, run_after;
-            run_before.ids = run_after.ids = {11, 22, 33};
-            check(conversation_checkpoint_save(run_before, x, small, err), "snapshot handoff recurrence/PLE/indexer");
-            auto* old_state = x.gdn_state;
-            check(conversation_session_handoff(x, y, small, run_before.ids, err), "complete sequence ownership transfer");
-            check(y.gdn_state == old_state && y.ple.hist == y.ple_hist && x.ple.hist == x.ple_hist &&
-                  y.ple_prev[0] == 22 && y.ple_prev[1] == 33, "persistent state and PLE aliases follow ownership");
-            check(conversation_checkpoint_save(run_after, y, small, err) && run_after.gdn == run_before.gdn &&
-                  run_after.ple == run_before.ple && run_after.tails == run_before.tails &&
-                  run_after.dead == run_before.dead && run_after.block_pos == run_before.block_pos,
-                  "complete running state byte-identical after handoff");
-            check(conversation_session_handoff(y, x, small, run_before.ids, err), "reverse complete ownership");
-            for (auto p : owned) cuda_check(cudaFree(p));
-        }
         check(qsa_kv_elastic_grow(32768, [] { return VmmChunk(0); }) &&
               qsa_kv_elastic_cells() >= 32768, "default all-pool growth remains supported");
         for (size_t i = 0; i < states.size(); ++i) {

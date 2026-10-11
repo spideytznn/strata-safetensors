@@ -140,11 +140,8 @@ def main():
     ap.add_argument("--independent-kv", action="store_true", help="opt into per-session elastic KV mappings")
     ap.add_argument("--device-slot-copy", action="store_true", help="opt into direct device slot migration")
     ap.add_argument("--limit", type=int, default=64)
-    ap.add_argument("--slots", type=int, choices=range(2, 9), default=2)
-    ap.add_argument("--yield-tokens", type=int, default=0, help="check ownership across a real chunk-boundary BYIELD")
     ap.add_argument("--growth-tokens", type=int, default=0, help="also test long-slot KV growth beside a short admission")
     ap.add_argument("--capacity-tokens", type=int, default=0, help="exact token count for a near-capacity two-long-slot check")
-    ap.add_argument("--eviction-tokens", type=int, default=0, help="require RAM-cache reuse after replacing every batch slot")
     a = ap.parse_args()
     a.output.mkdir(parents=True, exist_ok=False)
     cfg = json.loads(a.config.read_text(encoding="utf8"))
@@ -155,7 +152,7 @@ def main():
             args[args.index(flag) + 1] = str(value)
         else:
             args.extend([flag, str(value)])
-    setting("--batch", a.slots)
+    setting("--batch", 2)
     setting("--max-context", a.context)
     setting("--vram-reserve-mib", 1536)
     if not a.adaptive:
@@ -182,7 +179,7 @@ def main():
         if tail is not None:
             assert tail.group(1) == "0", "quality acceptance requires all routed experts (tail skip off)"
         result["info"] = eng.info
-        assert any(f"batch_slots={a.slots}" in line for line in eng.info), eng.info
+        assert any("batch_slots=2" in line for line in eng.info), eng.info
         pairs = [
             ("greedy", ["temperature=0", "temperature=0"]),
             ("seeded", ["temperature=0.7 top_p=0.95 top_k=20 seed=6101", "temperature=1 top_p=0.8 top_k=12 seed=2718"]),
@@ -215,9 +212,8 @@ def main():
         followups = [ids + ref["ids"] + suffix for ids, ref in zip(prompts, refs)]
         refs2 = [eng.solo(ids, 32, keys) for ids in followups]
         batch2 = eng.batch([(ids, 32, keys) for ids in followups])
-        result["cases"].append({"name": "followup", "solo": refs2, "batch": batch2})
-        save()
         assert all(x["ids"] == y["ids"] for x, y in zip(refs2, batch2["jobs"]))
+        result["cases"].append({"name": "followup", "solo": refs2, "batch": batch2})
         # Admission itself can finish: no waiting forever for a BDONE that must not exist.
         short = eng.batch([(prompts[0], 1, keys), (prompts[1], 2, keys)])
         assert [len(x["ids"]) for x in short["jobs"]] == [1, 2]
@@ -228,100 +224,6 @@ def main():
         eos = eng.batch([(ids, 48, keys) for ids in eos_prompts])
         assert all(x["ids"] == y["ids"] and len(y["ids"]) < 48 for x, y in zip(eos_refs, eos["jobs"]))
         result["cases"].append({"name": "eos", "solo": eos_refs, "batch": eos})
-        if a.slots > 2:
-            extra = [prompt(f"Request {i}: explain how databases handle concurrent transactions with examples.")
-                     for i in range(a.slots)]
-            for mode in ("temperature=0", "temperature=0.7 top_p=0.95 top_k=20 seed=4129 penalty_last_n=128 penalty_freq=0.1"):
-                limits = [max(24, a.limit // 2) if i % 2 == 0 else a.limit for i in range(a.slots)]
-                multi_refs = [eng.solo(p, cap, mode) for p, cap in zip(extra, limits)]
-                multi = eng.batch([(p, cap, mode) for p, cap in zip(extra, limits)])
-                result["cases"].append({"name": "multislot", "sampling": mode, "solo": multi_refs, "batch": multi})
-                save()
-                assert all(x["ids"] == y["ids"] for x, y in zip(multi_refs, multi["jobs"])), "multi-slot mismatch"
-                print(f"{a.slots} slots, unequal output limits: identical ({mode})", flush=True)
-        if a.eviction_tokens:
-            # No solo reference for this unique prefix: it initially exists only in
-            # a batch slot. Replacing every slot must park it, not silently reread it.
-            piece = "An archived research notebook records the measurements and their units. "
-            evict_ids = prompt(piece * (a.eviction_tokens // len(tok.encode(piece)) + 1) +
-                               "\nExplain why recording measurement units matters, with examples.")
-            assert len(evict_ids) + 256 < a.context
-            initial = eng.batch([(evict_ids, 48, keys), (prompts[1], 48, keys)])
-            replacements = [prompt(f"Unrelated replacement {i}: describe a different sorting algorithm.")
-                            for i in range(a.slots)]
-            eng.batch([(ids, 32, keys) for ids in replacements])
-            before = len(eng.log_path.read_text(encoding="utf8"))
-            restored = eng.batch([(evict_ids, 48, keys), (prompts[1], 48, keys)])
-            log = eng.log_path.read_text(encoding="utf8")[before:]
-            restored_tokens = [int(x) for x in re.findall(r"conversation cache: restored (\d+) tokens", log)]
-            result["cases"].append({"name": "batch_slot_eviction", "prompt_tokens": len(evict_ids),
-                                    "initial": initial, "restored": restored, "ram_restored_tokens": restored_tokens})
-            save()
-            assert all(x["ids"] == y["ids"] for x, y in zip(initial["jobs"], restored["jobs"]))
-            assert restored_tokens and max(restored_tokens) > len(evict_ids) * 0.9, "evicted slot reread its long prefix"
-            print(f"replaced batch slot restored from RAM: {max(restored_tokens)} tokens, identical", flush=True)
-            # Continuing idle slot 1 into slot 0 bypasses destination borrowing.
-            # Slot 0's unrelated long conversation must still be parked.
-            next_turn = tok.encode("\n<|im_end|>\n<|im_start|>user\nWrite a detailed explanation of quicksort, "
-                                   "with full Python code and several examples.<|im_end|>\n<|im_start|>assistant\n"
-                                   "<think>\n\n</think>\n\n", parse_special=True)
-            other_follow = prompts[1] + restored["jobs"][1]["ids"] + next_turn
-            diverted = eng.batch([(other_follow, 32, keys)])
-            assert diverted["jobs"][0]["continued"], "fixture ended before replacing the destination slot"
-            before = len(eng.log_path.read_text(encoding="utf8"))
-            moved = eng.batch([(evict_ids, 48, keys), (prompts[1], 48, keys)])
-            log = eng.log_path.read_text(encoding="utf8")[before:]
-            moved_tokens = [int(x) for x in re.findall(r"conversation cache: restored (\d+) tokens", log)]
-            result["cases"].append({"name": "batch_destination_eviction", "prompt_tokens": len(evict_ids),
-                                    "restored": moved, "ram_restored_tokens": moved_tokens})
-            save()
-            assert all(x["ids"] == y["ids"] for x, y in zip(initial["jobs"], moved["jobs"]))
-            assert moved_tokens and max(moved_tokens) > len(evict_ids) * 0.9, "destination overwrite lost its cached prefix"
-            print(f"different-source admission preserved destination: {max(moved_tokens)} tokens, identical", flush=True)
-            reader_ids = prompt("Explain the design of a journaled file system and its recovery process in detail.")
-            reader = eng.solo(reader_ids, 32, keys)
-            reader_follow = reader_ids + reader["ids"] + next_turn
-            before = len(eng.log_path.read_text(encoding="utf8"))
-            reader_batch = eng.batch([(reader_follow, 48, keys)])
-            log = eng.log_path.read_text(encoding="utf8")[before:]
-            assert reader_batch["jobs"][0]["continued"] and "reader borrowed idle slot" not in log
-            reader_ref = eng.solo(reader_follow, 48, keys)
-            assert reader_batch["jobs"][0]["ids"] == reader_ref["ids"], "parking changed the reader's live prefix"
-            before = len(eng.log_path.read_text(encoding="utf8"))
-            reader_evicted = eng.batch([(evict_ids, 48, keys), (prompts[1], 48, keys)])
-            log = eng.log_path.read_text(encoding="utf8")[before:]
-            reader_tokens = [int(x) for x in re.findall(r"conversation cache: restored (\d+) tokens", log)]
-            result["cases"].append({"name": "live_reader_destination_eviction", "batch": reader_batch,
-                                    "solo": reader_ref, "restored": reader_evicted, "ram_restored_tokens": reader_tokens})
-            save()
-            assert all(x["ids"] == y["ids"] for x, y in zip(initial["jobs"], reader_evicted["jobs"]))
-            assert reader_tokens and max(reader_tokens) > len(evict_ids) * 0.9, "live-reader admission lost its destination"
-            print("live-reader prefix and replaced destination both preserved, identical", flush=True)
-        if a.yield_tokens:
-            # No retained live/parked reference: the yielded request must really read from token zero.
-            long_ids = prompt(("A separate admission checks persistent state ownership. " * a.yield_tokens)[:a.yield_tokens * 4])
-            cold_keys = "temperature=0 ckpt=0"
-            ref = eng.solo(long_ids, 64, cold_keys)
-            for head in ("GEN", "BGEN 0"):
-                eng.send(f"{head} 64 {cold_keys} {','.join(map(str, long_ids))}")
-                eng.send("BYIELD 0")
-                yielded = None
-                while True:
-                    line = eng.read()
-                    if line.startswith("YIELDED "):
-                        yielded = line
-                    if line.startswith("BADM "):
-                        assert head == "BGEN 0" and line.split()[1:] == ["0", "0"]
-                        break
-                    if line.startswith("DONE ") and head == "GEN":
-                        break
-                assert yielded is not None, "long admission did not yield at a chunk boundary"
-                resumed_batch = eng.batch([(long_ids, 64, cold_keys), (prompts[1], 64, "temperature=0")])
-                result["cases"].append({"name": "yield_resume_" + head.split()[0], "prompt_tokens": len(long_ids),
-                                        "yielded": yielded, "solo": ref, "batch": resumed_batch})
-                save()
-                assert resumed_batch["jobs"][0]["ids"] == ref["ids"], "yield/resume changed tokens"
-                print(f"real {head} BYIELD/resume: {len(long_ids)} tokens, identical", flush=True)
         if a.capacity_tokens:
             header = tok.encode("<|im_start|>user\n", parse_special=True)
             tail = tok.encode("\nWrite a detailed, 2000-word explanation of why schedules are useful, with many examples.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n", parse_special=True)

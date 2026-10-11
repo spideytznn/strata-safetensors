@@ -5,7 +5,6 @@
 #include <cuda_runtime.h>
 
 #include <array>
-#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -205,11 +204,6 @@ bool conversation_kv_validate(const ConversationKv& image, const QsaState& st, c
 bool conversation_kv_restore(const ConversationKv& image, const QsaState& st, const ModelGeometry& g,
                              int64_t upto, bool index, std::string& error) {
     if (!conversation_kv_validate(image, st, g, upto, index, error)) return false;
-    const std::vector<int32_t> target_pool{st.kv_elastic};
-    if (st.kv_elastic >= 0 && !qsa_kv_prepare_write(0, upto, [] { return VmmChunk(0); }, &target_pool)) {
-        error = "conversation restore: cannot make shared KV private";
-        return false;
-    }
     const std::array<const ConversationBuffer*,5> src = {&image.k, &image.v, &image.k_scale, &image.v_scale, &image.pooled};
     const auto dst = pools(st);
     for (size_t i = 0; i < src.size(); ++i)
@@ -252,22 +246,9 @@ bool conversation_kv_copy(const QsaState& from, const QsaState& to, const ModelG
             error = "conversation slot copy: missing K/V buffer";
             return false;
         }
-    std::vector<uint64_t> shared;
-    if (qsa_kv_prefix_sharing() && from.kv_elastic >= 0 && to.kv_elastic >= 0 &&
-        from.kv_elastic != to.kv_elastic && !qsa_kv_share_prefix(from, to, upto, shared)) {
-        error = "conversation slot copy: prefix sharing failed";
-        return false;
-    }
-    uint64_t alias_bytes = 0;
-    for (const auto bytes : shared) alias_bytes += bytes;
-    if (alias_bytes)
-        std::fprintf(stderr, "strata KV shared prefix: source_pool=%d target_pool=%d cells=%lld physical_alias_bytes=%llu\n",
-                     from.kv_elastic, to.kv_elastic, (long long) upto, (unsigned long long) alias_bytes);
     for (size_t i = 0; i < sizes.size(); ++i) {
         if (!sizes[i] || src[i] == dst[i]) continue;
-        const size_t skip = i < shared.size() ? (size_t) shared[i] : 0;
-        const auto status = conversation_detail::copy_nonblocking(static_cast<uint8_t*>(dst[i]) + skip,
-                              static_cast<const uint8_t*>(src[i]) + skip, sizes[i] - skip, false);
+        const auto status = conversation_detail::copy_nonblocking(dst[i], src[i], sizes[i], false);
         if (status != cudaSuccess) {
             error = std::string("conversation slot K/V copy: ") + cudaGetErrorString(status);
             return false;
@@ -281,75 +262,6 @@ bool conversation_kv_part_sizes(const QsaState& st, const ModelGeometry& g, int6
     Layout l{};
     if (!layout(st, g, upto, index, l, error)) return false;
     sizes = {l.data, l.value_data, l.scales, l.value_scales, l.pooled};
-    return true;
-}
-
-namespace {
-bool handoff_valid(const QsaState& from, const QsaState& to, const ModelGeometry& g,
-                   int64_t upto, std::string& error) {
-    Layout a{}, b{};
-    if (&from == &to || from.kv_elastic < 0 || to.kv_elastic < 0 || from.kv_elastic == to.kv_elastic ||
-        from.kv_mode != 0 || to.kv_mode != 0 || from.kv_q4 || to.kv_q4 || from.kv_hybrid || to.kv_hybrid ||
-        from.max_cells != to.max_cells || from.n_slots != to.n_slots || from.kv_rot != to.kv_rot ||
-        !layout(from, g, upto, true, a, error) || !valid(from, a, upto, error) ||
-        !layout(to, g, upto, true, b, error) || !valid(to, b, upto, error) ||
-        a.format != b.format || a.pooled != b.pooled) {
-        error = "conversation handoff: incompatible resident elastic KV pools";
-        return false;
-    }
-    const std::vector<int32_t> source_pool{from.kv_elastic};
-    if (qsa_kv_elastic_cells(&source_pool) < upto) {
-        error = "conversation handoff: source KV is not mapped through the requested prefix";
-        return false;
-    }
-    return true;
-}
-void handoff_swap(QsaState& from, QsaState& to) {
-    std::swap(from.k_pool, to.k_pool);
-    std::swap(from.v_pool, to.v_pool);
-    std::swap(from.k_q, to.k_q);
-    std::swap(from.v_q, to.v_q);
-    std::swap(from.k_scale, to.k_scale);
-    std::swap(from.v_scale, to.v_scale);
-    std::swap(from.kv_elastic, to.kv_elastic);
-    std::swap(from.idx_pooled, to.idx_pooled);
-    std::swap(from.idx_tail, to.idx_tail);
-    std::swap(from.idx_dead, to.idx_dead);
-    std::swap(from.idx_block_pos, to.idx_block_pos);
-}
-} // namespace
-
-bool conversation_kv_handoff(QsaState& from, QsaState& to, const ModelGeometry& g,
-                             int64_t upto, std::string& error) {
-    if (!handoff_valid(from, to, g, upto, error)) return false;
-    handoff_swap(from, to);
-    return true;
-}
-
-bool conversation_session_handoff(SessionState& from, SessionState& to, const ModelGeometry& g,
-                                  const std::vector<int32_t>& ids, std::string& error) {
-    if (&from == &to || from.max_cells != to.max_cells || from.layer_lo != to.layer_lo ||
-        from.layer_hi != to.layer_hi || from.gdn_alloc != to.gdn_alloc || from.gdn_ord0 != to.gdn_ord0 ||
-        from.qsa_alloc != to.qsa_alloc || from.qsa_ord0 != to.qsa_ord0 ||
-        !from.gdn_state || !to.gdn_state || !from.ple_hist || !to.ple_hist) {
-        error = "conversation handoff: incompatible session state";
-        return false;
-    }
-    // Validate every layer before moving any ownership. Scratch and RoPE stay with the executor.
-    for (int64_t j = 0; j < from.qsa_alloc; ++j)
-        if (!handoff_valid(from.qsa_states[from.qsa_ord0 + j], to.qsa_states[to.qsa_ord0 + j], g,
-                           (int64_t) ids.size(), error)) return false;
-    for (int64_t j = 0; j < from.qsa_alloc; ++j)
-        handoff_swap(from.qsa_states[from.qsa_ord0 + j], to.qsa_states[to.qsa_ord0 + j]);
-    std::swap(from.gdn_state, to.gdn_state);
-    std::swap(from.ple_hist, to.ple_hist);
-    from.ple.hist = from.ple_hist;
-    to.ple.hist = to.ple_hist;
-    std::swap(from.ple_prev[0], to.ple_prev[0]);
-    std::swap(from.ple_prev[1], to.ple_prev[1]);
-    std::swap(from.ple_token, to.ple_token);
-    to.ple_prev[0] = ids.size() >= 2 ? ids[ids.size() - 2] : -1;
-    to.ple_prev[1] = ids.empty() ? -1 : ids.back();
     return true;
 }
 

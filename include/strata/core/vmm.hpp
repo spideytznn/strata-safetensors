@@ -6,7 +6,6 @@
 
 #include <cstdint>
 #include <vector>
-#include <memory>
 
 namespace strata::core {
 
@@ -42,18 +41,6 @@ public:
     template <class Take> bool map_range(int64_t lo, int64_t hi, Take take);
     /// Unmaps chunk i and hands back its physical chunk (0 when it was not mapped).
     VmmChunk unmap(int64_t i);
-    /// Map the same immutable physical chunk at another range's fixed address.
-    /// The caller quiesces all users and makes any written chunk private first.
-    /// If supplied, `released` receives unique old backing for recycling, even
-    /// on failure. Otherwise that backing is freed. Shared old backing returns 0.
-    bool share(int64_t i, const VmmRange& from, int64_t source, VmmChunk* released = nullptr);
-    bool shared(int64_t i) const { return mapped(i) && refs_[(std::size_t) i].use_count() > 1; }
-    bool shares_with(int64_t i, const VmmRange& from, int64_t source) const {
-        return mapped(i) && from.mapped(source) && refs_[(std::size_t) i] == from.refs_[(std::size_t) source];
-    }
-    /// Copy one aliased chunk before a write. `replacement` transfers ownership
-    /// on entry, including failure; 0 allocates a new physical chunk.
-    bool make_private(int64_t i, VmmChunk replacement = 0);
 
 private:
     bool map_one(int64_t i, VmmChunk h);
@@ -63,7 +50,6 @@ private:
     bool commit_run(int64_t lo, int64_t hi);
     unsigned long long base_ = 0;
     std::vector<VmmChunk> h_;   // per chunk: its physical chunk, 0 = unmapped
-    std::vector<std::shared_ptr<VmmChunk>> refs_;
     int dev_ = -1;              // the device the chunks are created on (captured in reserve)
 };
 

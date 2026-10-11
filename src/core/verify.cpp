@@ -419,11 +419,6 @@ Verifier::~Verifier() {
     for (auto& e : exec_nr_)
         if (e) cudaGraphExecDestroy(e);
     if (commit_exec_) cudaGraphExecDestroy(commit_exec_);
-    for (auto& [id, b] : kv_graphs_) {
-        for (auto e : b.exec) if (e) cudaGraphExecDestroy(e);
-        for (auto e : b.nr) if (e) cudaGraphExecDestroy(e);
-        if (b.commit) cudaGraphExecDestroy(b.commit);
-    }
     for (auto& kv : exec_bm_)
         if (kv.second) cudaGraphExecDestroy(kv.second);
     for (auto& kv : commit_bm_)
@@ -802,7 +797,6 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
     const int G = (split_ && T >= 2 && !batch_rec_) ? 2 : 1;   // a batch window is one group
     // Pipelined windows must wait for the host verdict/snapshot fence before mutating state.
     const bool self_commit = T == 1 && !always_publish_ && !batch_rec_ && !g_qfuse() && one_token_self_commit();   // see Verifier::commit
-    const bool slot_commit = batch_rec_ && batch_inplace_rows(brow_, T);
     static const bool dec_batch = [] { const char* v = std::getenv("STRATA_DEC_BATCH"); return v == nullptr || std::atoi(v) != 0; }();
     auto stamp = [&](int64_t l, int i, int grp) {
         if (prof_on_ && grp == 0) gpu_stamp(prof_, (int) (l * kProfPer + i), cs);
@@ -846,10 +840,6 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
     // ---- the window's inputs, from mapped staging.  With branches the steps and positions (first read by the first
     // layer's mixer) cross PCIe on side 1 beside the embedding and the first hyper-connection read.
     copy_i32_from_mapped(tok_, m_tok_, T, cs);
-    if (slot_commit)
-        for (int t = 0; t < T; ++t)
-            copy_i32_from_mapped(commitb_ + (size_t) brow_[t] * (2 + MT),
-                                 m_commitb_ + (size_t) brow_[t] * (2 + MT), 2 + MT, cs);
     bool inputs_pending = false;
     cudaStream_t in_s = cs;
     if (br) {
@@ -1011,7 +1001,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
                     err = std::string("verify PLE: ") + e.what();
                     return false;
                 }
-                if (!slot_commit) copy_from_mapped(hist_snap_ + (size_t) t * HS, hist, HS, cs);
+                copy_from_mapped(hist_snap_ + (size_t) t * HS, hist, HS, cs);
             }
             pending = false;
         }
@@ -1098,8 +1088,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
                         const float* cx = sx.gdn_state + (size_t) (gi - sx.gdn_ord0) * gdn_floats +
                                           (uint64_t) g.ssm_state_size * g.ssm_v_heads * g.ssm_state_size;
                         gdn_conv_l2_multi(cx, qkv + (size_t) first * C, (const float*) wc->data,
-                                          hb + (size_t) first * C, (int) C, (int) (2 * HK), EPS, t - first, cs, 0,
-                                          slot_commit);
+                                          hb + (size_t) first * C, (int) C, (int) (2 * HK), EPS, t - first, cs, 0);
                     }
                 } else
                 // a one-token window keeps its token: it advances the conv history and the state itself (commit)
@@ -1127,7 +1116,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
                         gdn_step_norm_multi(stx, hb + (size_t) first * C, (int) C, gate + (size_t) first * HV,
                                             beta + (size_t) first * HV, z_ + (size_t) first * ZV,
                                             (const float*) wnm->data, EPS, y_ + (size_t) first * ZV,
-                                            (int) HK, (int) HV, t - first, slot_commit ? one_ : nullptr, cs, 0);
+                                            (int) HK, (int) HV, t - first, nullptr, cs, 0);
                     }
                 } else
                 gdn_step_norm_multi(state, hb, (int) C, gate, beta, z_, (const float*) wnm->data, EPS, y_, (int) HK,
@@ -1225,7 +1214,7 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
                 stamp(l, 8, grp);
                 if (batch_rec_) {   // snapshot each slot's indexer tail before its first proposed row
                     for (int t = tb; t < te; ++t)
-                        if (!slot_commit && (t == tb || brow_[t] != brow_[t - 1]))
+                        if (t == tb || brow_[t] != brow_[t - 1])
                             copy_from_mapped(tail_snap_b_ + ((size_t) brow_[t] * nQall + qi) * TS,
                                              slot_ss(t).qsa_states[qi].idx_tail, TS, cs);
                 } else
@@ -1377,18 +1366,6 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
                 native_quantize_q8_1(attn32_ + tb * NH * HD, xq_, (int) (NH * HD), n, cs);
                 il_ready = false;
                 mm(wo, bo_ + tb * N, (int) (NH * HD), (int) N, attn32_ + tb * NH * HD);
-                // The indexer already appended this accepted token. Only canonical spare cleanup remains;
-                // do it AFTER attention, as the old commit graph did, never before the token attends.
-                if (slot_commit) {
-                    const char* canonical = std::getenv("STRATA_SPEC_CANONICAL_STATE");
-                    if (canonical && std::atoi(canonical) != 0)
-                        for (int t = tb; t < te; ++t) {
-                            const QsaState& sx = slot_ss(t).qsa_states[qi];
-                            qsa_commit_spare(sx.idx_pooled, sx.idx_dead, sx.idx_block_pos,
-                                             commitb_ + (size_t) brow_[t] * (2 + MT),
-                                             (int) ID, (int) s.idx_block, (int) sx.max_cells, cs);
-                        }
-                }
             }
         } catch (const std::exception& e) {
             err = "verify layer " + std::to_string(l) + ": " + e.what();
@@ -1823,31 +1800,7 @@ void Verifier::refresh_ar() {
     }
 }
 
-bool Verifier::select_kv_graphs(std::string& err) {
-    if (!kv_handoff_) return true;
-    const int32_t key = ss_->qsa_states[ss_->qsa_primary()].kv_elastic;
-    if (main_kv_key_ < 0) main_kv_key_ = key;
-    if (main_kv_key_ == key) return true;
-    if (key < 0 || !wait_commit(err) || cudaStreamSynchronize(cs_) != cudaSuccess) {
-        err = "verify: cannot change the prompt reader's KV graph binding";
-        return false;
-    }
-    auto& old = kv_graphs_[main_kv_key_];
-    auto& next = kv_graphs_[key];
-    for (int i = 0; i < 9; ++i) {
-        std::swap(old.exec[i], exec_[i]);
-        std::swap(old.nr[i], exec_nr_[i]);
-        std::swap(next.exec[i], exec_[i]);
-        std::swap(next.nr[i], exec_nr_[i]);
-    }
-    std::swap(old.commit, commit_exec_);
-    std::swap(next.commit, commit_exec_);
-    main_kv_key_ = key;
-    return true;
-}
-
 bool Verifier::capture(int T, std::string& err) {
-    if (!select_kv_graphs(err)) return false;
     cudaGraphExec_t& exec_t = ar_off_ ? exec_nr_[T] : exec_[T];
     if (exec_t != nullptr) return true;
     {   // said before the capture: a process that exits inside it (#1275: Windows, 313 MiB free) leaves this line as the trace
@@ -2093,7 +2046,6 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
     const ModelGeometry& g = *g_;
     SessionState& ss = *ss_;
     if (pos0 + T > ss.qsa_states[ss.qsa_primary()].max_cells) { err = "verify: the window runs past the context"; return false; }
-    if (prepare_kv_write && !prepare_kv_write(ss, pos0, pos0 + T, err)) return false;
     if (pre_launch_ && !pre_launch_(cs_, err)) return false;
     refresh_ar();
     if (!capture(T, err) || !capture_commit(err)) return false;
@@ -2558,8 +2510,8 @@ bool Verifier::init_slots(const std::vector<SessionState*>& slots, std::string& 
     tail_snap_b_ = (float*) ((uint8_t*) d + a);
     slots_ = slots;
     slot_sp_.assign(slots.size(), sampling_);   // greedy until set_slot_sampling
-    std::fprintf(stderr, "strata verify: batch windows of up to %lld sequences (layers [%lld, %lld)), inplace=%d\n", (long long) S,
-                 (long long) lb_, (long long) le_, (int) batch_inplace_);
+    std::fprintf(stderr, "strata verify: batch windows of up to %lld sequences (layers [%lld, %lld))\n", (long long) S,
+                 (long long) lb_, (long long) le_);
     return true;
 }
 
@@ -2596,7 +2548,6 @@ bool Verifier::capture_batch(const int* rows, int S, int hbase, std::string& err
 }
 
 bool Verifier::capture_commit_batch(const int* rows, int S, int hbase, std::string& err) {
-    if (batch_inplace_rows(rows, S)) return true;
     cudaGraphExec_t& cex = commit_bm_[bkey(rows, S, hbase)];
     if (cex != nullptr) return true;
     using namespace strata::kernels;
@@ -2838,13 +2789,6 @@ bool Verifier::run_slot_rows(const int* rows, int S, const int32_t* tokens, cons
     using namespace strata::kernels;
     const OnDevice on_device(device_);
     const ModelGeometry& g = *g_;
-    if (prepare_kv_write) {
-        if (S < 1 || S > max_t_) { err = "verify: invalid KV write rows"; return false; }
-        for (int t = 0; t < S; ++t) {
-            if (rows[t] < 0 || rows[t] >= (int) slots_.size()) { err = "verify: invalid KV write slot"; return false; }
-            if (!prepare_kv_write(*slots_[(size_t) rows[t]], pos[t], pos[t] + 1, err)) return false;
-        }
-    }
     if (pre_launch_ && !pre_launch_(cs_, err)) return false;
     if (!stage_batch(rows, S, 0, tokens, pos, err)) return false;
     const cudaError_t le = cudaGraphLaunch(exec_bm_[bkey(rows, S, 0)], cs_);
@@ -2970,13 +2914,11 @@ bool Verifier::commit_slot_prefixes(const int* keep, std::string& err) {
         for (int j = 0; j < max_t_; ++j)
             c[2 + j] = j < n ? (int32_t) last_pos_b_[first + j] : -1;
     }
-    if (!batch_inplace_rows(last_rows_, S)) {
-        std::atomic_thread_fence(std::memory_order_seq_cst);
-        const cudaError_t le = cudaGraphLaunch(commit_bm_[bkey(last_rows_, S, row_base_)], cs_);
-        if (le != cudaSuccess) { err = std::string("verify: batch commit launch: ") + cudaGetErrorString(le); return false; }
-        const cudaError_t se = cudaStreamSynchronize(cs_);
-        if (se != cudaSuccess) { err = std::string("verify: batch commit: ") + cudaGetErrorString(se); return false; }
-    }
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    const cudaError_t le = cudaGraphLaunch(commit_bm_[bkey(last_rows_, S, row_base_)], cs_);
+    if (le != cudaSuccess) { err = std::string("verify: batch commit launch: ") + cudaGetErrorString(le); return false; }
+    const cudaError_t se = cudaStreamSynchronize(cs_);
+    if (se != cudaSuccess) { err = std::string("verify: batch commit: ") + cudaGetErrorString(se); return false; }
     if (ple_stage())
         for (int t = 0; t < S;) {
             const int first = t;
@@ -3016,8 +2958,7 @@ bool Verifier::batch_launch(int base, int S, const int32_t* tokens, const int64_
     if (pre_launch_ && !pre_launch_(cs_, err)) return false;
     if (!stage_batch(rows, S, base, tokens, pos, err)) return false;
     cudaError_t le = cudaGraphLaunch(exec_bm_[bkey(rows, S, base)], cs_);
-    if (le == cudaSuccess && !batch_inplace_rows(rows, S))
-        le = cudaGraphLaunch(commit_bm_[bkey(rows, S, base)], cs_);   // right behind it: every row is kept
+    if (le == cudaSuccess) le = cudaGraphLaunch(commit_bm_[bkey(rows, S, base)], cs_);   // right behind it: every row is kept
     if (le != cudaSuccess) { err = std::string("verify: batch launch: ") + cudaGetErrorString(le); return false; }
     (void) cudaStreamQuery(cs_);
     if (ple_stage())   // the host's side of the commit (the hash's last two tokens)

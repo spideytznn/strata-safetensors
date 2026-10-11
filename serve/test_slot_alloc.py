@@ -18,8 +18,6 @@ def engine(batch, groups, pipelined=True):
     gs = batch // groups
     e.batch = batch
     e.slot_order = [g * gs + t for t in range(gs) for g in range(groups)]
-    e.slot_group = [b // gs for b in range(batch)]
-    e.slot_groups = groups
     e.slot_busy = [False] * batch
     e.slot_held = [[] for _ in range(batch)]
     e.slot_used = [0.0] * batch
@@ -69,20 +67,6 @@ class Pipelined(unittest.TestCase):
 
 
 class OneGroup(unittest.TestCase):
-    def test_continuous_repeat_keeps_its_idle_slot(self):
-        e = engine(4, 1, pipelined=False)
-        e.info = {"weight_source": "safetensors", "continuous_batch": 1}
-        e.slot_prompts = [[], [], [1, 2, 3], []]
-        e.slot_held[2] = [1, 2, 3, 4, 5]  # completed reply extends beyond the repeated prompt
-        self.assertEqual(e.pick_slot([1, 2, 3]), 2)
-        e.slot_busy[2] = True
-        self.assertEqual(e.pick_slot([1, 2, 3]), 0)
-        e.slot_busy[2] = False
-        e.info["continuous_batch"] = 0
-        self.assertEqual(e.pick_slot([1, 2, 3]), 0)
-        e.info.update(weight_source="gguf", continuous_batch=1)
-        self.assertEqual(e.pick_slot([1, 2, 3]), 0)
-
     def test_reuse_then_least_recently_used(self):
         e = engine(4, 1, pipelined=False)
         e.slot_held[2] = [1, 2]

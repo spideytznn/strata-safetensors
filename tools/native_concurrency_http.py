@@ -25,27 +25,14 @@ def main():
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--parallel", type=int, default=2)
     ap.add_argument("--rounds", type=int, default=3)
-    ap.add_argument("--clients", type=int, nargs="+", default=[1, 2, 3])
-    ap.add_argument("--limit", type=int, default=96)
     ap.add_argument("--independent-kv", action="store_true", help="opt into per-session elastic KV mappings")
     ap.add_argument("--device-slot-copy", action="store_true", help="opt into direct device slot migration")
     ap.add_argument("--long-tokens", type=int, default=0, help="replace the first fixture with a repeated-text long prompt")
-    ap.add_argument("--cold-admission-tokens", type=int, default=0, help="also check a cold long read yielding to a late short request")
-    ap.add_argument("--fixture-tokens", type=int, default=0, help="pad every prompt to exercise real multi-request prefill")
-    ap.add_argument("--cold-prefill", action="store_true", help="replace all slot owners before measured bursts and disable turn checkpoints")
-    ap.add_argument("--gather-burst", action="store_true", help="hold admission for 100 ms to test a deterministic queued burst; includes that wait in TTFT")
-    ap.add_argument("--no-vision", action="store_true")
-    ap.add_argument("--system-tokens", type=int, default=0, help="exercise a long shared system-root checkpoint")
-    ap.add_argument("--turn-checkpoints", action="store_true", help="retain normal checkpoint policy during cold-slot tests")
-    ap.add_argument("--packed-vision-guard", action="store_true", help="check packed-text refusal immediately after real image positions")
     a = ap.parse_args()
     a.output.mkdir(parents=True, exist_ok=False)
     cfg = json.loads(a.config.read_text(encoding="utf8"))
     cfg["exe"] = str(a.exe.resolve())
     cfg["parallel"] = a.parallel
-    if a.no_vision:
-        cfg.pop("vision", None)
-        cfg["args"] = [v for v in cfg["args"] if v != "--vision"]
     cfg["env"]["STRATA_NATIVE_KV_INDEPENDENT"] = "1" if a.independent_kv else "0"
     cfg["env"]["STRATA_NATIVE_SLOT_COPY"] = "1" if a.device_slot_copy else "0"
     args = cfg["args"]
@@ -80,19 +67,13 @@ def main():
             metrics = response.read().decode("utf8")
             assert response.status == 200 and "# TYPE" in metrics and "vllm:" in metrics
         result["http_checks"] = {"unrestricted_host": True, "prometheus_metrics": True}
-        system_unit = "You are a careful tutor. Check units, assumptions and boundary conditions. "
-        system_text = system_unit * (a.system_tokens // len(tok.encode(system_unit)) + 1) if a.system_tokens else ""
 
-        def chat(name, content, limit=a.limit, barrier=None, started=None, disconnect=False, anthropic=False, checkpoint=None):
+        def chat(name, content, limit=96, barrier=None, started=None, disconnect=False, anthropic=False):
             if barrier:
                 barrier.wait(timeout=30)
             body = {"model": "qwen3.8-flash-next", "messages": [{"role": "user", "content": content}],
                     "max_tokens": limit, "temperature": 0, "stream": True,
                     "chat_template_kwargs": {"enable_thinking": False}}
-            if system_text and not name.startswith("eviction-"):
-                body["messages"].insert(0, {"role": "system", "content": system_text})
-            if checkpoint is False or (checkpoint is None and a.cold_prefill and not a.turn_checkpoints):
-                body["strata_checkpoint"] = False
             if anthropic:
                 body.pop("chat_template_kwargs")
                 body["thinking"] = {"type": "disabled"}
@@ -134,84 +115,28 @@ def main():
         questions = ["Explain TCP and QUIC in detail, including congestion control and multiplexing.",
                      "写一个 Python 二分查找函数，解释边界条件和时间复杂度。",
                      "Explain how a B-tree splits a node; give a worked example."]
-        if max(a.clients) > len(questions):
-            questions.extend([
-                "Explain database transactions and isolation levels with detailed examples.",
-                "Describe merge sort with Python code, correctness and complexity.",
-                "Explain how an operating system schedules threads on many CPU cores.",
-                "Describe DNS resolution from a browser to an authoritative name server.",
-                "Explain Unicode encoding with examples of UTF-8 and UTF-16.",
-            ][:max(a.clients) - len(questions)])
-        if not a.clients or min(a.clients) < 1 or max(a.clients) > len(questions):
-            raise ValueError("clients must be in 1..8")
         if a.long_tokens:
             paragraph = "The committee reviewed the budget, the schedule and open questions. A report follows next quarter. "
             questions[0] = paragraph * (a.long_tokens // len(tok.encode(paragraph)) + 1) + \
                 "\nExplain why a written schedule is useful, in detail."
-        if a.fixture_tokens:
-            for i in range(len(questions)):
-                paragraph = f"Independent notebook {i} records units, dates, observations and open questions. "
-                questions[i] = paragraph * ((a.fixture_tokens + i * 128) // len(tok.encode(paragraph)) + 1) + "\n" + questions[i]
         result["fixture_body_tokens"] = [len(tok.encode(q)) for q in questions]
         refs = [chat(f"reference-{i}", text) for i, text in enumerate(questions)]
         save()
-        with ThreadPoolExecutor(max_workers=max(4, max(a.clients), a.parallel)) as pool:
-            for count in a.clients:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for count in (1, 2, 3):
                 for round_id in range(a.rounds):
-                    if a.cold_prefill:
-                        evict_gate = threading.Barrier(a.parallel)
-                        engine.ctl.acquire()
-                        try:
-                            evictions = [pool.submit(chat, f"eviction-{count}-{round_id}-{i}",
-                                f"Replacement {count}/{round_id}/{i}. Explain merge sort in detail with Python.",
-                                limit=32, barrier=evict_gate, checkpoint=False) for i in range(a.parallel)]
-                            time.sleep(0.1)
-                        finally:
-                            engine.ctl.release()
-                        for future in evictions:
-                            future.result(timeout=300)
-                        # Every owner must really be replaced: merely clearing the
-                        # Python hints would leave native KV cached and fake a cold run.
-                        rendered = [svc.template.render(([{"role": "system", "content": system_text}] if system_text else []) +
-                                    [{"role": "user", "content": q}], enable_thinking=False) for q in questions]
-                        prompt_ids = [tok.encode(q, parse_special=True) for q in rendered]
-                        assert all(p not in prompt_ids for p in engine.slot_prompts), "eviction did not replace every native slot"
                     gate = threading.Barrier(count)
-                    samples, stop_sample = [], threading.Event()
-                    def sample_slots():
-                        while not stop_sample.wait(0.01):
-                            with engine.slot_cv:
-                                samples.append({"active": sum(engine.slot_busy), "reserved_tokens": sum(
-                                    n for b, n in enumerate(engine.slot_tokens) if engine.slot_busy[b])})
-                    sampler = threading.Thread(target=sample_slots, daemon=True)
-                    sampler.start()
                     t0 = time.perf_counter()
-                    if a.gather_burst:
-                        engine.ctl.acquire()
-                    try:
-                        futures = [pool.submit(chat, f"c{count}-r{round_id}-{i}", questions[i], barrier=gate)
-                                   for i in range(count)]
-                        if a.gather_burst:
-                            time.sleep(0.1)
-                    finally:
-                        if a.gather_burst:
-                            engine.ctl.release()
-                    try:
-                        rows = [f.result(timeout=300) for f in futures]
-                    finally:
-                        stop_sample.set()
-                        sampler.join(timeout=2)
+                    futures = [pool.submit(chat, f"c{count}-r{round_id}-{i}", questions[i], barrier=gate)
+                               for i in range(count)]
+                    rows = [f.result(timeout=300) for f in futures]
                     for i, row in enumerate(rows):
                         assert row["text"] == refs[i]["text"], row["name"] + " differs from serial reference"
-                        assert row["usage"] and row["usage"]["completion_tokens"] <= a.limit
+                        assert row["usage"] and row["usage"]["completion_tokens"] <= 96
                     elapsed = time.perf_counter() - t0
                     result["rounds"].append({"clients": count, "round": round_id, "wall_s": elapsed,
                         "aggregate_tok_s": sum(r["usage"]["completion_tokens"] for r in rows) / elapsed,
-                        "ttft_s": [r["times"][0] for r in rows],
-                        "peak_active": max((s["active"] for s in samples), default=0),
-                        "peak_reserved_tokens": max((s["reserved_tokens"] for s in samples), default=0)})
-                    if engine.kv_token_budget:
-                        assert all(s["reserved_tokens"] <= engine.kv_token_budget for s in samples), "live KV token budget exceeded"
+                        "ttft_s": [r["times"][0] for r in rows]})
                     save()
                     print(f"HTTP clients={count} round={round_id}: identical; {elapsed:.3f} s; "
                           f"TTFT {[round(r['times'][0],3) for r in rows]}", flush=True)
@@ -240,44 +165,8 @@ def main():
                 assert active.result(timeout=300)["text"] == refs[0]["text"]
                 assert "red" in picture.result(timeout=300)["text"].lower()
                 assert late.result(timeout=300)["text"] == refs[1]["text"]
-                if a.packed_vision_guard:
-                    assert engine.info.get("ragged_prefill") == 1
-                    assert "red" in chat("image-before-packed-guard", content, limit=16)["text"].lower()
-                    guard_ids = [tok.encode(svc.template.render([{"role": "user", "content": q}],
-                                 enable_thinking=False), parse_special=True) for q in questions[:2]]
-                    assert sum(len(ids) - 1 for ids in guard_ids) <= int(engine.info["prefill_chunk"])
-                    with engine.ctl:
-                        engine._send("BPREF " + ';'.join(f"{i}:" + ','.join(map(str, ids[:-1])) for i, ids in enumerate(guard_ids)))
-                        line = engine.lines.get(timeout=30)
-                        assert line is not None and line.strip() == "PREFDONE 0 0 0", repr(line)
-                    assert chat("text-reset-after-packed-guard", questions[0])["text"] == refs[0]["text"]
-                    result["packed_vision_guard"] = {"refused_image_positions": True, "text_reset_equal": True}
-                    save()
             anth = chat("anthropic", questions[0], anthropic=True)
             assert anth["text"] == refs[0]["text"]
-            if a.cold_admission_tokens:
-                paragraph = "An independent cold admission exercises the prompt scheduler and sequence state. "
-                cold_text = paragraph * (a.cold_admission_tokens // len(tok.encode(paragraph)) + 1) + \
-                    "\nExplain why a written schedule helps a project."
-                cold_ref = chat("cold-reference", cold_text, limit=64, checkpoint=False)
-                log_before = (a.output / "engine.log").stat().st_size
-                cold = pool.submit(chat, "cold-staggered", cold_text, limit=64, checkpoint=False)
-                deadline = time.monotonic() + 30
-                while not any(s and s.get("state") == "reading" and s.get("prompt_tokens", 0) > 10000
-                              for s in engine.slot_live) and not cold.done() and time.monotonic() < deadline:
-                    time.sleep(0.02)
-                assert not cold.done(), "cold admission finished before a short request could arrive"
-                short = pool.submit(chat, "cold-short", questions[1])
-                assert short.result(timeout=300)["text"] == refs[1]["text"]
-                assert cold.result(timeout=300)["text"] == cold_ref["text"]
-                with (a.output / "engine.log").open("rb") as log:
-                    log.seek(log_before)
-                    trace = log.read().decode("utf8")
-                assert "the prompt read gives way" in trace, "no real chunk-boundary yield occurred"
-                result["cold_admission"] = {"body_tokens": len(tok.encode(cold_text)), "yielded": True,
-                                             "output_identical": True}
-                save()
-                print("cold long admission yielded to a late short request; both outputs identical", flush=True)
         assert not any(engine.slot_busy)
         assert engine.vision_readers == 0 and not engine.vision_writer
         result["passed"] = True

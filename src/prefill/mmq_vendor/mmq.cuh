@@ -1623,15 +1623,7 @@ static void launch_mul_mat_q(ggml_backend_cuda_context & ctx, const mmq_args & a
     const int ntiles_dst = ntx * nty * ntzw;
     const int tiles_nwaves = (ntiles_dst + nsm - 1) / nsm;
     const int tiles_efficiency_percent = 100 * ntiles_dst / (nsm*tiles_nwaves);
-    bool complete_k = false;
-#ifdef STRATA_MMQ_RAGGED_STABLE
-    static const bool ragged_stable = [] {
-        const char* value = std::getenv("STRATA_NATIVE_RAGGED_PREFILL");
-        return value && std::atoi(value) != 0;
-    }();
-    complete_k = ragged_stable;
-#endif
-    const dim3 block_nums_stream_k(complete_k || (GGML_CUDA_CC_IS_NVIDIA(cc) && tiles_efficiency_percent >= 90) ? ntiles_dst : nsm, 1, 1);
+    const dim3 block_nums_stream_k(GGML_CUDA_CC_IS_NVIDIA(cc) && tiles_efficiency_percent >= 90 ? ntiles_dst : nsm, 1, 1);
 
     GGML_ASSERT(ntiles_dst * blocks_per_ne00_fd.z < (1 << 30)); // Assert that variable kbc will not overflow.
 
