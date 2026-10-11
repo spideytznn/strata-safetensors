@@ -11078,6 +11078,37 @@ int strata_main(int argc, char** argv) {
             const bool borrow_admission = native_kv_handoff && admit_slot >= 0 &&
                 !bs[(size_t) admit_slot].active && (resume == 0 || incoming || slot_source >= 0) &&
                 (slot_source < 0 || bs[(size_t) slot_source].active);
+            if (native_kv_handoff && !borrow_admission && admit_slot >= 0 && admit_slot != slot_source) {
+                // A reader prefix or a different idle source can prevent borrowing.
+                // The destination will still be overwritten at admission: briefly
+                // mount it for the same bounded RAM capture, then restore the reader.
+                BSlot& idle = bs[(size_t) admit_slot];
+                if (!idle.active && idle.cached && !idle.img && !idle.ids.empty() && conversations.enabled()) {
+                    kv_quiesce();
+                    auto& storage = *bslot_ss[0][(size_t) admit_slot];
+                    if (!strata::core::conversation_session_handoff(storage, ss, g, idle.ids, err)) {
+                        std::printf("ERR mounting the replaced batch slot: %s\n", err.c_str());
+                        return 1;
+                    }
+                    auto reader_imgs = std::move(live_imgs);
+                    live_imgs.clear();
+                    live.swap(idle.ids); checks.swap(idle.checks);
+                    std::swap(live_ok, idle.cached); std::swap(cvec_cached, idle.cvec);
+                    conversations.limit_reuse(0);
+                    const bool saved = park_current(incoming ? incoming->bytes() : 0);
+                    live.swap(idle.ids); checks.swap(idle.checks);
+                    std::swap(live_ok, idle.cached); std::swap(cvec_cached, idle.cvec);
+                    live_imgs = std::move(reader_imgs);
+                    std::string restore_err;
+                    if (!strata::core::conversation_session_handoff(storage, ss, g, {}, restore_err)) {
+                        std::printf("ERR unmounting the replaced batch slot: %s\n", restore_err.c_str());
+                        return 1;
+                    }
+                    kv_refresh_owners();
+                    conversations.limit_reuse(0);
+                    if (!saved) { std::printf("ERR parking the replaced batch slot: %s\n", err.c_str()); return 1; }
+                }
+            }
             if (borrow_admission) {
                 kv_quiesce();
                 BSlot& idle = bs[(size_t) admit_slot];
@@ -11087,6 +11118,23 @@ int strata_main(int argc, char** argv) {
                     return 1;
                 }
                 kv_refresh_owners();
+                // The old destination now lives in the reader. Preserve it before reusing
+                // that storage, just as a serial reader parks its outgoing conversation.
+                // Otherwise N+1 conversations cycle through N slots by rereading every
+                // evicted long prompt. Retained RAM chunks describe the previous reader,
+                // so invalidate their reuse extent before capturing this different owner.
+                conversations.limit_reuse(0);
+                if (idle.cached && !idle.img && !idle.ids.empty() && conversations.enabled()) {
+                    live = std::move(idle.ids);
+                    live_imgs.clear();
+                    checks = std::move(idle.checks);
+                    live_ok = true;
+                    cvec_cached = idle.cvec;
+                    if (!park_current(incoming ? incoming->bytes() : 0)) {
+                        std::printf("ERR parking the replaced batch slot: %s\n", err.c_str());
+                        return 1;
+                    }
+                }
                 idle.cached = false;
                 idle.partial = false;
                 idle.ids.clear();

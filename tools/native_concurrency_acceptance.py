@@ -144,6 +144,7 @@ def main():
     ap.add_argument("--yield-tokens", type=int, default=0, help="check ownership across a real chunk-boundary BYIELD")
     ap.add_argument("--growth-tokens", type=int, default=0, help="also test long-slot KV growth beside a short admission")
     ap.add_argument("--capacity-tokens", type=int, default=0, help="exact token count for a near-capacity two-long-slot check")
+    ap.add_argument("--eviction-tokens", type=int, default=0, help="require RAM-cache reuse after replacing every batch slot")
     a = ap.parse_args()
     a.output.mkdir(parents=True, exist_ok=False)
     cfg = json.loads(a.config.read_text(encoding="utf8"))
@@ -237,6 +238,45 @@ def main():
                 save()
                 assert all(x["ids"] == y["ids"] for x, y in zip(multi_refs, multi["jobs"])), "multi-slot mismatch"
                 print(f"{a.slots} slots, unequal output limits: identical ({mode})", flush=True)
+        if a.eviction_tokens:
+            # No solo reference for this unique prefix: it initially exists only in
+            # a batch slot. Replacing every slot must park it, not silently reread it.
+            piece = "An archived research notebook records the measurements and their units. "
+            evict_ids = prompt(piece * (a.eviction_tokens // len(tok.encode(piece)) + 1) +
+                               "\nExplain why recording measurement units matters, with examples.")
+            assert len(evict_ids) + 256 < a.context
+            initial = eng.batch([(evict_ids, 48, keys), (prompts[1], 48, keys)])
+            replacements = [prompt(f"Unrelated replacement {i}: describe a different sorting algorithm.")
+                            for i in range(a.slots)]
+            eng.batch([(ids, 32, keys) for ids in replacements])
+            before = len(eng.log_path.read_text(encoding="utf8"))
+            restored = eng.batch([(evict_ids, 48, keys), (prompts[1], 48, keys)])
+            log = eng.log_path.read_text(encoding="utf8")[before:]
+            restored_tokens = [int(x) for x in re.findall(r"conversation cache: restored (\d+) tokens", log)]
+            result["cases"].append({"name": "batch_slot_eviction", "prompt_tokens": len(evict_ids),
+                                    "initial": initial, "restored": restored, "ram_restored_tokens": restored_tokens})
+            save()
+            assert all(x["ids"] == y["ids"] for x, y in zip(initial["jobs"], restored["jobs"]))
+            assert restored_tokens and max(restored_tokens) > len(evict_ids) * 0.9, "evicted slot reread its long prefix"
+            print(f"replaced batch slot restored from RAM: {max(restored_tokens)} tokens, identical", flush=True)
+            # Continuing idle slot 1 into slot 0 bypasses destination borrowing.
+            # Slot 0's unrelated long conversation must still be parked.
+            next_turn = tok.encode("\n<|im_end|>\n<|im_start|>user\nWrite a detailed explanation of quicksort, "
+                                   "with full Python code and several examples.<|im_end|>\n<|im_start|>assistant\n"
+                                   "<think>\n\n</think>\n\n", parse_special=True)
+            other_follow = prompts[1] + restored["jobs"][1]["ids"] + next_turn
+            diverted = eng.batch([(other_follow, 32, keys)])
+            assert diverted["jobs"][0]["continued"], "fixture ended before replacing the destination slot"
+            before = len(eng.log_path.read_text(encoding="utf8"))
+            moved = eng.batch([(evict_ids, 48, keys), (prompts[1], 48, keys)])
+            log = eng.log_path.read_text(encoding="utf8")[before:]
+            moved_tokens = [int(x) for x in re.findall(r"conversation cache: restored (\d+) tokens", log)]
+            result["cases"].append({"name": "batch_destination_eviction", "prompt_tokens": len(evict_ids),
+                                    "restored": moved, "ram_restored_tokens": moved_tokens})
+            save()
+            assert all(x["ids"] == y["ids"] for x, y in zip(initial["jobs"], moved["jobs"]))
+            assert moved_tokens and max(moved_tokens) > len(evict_ids) * 0.9, "destination overwrite lost its cached prefix"
+            print(f"different-source admission preserved destination: {max(moved_tokens)} tokens, identical", flush=True)
         if a.yield_tokens:
             # No retained live/parked reference: the yielded request must really read from token zero.
             long_ids = prompt(("A separate admission checks persistent state ownership. " * a.yield_tokens)[:a.yield_tokens * 4])

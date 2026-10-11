@@ -51,6 +51,13 @@ idle destination already owns storage, and keeps ordinary slot graph bindings
 stable. A valid reader prefix and an idle source selected for continuation are
 preserved instead of being overwritten by this borrowing step.
 
+A replaced idle slot is parked through the existing bounded RAM conversation
+cache before its storage is reused. The same protection applies when a request
+continues a different idle source into the chosen destination. Without this,
+cycling more conversations than slots can discard a long prompt and force a
+full reread. Parking still obeys the configured byte/slot limits and physical
+RAM floor; under memory pressure it can be skipped, as on the serial path.
+
 The old owner's token/checkpoint identity is invalidated. Retained RAM snapshot
 chunks also lose their reusable-prefix extent on transfer: their prefix cannot
 be assumed to describe the new backing. A regression initially caught this
