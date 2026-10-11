@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "baseline": "../2026-10-11-native-concurrency/optimized5-acceptance",
+  "candidate": "native-acceptance-r3",
+  "matching_token_vectors": 35,
+  "cases": [
+    "greedy",
+    "seeded",
+    "penalties",
+    "cancel_resume",
+    "followup",
+    "caps",
+    "eos",
+    "two_long_capacity",
+    "kv_growth_long_slot"
+  ],
+  "batch_adaptive": {
+    "two_row_rounds": 181,
+    "promoted": 15472
+  },
+  "info": [
+    "INFO logit_bias=1 context=262144 kv=int8 kv_resident=0 expert_slots=4913 expert_cache_mib=12955 expert_slots_primary=4913 expert_cache_primary_mib=12955 spec=2 mtp_max=0 lookup=0 vram_free_mib=1767 cvec=0 arena_mib=64800 pool_workers=15 pcie_frac=0.25 spec_min_p=0.00 conversation_cache_mib=4096 conversation_cache_slots=4 conversation_cache_min_free_mib=2560 conversation_cache_min_tokens=0 tail_role_token=-1 vram_elastic=0 route_tail_skip=0 batch_slots=2 slot_cache=1 batch_groups=1 engine=0.1.42",
+    "INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=67948118016 expert_cuda_pinned_bytes=67948118016 expert_os_locked_bytes=0 prefill_chunk=4096 prefill_workspace=dedicated",
+    "INFO startup_ms=63275"
+  ],
+  "exe_sha256": "7ccbe8580bc78b95d3747f72ef203b19b612a7ce444e08fc774306d55ae13307",
+  "limits": "Finite regression fixtures, including repeated-text capacity. Cancellation is checked independently against each build's solo reference; cross-build cancellation timing is not compared."
+}

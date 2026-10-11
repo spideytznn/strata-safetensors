@@ -174,6 +174,11 @@ def main():
     eng = Protocol(cfg, a.output, a.vision)
     try:
         result["info"] = eng.info
+        tail = next((re.search(r"\broute_tail_skip=(\d+)", line) for line in eng.info
+                     if "route_tail_skip=" in line), None)
+        if tail is not None:
+            assert tail.group(1) == "0", "quality acceptance requires all routed experts (tail skip off)"
+        result["info"] = eng.info
         assert any("batch_slots=2" in line for line in eng.info), eng.info
         pairs = [
             ("greedy", ["temperature=0", "temperature=0"]),

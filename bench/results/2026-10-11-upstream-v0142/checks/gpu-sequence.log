@@ -1,0 +1,415 @@
+[strata] starting the engine: reading the model's weights ...
+[strata] still starting (20 s) - please wait ...
+[strata] still starting (40 s) - please wait ...
+[strata] still starting (61 s) - please wait ...
+[strata] filling the GPU's expert cache (6044 experts, 15.56 GiB of VRAM) ...
+k0 english: 48 tokens, reused=0, drafts=0/0
+k0 chinese: 48 tokens, reused=0, drafts=0/0
+k0 code: 48 tokens, reused=0, drafts=0/0
+k0 math: 4 tokens, reused=0, drafts=0/0
+k0 eos: 2 tokens, reused=0, drafts=0/0
+k0 sampled: 32 tokens, reused=16, drafts=0/0
+k0 official-english: 64 tokens, reused=16, drafts=0/0
+k0 official-chinese: 64 tokens, reused=0, drafts=0/0
+k0 official-code: 64 tokens, reused=25, drafts=0/0
+k0 limit1: 1 tokens, reused=16, drafts=0/0
+k0 limit2: 2 tokens, reused=16, drafts=0/0
+k0 limit3: 3 tokens, reused=16, drafts=0/0
+k0 limit7: 7 tokens, reused=16, drafts=0/0
+k0 limit9: 9 tokens, reused=16, drafts=0/0
+k0 A: 1 tokens, reused=0, drafts=0/0
+k0 B: 1 tokens, reused=0, drafts=0/0
+k0 A+: 8 tokens, reused=28, drafts=0/0
+k0 B-again: 1 tokens, reused=20, drafts=0/0
+k0 A+-restored: 8 tokens, reused=43, drafts=0/0
+k0 after-cancel: 16 tokens, reused=36, drafts=0/0
+[strata] starting the engine: reading the model's weights ...
+[strata] still starting (20 s) - please wait ...
+[strata] still starting (41 s) - please wait ...
+[strata] filling the GPU's expert cache (5040 experts, 12.98 GiB of VRAM) ...
+k2 english: 48 tokens, reused=0, drafts=26/40
+k2 chinese: 48 tokens, reused=0, drafts=27/38
+k2 code: 48 tokens, reused=0, drafts=30/34
+k2 math: 4 tokens, reused=0, drafts=1/4
+k2 eos: 2 tokens, reused=0, drafts=0/2
+k2 sampled: 32 tokens, reused=16, drafts=15/28
+k2 official-english: 64 tokens, reused=16, drafts=36/50
+k2 official-chinese: 64 tokens, reused=0, drafts=37/50
+k2 official-code: 64 tokens, reused=25, drafts=37/49
+k2 limit1: 1 tokens, reused=16, drafts=0/0
+k2 limit2: 2 tokens, reused=16, drafts=0/1
+k2 limit3: 3 tokens, reused=16, drafts=1/1
+k2 limit7: 7 tokens, reused=16, drafts=3/5
+k2 limit9: 9 tokens, reused=16, drafts=3/9
+k2 A: 1 tokens, reused=0, drafts=0/0
+k2 B: 1 tokens, reused=0, drafts=0/0
+k2 A+: 8 tokens, reused=28, drafts=4/6
+k2 B-again: 1 tokens, reused=20, drafts=0/0
+k2 A+-restored: 8 tokens, reused=43, drafts=4/6
+k2 after-cancel: 16 tokens, reused=25, drafts=9/12
+PASS: native MTP, greedy/seeded sampling, output caps, EOS, A/B/A, disk restore, cancel/resume, zero expert file reads
+[strata] starting the engine: reading the model's weights ...
+[strata] still starting (20 s) - please wait ...
+[strata] still starting (41 s) - please wait ...
+[strata] filling the GPU's expert cache (4903 experts, 12.63 GiB of VRAM) ...
+[strata] almost ready ...
+[strata] reading the prompt: 4,096 of 124,135 tokens, 1 s so far
+[strata] reading the prompt: 8,192 of 124,135 tokens, 3 s so far
+[strata] reading the prompt: 12,288 of 124,135 tokens, 4 s so far
+[strata] reading the prompt: 16,384 of 124,135 tokens, 5 s so far
+[strata] reading the prompt: 20,480 of 124,135 tokens, 6 s so far
+[strata] reading the prompt: 24,576 of 124,135 tokens, 7 s so far
+[strata] reading the prompt: 28,672 of 124,135 tokens, 8 s so far
+[strata] reading the prompt: 32,768 of 124,135 tokens, 10 s so far
+[strata] reading the prompt: 36,864 of 124,135 tokens, 11 s so far
+[strata] reading the prompt: 40,960 of 124,135 tokens, 12 s so far
+[strata] reading the prompt: 45,056 of 124,135 tokens, 13 s so far
+[strata] reading the prompt: 49,152 of 124,135 tokens, 14 s so far
+[strata] reading the prompt: 53,248 of 124,135 tokens, 15 s so far
+[strata] reading the prompt: 57,344 of 124,135 tokens, 17 s so far
+[strata] reading the prompt: 61,440 of 124,135 tokens, 18 s so far
+[strata] reading the prompt: 65,536 of 124,135 tokens, 19 s so far
+[strata] reading the prompt: 69,632 of 124,135 tokens, 20 s so far
+[strata] reading the prompt: 73,728 of 124,135 tokens, 21 s so far
+[strata] reading the prompt: 77,824 of 124,135 tokens, 22 s so far
+[strata] reading the prompt: 81,920 of 124,135 tokens, 24 s so far
+[strata] reading the prompt: 86,016 of 124,135 tokens, 25 s so far
+[strata] reading the prompt: 90,112 of 124,135 tokens, 26 s so far
+[strata] reading the prompt: 94,208 of 124,135 tokens, 27 s so far
+[strata] reading the prompt: 98,304 of 124,135 tokens, 28 s so far
+[strata] reading the prompt: 102,400 of 124,135 tokens, 30 s so far
+[strata] reading the prompt: 106,496 of 124,135 tokens, 31 s so far
+[strata] reading the prompt: 110,592 of 124,135 tokens, 32 s so far
+[strata] reading the prompt: 114,688 of 124,135 tokens, 33 s so far
+[strata] reading the prompt: 118,784 of 124,135 tokens, 34 s so far
+[strata] reading the prompt: 122,880 of 124,135 tokens, 35 s so far
+[strata] reading the prompt: 124,128 of 124,135 tokens, 37 s so far
+[strata] answering: 45 of max 96 tokens, 54.3 tok/s, 38 s
+[strata] done: 96 tokens in 39 s (55.5 tok/s) (length, cancel=False), expert cache 71.2% hit (+4.4% of the routed experts over PCIe)
+[strata] reading the prompt: 25 of 26 tokens, 1 s so far
+[strata] answering: 51 of max 96 tokens, 51.3 tok/s, 2 s
+[strata] done: 96 tokens in 3 s (53.7 tok/s) (length, cancel=False), expert cache 64.7% hit (+6.2% of the routed experts over PCIe)
+[strata] answering: 37 of max 96 tokens, 57.6 tok/s, 1 s
+[strata] answering: 94 of max 96 tokens, 56.8 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (56.9 tok/s) (length, cancel=False), expert cache 71.6% hit (+4.4% of the routed experts over PCIe)
+[strata] answering: 32 of max 96 tokens, 51.0 tok/s, 1 s
+[strata] answering: 85 of max 96 tokens, 51.9 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (52.9 tok/s) (length, cancel=False), expert cache 69.6% hit (+4.9% of the routed experts over PCIe)
+HTTP clients=1 round=0: identical; 2.211 s; TTFT [0.395]
+[strata] answering: 50 of max 96 tokens, 64.5 tok/s, 1 s
+[strata] done: 96 tokens in 2 s (64.1 tok/s) (length, cancel=False), expert cache 83.7% hit (+1.6% of the routed experts over PCIe)
+HTTP clients=1 round=1: identical; 1.747 s; TTFT [0.247]
+[strata] answering: 22 of max 96 tokens, 64.0 tok/s, 1 s
+[strata] answering: 85 of max 96 tokens, 63.1 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (63.2 tok/s) (length, cancel=False), expert cache 85.0% hit (+1.5% of the routed experts over PCIe)
+HTTP clients=1 round=2: identical; 2.196 s; TTFT [0.675]
+[strata] reading the prompt: 124,134 of 124,135 tokens, 1 s so far
+[strata] answering: 5 of max 96 tokens, 8.3 tok/s, 1 s
+[strata] answering: 32 of max 96 tokens, 32.5 tok/s, 2 s
+[strata] answering: 41 of max 96 tokens, 25.5 tok/s, 2 s
+[strata] answering: 69 of max 96 tokens, 34.6 tok/s, 3 s
+[strata] answering: 79 of max 96 tokens, 30.1 tok/s, 3 s
+[strata] done: 96 tokens in 4 s (31.2 tok/s) (length, cancel=False), expert cache 50.9% hit (+10.0% of the routed experts over PCIe)
+[strata] done: 96 tokens in 4 s (35.7 tok/s) (length, cancel=False), expert cache 86.9% hit (+1.5% of the routed experts over PCIe)
+HTTP clients=2 round=0: identical; 3.934 s; TTFT [1.242, 0.793]
+[strata] answering: 16 of max 96 tokens, 24.2 tok/s, 1 s
+[strata] answering: 13 of max 96 tokens, 39.3 tok/s, 1 s
+[strata] answering: 55 of max 96 tokens, 32.7 tok/s, 2 s
+[strata] answering: 52 of max 96 tokens, 38.4 tok/s, 2 s
+[strata] answering: 94 of max 96 tokens, 34.9 tok/s, 3 s
+[strata] answering: 91 of max 96 tokens, 38.5 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (34.9 tok/s) (length, cancel=False), expert cache 64.5% hit (+5.6% of the routed experts over PCIe)
+[strata] done: 96 tokens in 3 s (38.8 tok/s) (length, cancel=False), expert cache 80.7% hit (+1.9% of the routed experts over PCIe)
+HTTP clients=2 round=1: identical; 3.164 s; TTFT [0.69, 0.36]
+[strata] answering: 6 of max 96 tokens, 15.2 tok/s, 1 s
+[strata] answering: 4 of max 96 tokens, 41.7 tok/s, 1 s
+[strata] answering: 44 of max 96 tokens, 31.5 tok/s, 2 s
+[strata] answering: 43 of max 96 tokens, 38.4 tok/s, 2 s
+[strata] answering: 83 of max 96 tokens, 34.4 tok/s, 3 s
+[strata] answering: 81 of max 96 tokens, 38.2 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (34.8 tok/s) (length, cancel=False), expert cache 64.2% hit (+5.8% of the routed experts over PCIe)
+[strata] done: 96 tokens in 3 s (38.6 tok/s) (length, cancel=False), expert cache 79.5% hit (+2.3% of the routed experts over PCIe)
+HTTP clients=2 round=2: identical; 3.423 s; TTFT [0.934, 0.609]
+[strata] answering: 8 of max 96 tokens, 17.5 tok/s, 1 s
+[strata] answering: 5 of max 96 tokens, 38.0 tok/s, 1 s
+[strata] answering: 46 of max 96 tokens, 31.2 tok/s, 2 s
+[strata] answering: 43 of max 96 tokens, 37.5 tok/s, 2 s
+[strata] answering: 84 of max 96 tokens, 33.9 tok/s, 3 s
+[strata] answering: 81 of max 96 tokens, 37.7 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (34.5 tok/s) (length, cancel=False), expert cache 64.4% hit (+5.8% of the routed experts over PCIe)
+[strata] reading the prompt: 26 of 27 tokens, 4 s so far
+[strata] done: 96 tokens in 4 s (30.9 tok/s) (length, cancel=False), expert cache 79.7% hit (+2.3% of the routed experts over PCIe)
+[strata] answering: 52 of max 96 tokens, 52.5 tok/s, 5 s
+[strata] done: 96 tokens in 6 s (54.6 tok/s) (length, cancel=False), expert cache 69.8% hit (+4.9% of the routed experts over PCIe)
+HTTP clients=3 round=0: identical; 5.686 s; TTFT [0.885, 0.558, 3.926]
+[strata] answering: 25 of max 96 tokens, 44.5 tok/s, 1 s
+[strata] answering: 28 of max 96 tokens, 31.7 tok/s, 1 s
+[strata] answering: 67 of max 96 tokens, 42.6 tok/s, 2 s
+[strata] answering: 70 of max 96 tokens, 36.9 tok/s, 2 s
+[strata] done: 96 tokens in 3 s (38.3 tok/s) (length, cancel=False), expert cache 81.1% hit (+1.7% of the routed experts over PCIe)
+[strata] reading the prompt: 124,134 of 124,135 tokens, 3 s so far
+[strata] answering: 95 of max 96 tokens, 34.8 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (34.8 tok/s) (length, cancel=False), expert cache 77.8% hit (+3.1% of the routed experts over PCIe)
+[strata] answering: 38 of max 96 tokens, 38.1 tok/s, 4 s
+[strata] answering: 93 of max 96 tokens, 46.2 tok/s, 5 s
+[strata] done: 96 tokens in 5 s (46.5 tok/s) (length, cancel=False), expert cache 61.3% hit (+7.1% of the routed experts over PCIe)
+HTTP clients=3 round=1: identical; 5.092 s; TTFT [3.028, 0.455, 0.133]
+[strata] reading the prompt: 26 of 27 tokens, 1 s so far
+[strata] answering: 5 of max 96 tokens, 7.9 tok/s, 1 s
+[strata] answering: 35 of max 96 tokens, 35.2 tok/s, 2 s
+[strata] answering: 45 of max 96 tokens, 27.3 tok/s, 2 s
+[strata] answering: 74 of max 96 tokens, 37.1 tok/s, 3 s
+[strata] answering: 85 of max 96 tokens, 32.0 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (32.7 tok/s) (length, cancel=False), expert cache 59.0% hit (+7.5% of the routed experts over PCIe)
+[strata] reading the prompt: 124,134 of 124,135 tokens, 4 s so far
+[strata] answering: 95 of max 96 tokens, 31.2 tok/s, 4 s
+[strata] done: 96 tokens in 4 s (31.3 tok/s) (length, cancel=False), expert cache 87.8% hit (+0.8% of the routed experts over PCIe)
+[strata] answering: 40 of max 96 tokens, 40.2 tok/s, 5 s
+[strata] done: 96 tokens in 6 s (48.1 tok/s) (length, cancel=False), expert cache 65.9% hit (+5.8% of the routed experts over PCIe)
+HTTP clients=3 round=2: identical; 5.922 s; TTFT [3.925, 0.549, 1.018]
+[strata] answering: 10 of max 96 tokens, 20.0 tok/s, 1 s
+[strata] answering: 8 of max 96 tokens, 39.9 tok/s, 1 s
+[strata] done: 14 tokens in 1 s (38.5 tok/s) (disconnect, cancel=True), expert cache 80.7% hit (+1.7% of the routed experts over PCIe)
+[strata] answering: 35 of max 96 tokens, 23.3 tok/s, 2 s
+[strata] answering: 88 of max 96 tokens, 35.0 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (36.0 tok/s) (length, cancel=False), expert cache 67.6% hit (+5.5% of the routed experts over PCIe)
+[strata] answering: 38 of max 96 tokens, 52.3 tok/s, 1 s
+[strata] answering: 94 of max 96 tokens, 54.1 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (54.1 tok/s) (length, cancel=False), expert cache 68.0% hit (+5.4% of the routed experts over PCIe)
+[strata] answering: 31 of max 96 tokens, 55.9 tok/s, 1 s
+[strata] reading the prompt: 124,134 of 124,135 tokens, 1 s so far
+[strata] reading the prompt: 124,134 of 124,135 tokens, 1 s so far
+[strata] answering: 93 of max 96 tokens, 59.6 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (59.7 tok/s) (length, cancel=False), expert cache 80.3% hit (+2.4% of the routed experts over PCIe)
+[strata] reading the prompt: 26 tokens, 2 s so far
+[strata] reading the prompt: 71 of 78 tokens, 2 s so far
+[strata] done: 2 tokens in 3 s (74.7 tok/s) (stop, cancel=False), expert cache 39.1% hit (+13.3% of the routed experts over PCIe)
+[strata] answering: 24 of max 96 tokens, 52.8 tok/s, 3 s
+[strata] answering: 78 of max 96 tokens, 53.6 tok/s, 4 s
+[strata] done: 96 tokens in 5 s (54.4 tok/s) (length, cancel=False), expert cache 64.0% hit (+6.4% of the routed experts over PCIe)
+[strata] answering: 37 of max 96 tokens, 50.3 tok/s, 1 s
+[strata] answering: 93 of max 96 tokens, 53.1 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (53.3 tok/s) (length, cancel=False), expert cache 65.2% hit (+6.2% of the routed experts over PCIe)
+HTTP parity, excess-client queue, disconnect, vision exclusion, Anthropic: passed
+[strata] starting the engine: reading the model's weights ...
+[strata] still starting (20 s) - please wait ...
+[strata] still starting (41 s) - please wait ...
+[strata] filling the GPU's expert cache (5016 experts, 12.92 GiB of VRAM) ...
+[strata] almost ready ...
+[strata] reading the prompt: 4,096 of 124,135 tokens, 1 s so far
+[strata] reading the prompt: 8,192 of 124,135 tokens, 3 s so far
+[strata] reading the prompt: 12,288 of 124,135 tokens, 4 s so far
+[strata] reading the prompt: 16,384 of 124,135 tokens, 5 s so far
+[strata] reading the prompt: 20,480 of 124,135 tokens, 6 s so far
+[strata] reading the prompt: 24,576 of 124,135 tokens, 7 s so far
+[strata] reading the prompt: 28,672 of 124,135 tokens, 8 s so far
+[strata] reading the prompt: 32,768 of 124,135 tokens, 10 s so far
+[strata] reading the prompt: 36,864 of 124,135 tokens, 11 s so far
+[strata] reading the prompt: 40,960 of 124,135 tokens, 12 s so far
+[strata] reading the prompt: 45,056 of 124,135 tokens, 13 s so far
+[strata] reading the prompt: 49,152 of 124,135 tokens, 14 s so far
+[strata] reading the prompt: 53,248 of 124,135 tokens, 15 s so far
+[strata] reading the prompt: 57,344 of 124,135 tokens, 17 s so far
+[strata] reading the prompt: 61,440 of 124,135 tokens, 18 s so far
+[strata] reading the prompt: 65,536 of 124,135 tokens, 19 s so far
+[strata] reading the prompt: 69,632 of 124,135 tokens, 20 s so far
+[strata] reading the prompt: 73,728 of 124,135 tokens, 21 s so far
+[strata] reading the prompt: 77,824 of 124,135 tokens, 22 s so far
+[strata] reading the prompt: 81,920 of 124,135 tokens, 23 s so far
+[strata] reading the prompt: 86,016 of 124,135 tokens, 25 s so far
+[strata] reading the prompt: 90,112 of 124,135 tokens, 26 s so far
+[strata] reading the prompt: 94,208 of 124,135 tokens, 27 s so far
+[strata] reading the prompt: 98,304 of 124,135 tokens, 28 s so far
+[strata] reading the prompt: 102,400 of 124,135 tokens, 29 s so far
+[strata] reading the prompt: 106,496 of 124,135 tokens, 30 s so far
+[strata] reading the prompt: 110,592 of 124,135 tokens, 32 s so far
+[strata] reading the prompt: 114,688 of 124,135 tokens, 33 s so far
+[strata] reading the prompt: 118,784 of 124,135 tokens, 34 s so far
+[strata] reading the prompt: 122,880 of 124,135 tokens, 35 s so far
+[strata] reading the prompt: 124,128 of 124,135 tokens, 36 s so far
+[strata] answering: 48 of max 96 tokens, 57.5 tok/s, 37 s
+[strata] done: 96 tokens in 38 s (59.2 tok/s) (length, cancel=False), expert cache 71.7% hit (+4.3% of the routed experts over PCIe)
+[strata] reading the prompt: 25 of 26 tokens, 1 s so far
+[strata] answering: 53 of max 96 tokens, 53.1 tok/s, 2 s
+[strata] done: 96 tokens in 3 s (56.3 tok/s) (length, cancel=False), expert cache 65.0% hit (+6.1% of the routed experts over PCIe)
+[strata] answering: 40 of max 96 tokens, 61.4 tok/s, 1 s
+[strata] done: 96 tokens in 2 s (61.3 tok/s) (length, cancel=False), expert cache 72.2% hit (+4.3% of the routed experts over PCIe)
+[strata] answering: 35 of max 96 tokens, 55.0 tok/s, 1 s
+[strata] done: 96 tokens in 2 s (58.9 tok/s) (length, cancel=False), expert cache 70.3% hit (+4.7% of the routed experts over PCIe)
+HTTP clients=1 round=0: identical; 2.009 s; TTFT [0.378]
+[strata] answering: 53 of max 96 tokens, 68.0 tok/s, 1 s
+[strata] done: 96 tokens in 2 s (67.1 tok/s) (length, cancel=False), expert cache 84.4% hit (+1.5% of the routed experts over PCIe)
+HTTP clients=1 round=1: identical; 1.666 s; TTFT [0.232]
+[strata] answering: 23 of max 96 tokens, 67.8 tok/s, 1 s
+[strata] answering: 89 of max 96 tokens, 66.0 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (66.2 tok/s) (length, cancel=False), expert cache 85.8% hit (+1.3% of the routed experts over PCIe)
+HTTP clients=1 round=2: identical; 2.122 s; TTFT [0.671]
+[strata] reading the prompt: 124,134 of 124,135 tokens, 1 s so far
+[strata] answering: 5 of max 96 tokens, 8.3 tok/s, 1 s
+[strata] answering: 34 of max 96 tokens, 34.1 tok/s, 2 s
+[strata] answering: 44 of max 96 tokens, 27.1 tok/s, 2 s
+[strata] answering: 74 of max 96 tokens, 36.8 tok/s, 3 s
+[strata] answering: 84 of max 96 tokens, 31.9 tok/s, 3 s
+[strata] done: 96 tokens in 4 s (32.8 tok/s) (length, cancel=False), expert cache 51.7% hit (+9.8% of the routed experts over PCIe)
+[strata] done: 96 tokens in 4 s (37.9 tok/s) (length, cancel=False), expert cache 87.7% hit (+1.5% of the routed experts over PCIe)
+HTTP clients=2 round=0: identical; 3.818 s; TTFT [1.282, 0.831]
+[strata] answering: 15 of max 96 tokens, 41.3 tok/s, 1 s
+[strata] answering: 18 of max 96 tokens, 27.0 tok/s, 1 s
+[strata] answering: 56 of max 96 tokens, 40.7 tok/s, 2 s
+[strata] answering: 59 of max 96 tokens, 35.1 tok/s, 2 s
+[strata] done: 96 tokens in 3 s (37.2 tok/s) (length, cancel=False), expert cache 64.2% hit (+5.6% of the routed experts over PCIe)
+[strata] done: 96 tokens in 3 s (41.3 tok/s) (length, cancel=False), expert cache 81.6% hit (+1.5% of the routed experts over PCIe)
+HTTP clients=2 round=1: identical; 2.997 s; TTFT [0.668, 0.364]
+[strata] answering: 7 of max 96 tokens, 17.5 tok/s, 1 s
+[strata] answering: 4 of max 96 tokens, 43.8 tok/s, 1 s
+[strata] answering: 45 of max 96 tokens, 40.7 tok/s, 2 s
+[strata] answering: 48 of max 96 tokens, 33.9 tok/s, 2 s
+[strata] answering: 90 of max 96 tokens, 36.9 tok/s, 3 s
+[strata] answering: 87 of max 96 tokens, 40.9 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (37.1 tok/s) (length, cancel=False), expert cache 63.8% hit (+5.6% of the routed experts over PCIe)
+[strata] done: 96 tokens in 3 s (41.1 tok/s) (length, cancel=False), expert cache 80.0% hit (+1.9% of the routed experts over PCIe)
+HTTP clients=2 round=2: identical; 3.268 s; TTFT [0.928, 0.621]
+[strata] answering: 9 of max 96 tokens, 19.1 tok/s, 1 s
+[strata] answering: 6 of max 96 tokens, 35.3 tok/s, 1 s
+[strata] answering: 48 of max 96 tokens, 32.5 tok/s, 2 s
+[strata] answering: 45 of max 96 tokens, 38.2 tok/s, 2 s
+[strata] answering: 85 of max 96 tokens, 38.8 tok/s, 3 s
+[strata] answering: 88 of max 96 tokens, 35.4 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (35.9 tok/s) (length, cancel=False), expert cache 79.0% hit (+1.7% of the routed experts over PCIe)
+[strata] reading the prompt: 25 of 26 tokens, 4 s so far
+[strata] done: 96 tokens in 4 s (31.9 tok/s) (length, cancel=False), expert cache 79.8% hit (+1.9% of the routed experts over PCIe)
+[strata] answering: 54 of max 96 tokens, 54.4 tok/s, 5 s
+[strata] done: 96 tokens in 5 s (56.6 tok/s) (length, cancel=False), expert cache 69.0% hit (+5.2% of the routed experts over PCIe)
+HTTP clients=3 round=0: identical; 5.507 s; TTFT [0.857, 3.811, 0.557]
+[strata] answering: 28 of max 96 tokens, 46.4 tok/s, 1 s
+[strata] answering: 31 of max 96 tokens, 34.1 tok/s, 1 s
+[strata] answering: 75 of max 96 tokens, 39.2 tok/s, 2 s
+[strata] answering: 72 of max 96 tokens, 44.8 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (40.2 tok/s) (length, cancel=False), expert cache 74.4% hit (+3.3% of the routed experts over PCIe)
+[strata] reading the prompt: 124,134 of 124,135 tokens, 3 s so far
+[strata] answering: 96 of max 96 tokens, 36.7 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (36.7 tok/s) (length, cancel=False), expert cache 92.9% hit (+0.6% of the routed experts over PCIe)
+[strata] answering: 41 of max 96 tokens, 41.0 tok/s, 4 s
+[strata] done: 96 tokens in 5 s (49.3 tok/s) (length, cancel=False), expert cache 62.3% hit (+6.8% of the routed experts over PCIe)
+HTTP clients=3 round=1: identical; 4.811 s; TTFT [2.863, 0.113, 0.42]
+[strata] answering: 2 of max 96 tokens, 12.7 tok/s, 1 s
+[strata] answering: 5 of max 96 tokens, 8.2 tok/s, 1 s
+[strata] answering: 47 of max 96 tokens, 29.1 tok/s, 2 s
+[strata] answering: 44 of max 96 tokens, 37.8 tok/s, 2 s
+[strata] answering: 90 of max 96 tokens, 34.2 tok/s, 3 s
+[strata] answering: 87 of max 96 tokens, 39.9 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (34.6 tok/s) (length, cancel=False), expert cache 83.6% hit (+0.6% of the routed experts over PCIe)
+[strata] reading the prompt: 124,134 of 124,135 tokens, 4 s so far
+[strata] done: 96 tokens in 4 s (32.9 tok/s) (length, cancel=False), expert cache 72.1% hit (+4.4% of the routed experts over PCIe)
+[strata] answering: 44 of max 96 tokens, 44.1 tok/s, 5 s
+[strata] done: 96 tokens in 6 s (51.3 tok/s) (length, cancel=False), expert cache 66.6% hit (+5.6% of the routed experts over PCIe)
+HTTP clients=3 round=2: identical; 5.617 s; TTFT [3.743, 0.983, 0.533]
+[strata] answering: 9 of max 96 tokens, 19.2 tok/s, 1 s
+[strata] answering: 7 of max 96 tokens, 44.2 tok/s, 1 s
+[strata] done: 14 tokens in 1 s (41.5 tok/s) (disconnect, cancel=True), expert cache 81.9% hit (+2.1% of the routed experts over PCIe)
+[strata] answering: 35 of max 96 tokens, 23.7 tok/s, 2 s
+[strata] answering: 95 of max 96 tokens, 38.2 tok/s, 3 s
+[strata] done: 96 tokens in 3 s (38.3 tok/s) (length, cancel=False), expert cache 68.7% hit (+5.2% of the routed experts over PCIe)
+[strata] answering: 44 of max 96 tokens, 56.4 tok/s, 1 s
+[strata] done: 96 tokens in 2 s (57.9 tok/s) (length, cancel=False), expert cache 68.6% hit (+5.1% of the routed experts over PCIe)
+[strata] answering: 31 of max 96 tokens, 54.6 tok/s, 1 s
+[strata] reading the prompt: 124,134 of 124,135 tokens, 1 s so far
+[strata] reading the prompt: 124,134 of 124,135 tokens, 1 s so far
+[strata] answering: 96 of max 96 tokens, 61.0 tok/s, 2 s
+[strata] done: 96 tokens in 2 s (61.0 tok/s) (length, cancel=False), expert cache 81.0% hit (+2.2% of the routed experts over PCIe)
+[strata] reading the prompt: 26 tokens, 2 s so far
+[strata] reading the prompt: 71 of 78 tokens, 2 s so far
+[strata] done: 2 tokens in 3 s (86.2 tok/s) (stop, cancel=False), expert cache 39.3% hit (+13.0% of the routed experts over PCIe)
+[strata] answering: 25 of max 96 tokens, 55.1 tok/s, 3 s
+[strata] answering: 82 of max 96 tokens, 56.3 tok/s, 4 s
+[strata] done: 96 tokens in 4 s (56.9 tok/s) (length, cancel=False), expert cache 63.7% hit (+6.5% of the routed experts over PCIe)
+[strata] answering: 41 of max 96 tokens, 54.3 tok/s, 1 s
+[strata] done: 96 tokens in 2 s (56.7 tok/s) (length, cancel=False), expert cache 66.4% hit (+5.8% of the routed experts over PCIe)
+HTTP parity, excess-client queue, disconnect, vision exclusion, Anthropic: passed
+{
+  "baseline": {
+    "directory": "bench\\results\\2026-10-11-upstream-v0142\\http-long-before",
+    "exe_sha256": "257208bff0788021c843205f2f8f222309e9ad1ae4aac536c4a8126ac5359b68",
+    "startup_ms": 60789,
+    "fixture_body_tokens": [
+      124123,
+      14,
+      15
+    ],
+    "clients": {
+      "1": {
+        "rounds": 3,
+        "aggregate_tok_s": 43.709871719726706,
+        "last_first_content_s": 0.39459260000012364,
+        "wall_s": 2.1963001999997687
+      },
+      "2": {
+        "rounds": 3,
+        "aggregate_tok_s": 56.08971432953703,
+        "last_first_content_s": 0.9338826000002882,
+        "wall_s": 3.4230874999998377
+      },
+      "3": {
+        "rounds": 3,
+        "aggregate_tok_s": 50.653961996373766,
+        "last_first_content_s": 3.924645099999907,
+        "wall_s": 5.685636199999863
+      }
+    },
+    "slot_copy_median_ms": 21.3,
+    "slot_restore_median_ms": 24.299999999999997,
+    "expert_source_bytes": 0,
+    "mtp_source_bytes": 0
+  },
+  "candidate": {
+    "directory": "bench\\results\\2026-10-11-upstream-v0142\\http-long-after",
+    "exe_sha256": "7ccbe8580bc78b95d3747f72ef203b19b612a7ce444e08fc774306d55ae13307",
+    "startup_ms": 54272,
+    "fixture_body_tokens": [
+      124123,
+      14,
+      15
+    ],
+    "clients": {
+      "1": {
+        "rounds": 3,
+        "aggregate_tok_s": 47.79137154665646,
+        "last_first_content_s": 0.3781679999997323,
+        "wall_s": 2.0087307999997392
+      },
+      "2": {
+        "rounds": 3,
+        "aggregate_tok_s": 58.74788431121971,
+        "last_first_content_s": 0.9282345999999961,
+        "wall_s": 3.2682027999999264
+      },
+      "3": {
+        "rounds": 3,
+        "aggregate_tok_s": 52.29651996076298,
+        "last_first_content_s": 3.743144499999744,
+        "wall_s": 5.507058600000164
+      }
+    },
+    "slot_copy_median_ms": 21.0,
+    "slot_restore_median_ms": 24.35,
+    "expert_source_bytes": 0,
+    "mtp_source_bytes": 0
+  },
+  "changes": {
+    "1": {
+      "throughput_percent": 9.3377071731092,
+      "last_first_content_percent": -4.16241967041101
+    },
+    "2": {
+      "throughput_percent": 4.739139811027471,
+      "last_first_content_percent": -0.6047869400597428
+    },
+    "3": {
+      "throughput_percent": 3.242703827406035,
+      "last_first_content_percent": -4.624637269753828
+    }
+  },
+  "matching_responses": 27,
+  "limits": "Sequential warm-cache screens; admissions and HTTP included. GPU clocks not controlled. Repeated-text long prompts do not test retrieval quality."
+}
+PASS: sequential native MTP and same-day paired HTTP regression.

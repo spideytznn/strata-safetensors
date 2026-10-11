@@ -1,0 +1,86 @@
+{
+  "baseline": {
+    "directory": "bench\\results\\2026-10-11-upstream-v0142\\http-long-before",
+    "exe_sha256": "257208bff0788021c843205f2f8f222309e9ad1ae4aac536c4a8126ac5359b68",
+    "startup_ms": 60789,
+    "fixture_body_tokens": [
+      124123,
+      14,
+      15
+    ],
+    "clients": {
+      "1": {
+        "rounds": 3,
+        "aggregate_tok_s": 43.709871719726706,
+        "last_first_content_s": 0.39459260000012364,
+        "wall_s": 2.1963001999997687
+      },
+      "2": {
+        "rounds": 3,
+        "aggregate_tok_s": 56.08971432953703,
+        "last_first_content_s": 0.9338826000002882,
+        "wall_s": 3.4230874999998377
+      },
+      "3": {
+        "rounds": 3,
+        "aggregate_tok_s": 50.653961996373766,
+        "last_first_content_s": 3.924645099999907,
+        "wall_s": 5.685636199999863
+      }
+    },
+    "slot_copy_median_ms": 21.3,
+    "slot_restore_median_ms": 24.299999999999997,
+    "expert_source_bytes": 0,
+    "mtp_source_bytes": 0
+  },
+  "candidate": {
+    "directory": "bench\\results\\2026-10-11-upstream-v0142\\http-long-after",
+    "exe_sha256": "7ccbe8580bc78b95d3747f72ef203b19b612a7ce444e08fc774306d55ae13307",
+    "startup_ms": 54272,
+    "fixture_body_tokens": [
+      124123,
+      14,
+      15
+    ],
+    "clients": {
+      "1": {
+        "rounds": 3,
+        "aggregate_tok_s": 47.79137154665646,
+        "last_first_content_s": 0.3781679999997323,
+        "wall_s": 2.0087307999997392
+      },
+      "2": {
+        "rounds": 3,
+        "aggregate_tok_s": 58.74788431121971,
+        "last_first_content_s": 0.9282345999999961,
+        "wall_s": 3.2682027999999264
+      },
+      "3": {
+        "rounds": 3,
+        "aggregate_tok_s": 52.29651996076298,
+        "last_first_content_s": 3.743144499999744,
+        "wall_s": 5.507058600000164
+      }
+    },
+    "slot_copy_median_ms": 21.0,
+    "slot_restore_median_ms": 24.35,
+    "expert_source_bytes": 0,
+    "mtp_source_bytes": 0
+  },
+  "changes": {
+    "1": {
+      "throughput_percent": 9.3377071731092,
+      "last_first_content_percent": -4.16241967041101
+    },
+    "2": {
+      "throughput_percent": 4.739139811027471,
+      "last_first_content_percent": -0.6047869400597428
+    },
+    "3": {
+      "throughput_percent": 3.242703827406035,
+      "last_first_content_percent": -4.624637269753828
+    }
+  },
+  "matching_responses": 27,
+  "limits": "Sequential warm-cache screens; admissions and HTTP included. GPU clocks not controlled. Repeated-text long prompts do not test retrieval quality."
+}

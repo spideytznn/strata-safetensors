@@ -1,5 +1,8 @@
 # strata-safetensors
 
+已合入上游 v0.1.42，`STRATA_ROUTE_TAIL_SKIP` **默认关闭**，保留所有路由专家的贡献。
+合并取舍与验证范围见[集成说明](docs/UPSTREAM_V0142.md)。
+
 **在单张 GPU 和系统内存上，直接运行原始 NVIDIA NVFP4 safetensors 格式的 Qwen3.8-Flash-Next。**
 
 [English](README.md) · [实现与验收](docs/SAFETENSORS_NATIVE.md) · [测速记录](bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/README.md) · [上游 Strata](https://github.com/Niko1221/Strata)
@@ -23,7 +26,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 | MTP | 直接使用模型原生草稿权重，由主模型验证；可调整草稿长度和置信度门槛，也可完整卸载 MTP。 |
 | 多会话缓存 | 前缀复用、会话驻留与切回、A/B/A 切换，以及 KV 和线性注意力状态的磁盘保存/恢复。 |
 | 视觉 | 通过已有外部 BF16 编码器接入图片；视觉侧车仍使用 mmproj / 词表 GGUF，主模型保持 safetensors。 |
-| 服务 | 网页聊天、OpenAI / Anthropic 兼容 API、流式输出、工具调用。原生推理串行执行，请求排队。 |
+| 服务 | 网页聊天、OpenAI / Anthropic 兼容 API、流式输出、工具调用。可选两路文本并发；图片请求独占执行，超额请求排队。 |
 
 这是针对该模型结构的后端，尚不是通用 safetensors 推理框架。
 

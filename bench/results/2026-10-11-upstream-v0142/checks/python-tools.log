@@ -1,0 +1,11 @@
+  [!]  the finish mark of x.gguf cannot be written ([Errno 13] read-only): the next run does this step again
+
+  [X]  AMD GPU 1 (Radeon 1) cannot be used: not supported - Strata's AMD backend runs on the RX 7900 XT / XTX (gfx1100), RX 7800 XT / 7700 XT (gfx1101), RX 9060 XT (gfx1200) and RX 9070 / 9070 XT / Radeon AI PRO R9700 (gfx1201), and the RX 6800 / 6900 series (gfx1030) and RX 6700 XT (gfx1031, #524), and the RX 7600 / 7600 XT (gfx1102, one run reported, #942), all unvalidated, and the Ryzen AI Max "Strix Halo" APU (Radeon 8060S / 8050S / 8040S, gfx1151: experimental, docs/STRIX_HALO.md) only, this is gfx1010
+       use one card: --gpu 0
+
+Setup stopped. Fix the item above and run it again - everything already done is kept and skipped.
+......................................................................................................................................ss..s.....
+----------------------------------------------------------------------
+Ran 142 tests in 27.480s
+
+OK (skipped=3)

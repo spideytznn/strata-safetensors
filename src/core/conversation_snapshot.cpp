@@ -1,6 +1,7 @@
 #include "strata/core/conversation_snapshot.hpp"
 #include "strata/kernels/kv_q4.hpp"
 #include "conversation_checked.hpp"
+#include "conversation_copy.hpp"
 #include <cuda_runtime.h>
 
 #include <array>
@@ -113,7 +114,7 @@ bool transfer(void* dst, const void* src, size_t n, std::string& error) {
     if (!n) return true;
     if (!src || !dst) { error = "conversation snapshot: missing state buffer"; return false; }
     // Default handles both device allocations and device-mapped host pool aliases.
-    const cudaError_t e = cudaMemcpy(dst, src, n, cudaMemcpyDefault);
+    const cudaError_t e = conversation_detail::copy_nonblocking(dst, src, n);
     if (e == cudaSuccess) return true;
     error = std::string("conversation snapshot copy: ") + cudaGetErrorString(e);
     return false;
@@ -247,7 +248,7 @@ bool conversation_kv_copy(const QsaState& from, const QsaState& to, const ModelG
         }
     for (size_t i = 0; i < sizes.size(); ++i) {
         if (!sizes[i] || src[i] == dst[i]) continue;
-        const auto status = cudaMemcpyAsync(dst[i], src[i], sizes[i], cudaMemcpyDeviceToDevice, nullptr);
+        const auto status = conversation_detail::copy_nonblocking(dst[i], src[i], sizes[i], false);
         if (status != cudaSuccess) {
             error = std::string("conversation slot K/V copy: ") + cudaGetErrorString(status);
             return false;

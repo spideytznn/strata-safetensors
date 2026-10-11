@@ -3,8 +3,9 @@
 ## Current runtime
 
 `strata --model <original HF directory>` now runs text inference directly from
-NVIDIA safetensors. `--safetensors` is an alias. The independent branch remains
-`codex/safetensors-native`, based on `d167eb89301a02e0d6299f49d35494ba5096bc10`.
+NVIDIA safetensors. `--safetensors` is an alias. The backend began on
+`codex/safetensors-native`, based on `d167eb89301a02e0d6299f49d35494ba5096bc10`;
+current v0.1.42 integration is described in [the integration notes](UPSTREAM_V0142.md).
 The original checkpoint and Q4XL deployments are read-only inputs.
 
 The loader validates the fixed Qwen3.8-Flash-Next geometry and binds the existing

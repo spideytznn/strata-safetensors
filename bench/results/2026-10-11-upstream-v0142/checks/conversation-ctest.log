@@ -1,0 +1,27 @@
+Test project G:/Strata/Strata-Safetensors/build-native-engine
+      Start  1: conversation_cache_test
+ 1/11 Test  #1: conversation_cache_test ...........   Passed    0.01 sec
+      Start  2: conversation_split_failure_test
+ 2/11 Test  #2: conversation_split_failure_test ...   Passed    0.02 sec
+      Start  3: conversation_memory_test
+ 3/11 Test  #3: conversation_memory_test ..........   Passed    0.01 sec
+      Start  4: conversation_file_test
+ 4/11 Test  #4: conversation_file_test ............   Passed    2.06 sec
+      Start  5: session_save_reclaim_test
+ 5/11 Test  #5: session_save_reclaim_test .........   Passed    0.01 sec
+      Start 10: conversation_snapshot_test
+ 6/11 Test #10: conversation_snapshot_test ........   Passed    0.57 sec
+      Start 11: route_tail_skip_default_off
+ 7/11 Test #11: route_tail_skip_default_off .......   Passed    0.02 sec
+      Start 12: route_tail_skip_explicit_off
+ 8/11 Test #12: route_tail_skip_explicit_off ......   Passed    0.02 sec
+      Start 13: route_tail_skip_opt_in
+ 9/11 Test #13: route_tail_skip_opt_in ............   Passed    0.02 sec
+      Start 14: route_tail_skip_invalid_off
+10/11 Test #14: route_tail_skip_invalid_off .......   Passed    0.02 sec
+      Start 15: conversation_validation_test
+11/11 Test #15: conversation_validation_test ......   Passed    0.05 sec
+
+100% tests passed out of 11
+
+Total Test time (real) =   2.85 sec

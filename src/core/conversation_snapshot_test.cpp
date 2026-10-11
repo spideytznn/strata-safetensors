@@ -1,5 +1,6 @@
 #include "strata/core/conversation_snapshot.hpp"
 #include "strata/core/conversation_file.hpp"
+#include "strata/core/expert_source.hpp"
 #include "strata/kernels/kv_q4.hpp"
 #include <cuda_runtime.h>
 
@@ -309,7 +310,11 @@ void full_session(int fmt, int mode, int experts) {
 }
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 3 && std::string(argv[1]) == "--tail-skip-only") {
+        check(tail_skip_rank() == std::atoi(argv[2]), "tail skip environment/default");
+        return 0;
+    }
     int devices=0;
     if (cudaGetDeviceCount(&devices)!=cudaSuccess || !devices) return 77;
     for (int fmt : std::array<int,4>{kKvF16,kKvInt8,kKvQ4,3}) for (int mode : {0,1,2}) {

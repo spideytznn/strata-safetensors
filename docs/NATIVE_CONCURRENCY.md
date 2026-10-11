@@ -2,8 +2,8 @@
 
 The CUDA native backend can decode two text requests in one target-model window
 with `"parallel": 2` in the server config (`--batch 2` / `--slots 2` in the
-engine). This is opt-in. The original desktop launcher and its local settings
-are unchanged.
+engine). This is opt-in. The desktop serial entry retains its existing sampling and MTP settings;
+its v0.1.42 upgrade uses a separate config, preserving the original local file.
 
 ## Local launch
 
@@ -13,7 +13,9 @@ Use `START-NATIVE-262K-PARALLEL.bat`, or the desktop
 using that port before launching this one. The profile keeps original safetensors
 weights, INT8 KV, 262144 context, a dedicated 4096-row prefill workspace, the
 existing external GPU vision encoder and unrestricted HTTP Host headers.
-It uses `strata-concurrency5.exe`, enables independent session KV and direct
+It now uses `strata-upstream142.exe` with tail skipping explicitly off. The
+v0.1.42 checks are recorded in [the integration notes](UPSTREAM_V0142.md); the
+measurements below retain their named historical executables. It enables independent session KV and direct
 device slot copies, and keeps a 1536 MiB explicit reserve for runtime graph
 allocations. The profile contains this PC's paths; adapt them elsewhere.
 
@@ -260,7 +262,7 @@ responses matched, and the same HTTP/residency checks passed. Raw records are
 small short-request differences are not a guaranteed gain.
 
 The separate local parallel desktop profile now opts into both paths. Their
-engine defaults remain off; the original serial launcher is unchanged.
+engine defaults remain off; the serial entry remains a separate MTP profile.
 
 ## Historical latency screen with solo MTP
 

@@ -1,0 +1,6 @@
+greedy: two slots identical, overlapping, 256 tokens / 4.199 s
+seeded: two slots identical, overlapping, 256 tokens / 3.942 s
+penalties: two slots identical, overlapping, 256 tokens / 3.922 s
+near-capacity two long slots: 261000, 261007 tokens, identical
+long-slot grow/reuse beside short admission: 124135 tokens, identical
+cancel/resume, followup, caps: passed

@@ -4,6 +4,9 @@
 
 [中文说明](README.zh-CN.md) · [Runtime details](docs/SAFETENSORS_NATIVE.md) · [Measurements](bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/README.md) · [Upstream Strata](https://github.com/Niko1221/Strata)
 
+Upstream v0.1.42 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
+See [integration and validation scope](docs/UPSTREAM_V0142.md).
+
 strata-safetensors adapts Strata's forward pass, expert scheduler and session cache
 to the original Hugging Face checkpoint. It keeps the checkpoint's expert codes
 and scales, loads experts into locked RAM, caches hot experts in VRAM, and reads
@@ -25,7 +28,7 @@ The active branch is `main`; the executable and CLI retain the name `strata`.
 | MTP | Uses the checkpoint's native draft weights. The main model verifies proposals; draft length and confidence gating are configurable. MTP can be fully unloaded. |
 | Session reuse | Prefix reuse, multiple parked conversations, A/B/A switching, and disk save/restore of KV and linear-attention state. |
 | Vision | Image input through Strata's existing external BF16 encoder. The visual sidecar uses mmproj/vocabulary GGUF files; the main model stays in safetensors. |
-| Serving | Web chat, OpenAI-compatible and Anthropic-compatible APIs, streaming and tool calling. Native generation is serial; requests queue. |
+| Serving | Web chat, OpenAI-compatible and Anthropic-compatible APIs, streaming and tool calling. Opt-in two-slot text concurrency; image requests run exclusively. Excess requests queue. |
 
 This is a model-specific backend, not a general safetensors runner. See
 [scope and validation](docs/SAFETENSORS_NATIVE.md) for the supported geometry,

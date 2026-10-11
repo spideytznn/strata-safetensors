@@ -1,5 +1,6 @@
 #include "strata/core/conversation_snapshot.hpp"
 #include "conversation_checked.hpp"
+#include "conversation_copy.hpp"
 
 #include <algorithm>
 #include <array>
@@ -32,7 +33,7 @@ bool sync(std::string& error) {
 bool copy(void* dst, const void* src, size_t bytes, std::string& error) {
     if (!bytes) return true;
     if (!dst || !src) return fail(error, "missing running-state buffer");
-    const auto status = cudaMemcpy(dst, src, bytes, cudaMemcpyDefault);
+    const auto status = conversation_detail::copy_nonblocking(dst, src, bytes);
     if (status == cudaSuccess) return true;
     error = std::string("conversation snapshot running-state copy: ") + cudaGetErrorString(status);
     return false;
@@ -174,6 +175,7 @@ bool conversation_checkpoint_restore(const ConversationCheckpoint& c, SessionSta
     if (!conversation_checkpoint_validate(c, ss, g, error)) return false;
     ConversationStateSizes z;
     if (!conversation_session_sizes(g, ss, z, error)) return false;
+    if (!sync(error)) return false;   // the copies below no longer ride the legacy stream's implicit ordering
     if (!copy(ss.gdn_state, c.gdn.data(), c.gdn.size(), error) ||
         !copy(ss.ple_hist, c.ple.data(), c.ple.size(), error)) return false;
     for (size_t j = 0; j < owned_qsa(ss); ++j) {
@@ -202,7 +204,7 @@ bool conversation_checkpoint_copy(const SessionState& from, SessionState& to, co
         return fail(error, "incompatible device-copy session carve");
     auto enqueue = [&](void* dst, const void* src, size_t n) {
         if (!n || dst == src) return true;
-        const auto status = cudaMemcpyAsync(dst, src, n, cudaMemcpyDeviceToDevice, nullptr);
+        const auto status = conversation_detail::copy_nonblocking(dst, src, n, false);
         if (status == cudaSuccess) return true;
         error = std::string("conversation slot running-state copy: ") + cudaGetErrorString(status);
         return false;

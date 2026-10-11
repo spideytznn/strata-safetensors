@@ -1,0 +1,6 @@
+strata generate: memory guard: limit 95.6 GiB (source: meminfo), current 17.0 GiB, reclaimable cache credited 0.0 GiB; available 78.6 GiB (MemAvailable 78.6 GiB), floor 2560 MiB
+strata generate: native pack:  experts (largest blob 2.76 MB), token embedding BF16 in mapped host memory (1212 MiB, 2.1 s)
+strata generate: 7016 MiB of weights loaded from  in 14.3 s (1 canonical tensors skipped: served natively)
+strata generate: GPU 0: NVIDIA GeForce RTX 5090, compute capability 12.0
+strata generate: --ple-io direct measures slow here (12433 rows/s, about 51 MB/s of random 4 KiB reads): using --ple-io mmap instead (the OS file cache holds the pages; --ple-io direct forces the old mode, --ple-io ram keeps the table in RAM)
+strata generate: cannot open 

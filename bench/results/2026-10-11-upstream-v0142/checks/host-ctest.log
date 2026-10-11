@@ -1,0 +1,42 @@
+-- Warning: ccache not found - consider installing it for faster compilation or disable this warning with GGML_CCACHE=OFF
+-- CMAKE_SYSTEM_PROCESSOR: AMD64
+-- CMAKE_GENERATOR_PLATFORM: 
+-- GGML_SYSTEM_ARCH: x86
+-- Including CPU backend
+-- x86 detected
+-- Adding CPU backend variant ggml-cpu: /arch:AVX512 GGML_AVX512
+-- ggml version: 0.24.0
+-- ggml commit:  unknown
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: G:/Strata/Strata-Safetensors/build-native-engine/upstream142-host
+ninja: no work to do.
+Test project G:/Strata/Strata-Safetensors/build-native-engine/upstream142-host
+      Start  1: logit_bias_test
+ 1/12 Test  #1: logit_bias_test ..................   Passed    0.02 sec
+      Start  4: batch_read_test
+ 2/12 Test  #4: batch_read_test ..................   Passed    0.01 sec
+      Start  6: split_rules_test
+ 3/12 Test  #6: split_rules_test .................   Passed    0.01 sec
+      Start  7: share_rules_test
+ 4/12 Test  #7: share_rules_test .................   Passed    0.01 sec
+      Start  8: host_limits_test
+ 5/12 Test  #8: host_limits_test .................   Passed    0.01 sec
+      Start 12: draft_policy_test
+ 6/12 Test #12: draft_policy_test ................   Passed    0.01 sec
+      Start 14: split_ring_test
+ 7/12 Test #14: split_ring_test ..................   Passed    0.01 sec
+      Start 16: native_draft_vocab_ids
+ 8/12 Test #16: native_draft_vocab_ids ...........   Passed    0.01 sec
+      Start 17: draft_kv_plan_test
+ 9/12 Test #17: draft_kv_plan_test ...............   Passed    0.01 sec
+      Start 21: batch_rows_test
+10/12 Test #21: batch_rows_test ..................   Passed    0.01 sec
+      Start 22: batch_groups_test
+11/12 Test #22: batch_groups_test ................   Passed    0.01 sec
+      Start 41: aux_cpus_test
+12/12 Test #41: aux_cpus_test ....................   Passed    0.01 sec
+
+100% tests passed out of 12
+
+Total Test time (real) =   0.11 sec

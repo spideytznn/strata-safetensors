@@ -57,6 +57,16 @@ def main():
         base = f"http://127.0.0.1:{httpd.server_address[1]}"
         result["info"] = dict(engine.info)
         assert engine.batch == (a.parallel if a.parallel > 1 else 0)
+        if "route_tail_skip" in engine.info:
+            assert engine.info["route_tail_skip"] == 0, "quality screen requires tail skipping off"
+        with urllib.request.urlopen(urllib.request.Request(base + "/health",
+                headers={"Host": "native-regression.example"}), timeout=30) as response:
+            assert response.status == 200, "the profile must allow arbitrary Host headers"
+        with urllib.request.urlopen(urllib.request.Request(base + "/metrics",
+                headers={"Accept": "text/plain; version=0.0.4"}), timeout=30) as response:
+            metrics = response.read().decode("utf8")
+            assert response.status == 200 and "# TYPE" in metrics and "vllm:" in metrics
+        result["http_checks"] = {"unrestricted_host": True, "prometheus_metrics": True}
 
         def chat(name, content, limit=96, barrier=None, started=None, disconnect=False, anthropic=False):
             if barrier:
