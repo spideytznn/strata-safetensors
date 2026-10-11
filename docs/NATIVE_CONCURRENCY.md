@@ -2,8 +2,8 @@
 
 The CUDA native backend can decode two text requests in one target-model window
 with `"parallel": 2` in the server config (`--batch 2` / `--slots 2` in the
-engine). This is opt-in. The desktop serial entry retains its existing sampling and MTP settings;
-its v0.1.42 upgrade uses a separate config, preserving the original local file.
+engine). This is opt-in. Both desktop entries now leave MTP unloaded; the serial entry retains its sampling settings.
+The v0.1.42 upgrade uses a separate config, preserving the original local file.
 
 ## Local launch
 
@@ -262,7 +262,7 @@ responses matched, and the same HTTP/residency checks passed. Raw records are
 small short-request differences are not a guaranteed gain.
 
 The separate local parallel desktop profile now opts into both paths. Their
-engine defaults remain off; the serial entry remains a separate MTP profile.
+engine defaults remain off; the serial entry is a separate target-only profile.
 
 ## Historical latency screen with solo MTP
 

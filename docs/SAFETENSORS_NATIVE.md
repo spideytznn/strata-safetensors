@@ -49,21 +49,23 @@ repetition_penalty 1). The current desktop trial selects temperature 0.7,
 keeping those other values. Explicit requests and shared web settings override
 server defaults. Froggeric v22.5 defaults to medium effort when unspecified;
 Qwen's official template defaults to xhigh.
-The desktop selects `strata-efficiency17.exe` and
-`config/native/rtx5090-262k-fast.json`. It retains the prefill-first allocation
+The desktop selects `strata-pcie-auto.exe` and
+`config/native/rtx5090-262k-fast-v0142.json`. It retains the prefill-first allocation
 mode introduced in efficiency14: the 4096-row workspace is physically allocated
 and written before sizing the expert cache, and a temporary 512 MiB guard stays
 until late startup allocations finish. The residency recheck also budgets the
 late MTP head. Insufficient capacity refuses startup instead of shrinking the
-configured chunk. The explicit reserve is now 1024 MiB after paired testing;
+configured chunk. The current local explicit reserve is 256 MiB;
 the accepted efficiency14 profile with reserve 3072 remains available through
 `START-NATIVE-262K-STABLE.bat`. Bare CLI and GGUF defaults remain unchanged.
 
-The current desktop trial restores native MTP after the fully unloaded trial
-on 2026-10-11: `--mtp native --spec 3 --spec-min-p 0.5`, at most two drafts
-with no minimum draft floor. The unset MTP window cap follows `--spec`.
-Suffix drafting stays off. The fully unloaded alternative remains available
-in `config/native/rtx5090-262k-no-mtp.json`.
+The current desktop trial leaves MTP entirely unloaded at the user's request
+on 2026-10-11, making the draft allocation available to automatic expert-cache
+sizing. The previous `--mtp native --spec 3 --spec-min-p 0.5` trial is no longer
+the desktop default. `--spec 2` retains the engine's required verify-window
+configuration; without `--mtp` or suffix drafting it generates one target token
+per round. Suffix drafting stays off. The older fully unloaded comparison
+profile remains available in `config/native/rtx5090-262k-no-mtp.json`.
 Original main-model BF16 projections and the full target head remain enabled.
 Ordinary one-token commit remains enabled (`STRATA_ONE_TOKEN_COMMIT=0`).
 An opt-in startup weight read uses the existing guard without a forward pass,
@@ -71,7 +73,8 @@ weight changes or session mutation. Profile timings do not isolate its benefit.
 
 The measurements below cover the preceding four-draft / 0.7-gate / floor-two
 profile. The subsequent two-draft / 0.5-gate setting, fully unloaded trial,
-and current restored-MTP / temperature-0.7 combination have not been remeasured.
+and the subsequent restored-MTP / temperature-0.7 combination were not remeasured
+there. The latest target-only desktop change has not been performance-tested.
 
 Three fresh starts per profile pass all 63 visual/text/cached requests. The two
 4096 profiles have exact complete outputs for all 21 corresponding requests.
@@ -104,6 +107,26 @@ a capped request with official thinking sampling. This is not a visual quality
 suite, image-session disk-restore check or a performance comparison.
 The HF tokenizer and all added tokens are used directly. The supplied froggeric
 v22.5 template is retained in `config/native/froggeric-v22.5.jinja`.
+
+## Automatic CPU/PCIe share
+
+The single-request desktop profile now omits `--pcie-frac`. Native safetensors
+leave an unspecified share unresolved until the common NVFP4 PCIe probe; the
+former adapter default of 1.0 incorrectly prevented automatic selection.
+An explicit `--pcie-frac N` still fixes the share and bypasses calibration.
+The parallel profile retains its explicit 0.25; runtime automatic balancing
+is not enabled with batch slots. Q4XL desktop deployments are unchanged.
+
+Startup reports `pcie_frac` as the initial share, `pcie_auto` for the upstream
+early-decode adjustment, and `pcie_balance` for the per-layer measured-cost
+model. `PCIe share:` log lines report changes to the initial/global share.
+With the cost model active, the actual number of missed experts assigned to
+PCIe can vary by layer; the global share is not a fixed observed percentage.
+All routed experts still contribute; tail skipping remains disabled.
+
+The regression and timing record is under
+`bench/results/2026-10-11-native-pcie-auto/`. It covers only Windows CUDA SM120;
+HIP, SYCL and other GPUs are not validated by this change.
 
 ## Runtime correctness evidence
 

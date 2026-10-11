@@ -1,0 +1,57 @@
+[strata] starting the engine: reading the model's weights ...
+[strata] still starting (20 s) - please wait ...
+[strata] still starting (41 s) - please wait ...
+[strata] filling the GPU's expert cache (6044 experts, 15.56 GiB of VRAM) ...
+0 english-0-cold 512 44.62 tok/s acceptance None
+0 english-0-warm 512 62.77 tok/s acceptance None
+0 chinese-0-cold 512 60.31 tok/s acceptance None
+0 chinese-0-warm 512 62.11 tok/s acceptance None
+0 code-0-cold 512 59.75 tok/s acceptance None
+0 code-0-warm 512 61.01 tok/s acceptance None
+[strata] starting the engine: reading the model's weights ...
+[strata] still starting (20 s) - please wait ...
+[strata] still starting (41 s) - please wait ...
+[strata] still starting (61 s) - please wait ...
+[strata] filling the GPU's expert cache (6044 experts, 15.56 GiB of VRAM) ...
+1 english-0-cold 512 46.61 tok/s acceptance None
+1 english-0-warm 512 64.19 tok/s acceptance None
+1 chinese-0-cold 512 49.14 tok/s acceptance None
+1 chinese-0-warm 512 53.79 tok/s acceptance None
+1 code-0-cold 512 48.56 tok/s acceptance None
+1 code-0-warm 512 49.80 tok/s acceptance None
+[strata] starting the engine: reading the model's weights ...
+[strata] still starting (20 s) - please wait ...
+[strata] still starting (41 s) - please wait ...
+[strata] filling the GPU's expert cache (6044 experts, 15.56 GiB of VRAM) ...
+[strata] almost ready ...
+Traceback (most recent call last):
+  File "G:\Strata\Strata-Safetensors\tools\native_operator_bench.py", line 172, in <module>
+    main()
+    ~~~~^^
+  File "G:\Strata\Strata-Safetensors\tools\native_operator_bench.py", line 103, in main
+    engine = StrataEngine(cfg['exe'], cfg['args'], cwd=cfg['cwd'], log=str(log.resolve()), env=env)
+  File "G:\Strata\Strata-Safetensors\serve\server.py", line 712, in __init__
+    raise EngineDied(why + (f" (see {log})" if log else "") +
+                     start_failure_hint(log, log_start) + start_log_tail(log, log_start))
+serve.server.EngineDied: the engine exited before it was ready (see G:\Strata\Strata-Safetensors\bench\results\2026-10-11-native-pcie-auto\operator\2\engine.log)
+the engine log's last lines:
+                   PROFILE, ranked by routing frequency, no eviction.
+  strata generate: the profile fill asks for 0 pairs ahead (STRATA_FILL_AHEAD)
+  strata generate: pre-filled 6044 of 6044 slots from the profile in 0.4 s (37903 MB/s); slot 0 verified
+  strata generate: R4 hit path ON - resident experts are computed on the GPU
+  strata generate: 15 expert-pool workers + the host thread
+  strata generate: session is up (engine 0.1.42)
+  strata generate: token graph hit path: 6044 resident experts, decided on the device
+  strata generate: resident RAM mode: 63.28 GiB of experts in RAM (page-locked), 6044 in the GPU cache; adaptive swaps exchange them with the GPU cache (no file reads)
+  strata serve: Windows commit: 102.0 GiB left of a 223.6 GiB limit (RAM + page file)
+  strata serve: the prompt path allocates its own buffers (dedicated workspace: --no-prefill-borrow)
+  strata serve prefill selection: configured=4096 selected=4096 auto=0 reduced=0
+  strata generate: elastic K/V: 16384 of 262144 cells in VRAM (0.23 of 3.09 GiB); the expert cache (6044 slots) gives the K/V room below slot 6044 as the context grows
+  strata hc: CUDA0: the hyper-connection read runs as staged (the norm per token and stream, the down projection's activations staged ahead by cp.async); checked bit for bit against the plain read on this card (STRATA_HC_SPLIT=1 or 0 for the earlier ones)
+  strata verify: window up to 2 tokens, 349.3 MiB of device buffers
+  strata serve: STRATA_ADAPT_FETCH is off (the resident RAM mode)
+  strata serve: the adaptive tier's evictions reach the device's table before the next window (STRATA_ADAPT_EVICT_SYNC=0: when its copies land)
+  safetensors: startup immutable weight warm completed in 11.8 ms using the 512 MiB guard; no forward pass or expert source read
+  safetensors: prefill-first keeps 4096 rows but only 488 MiB free after loading; need 512 MiB headroom. Increase --vram-reserve-mib; startup refused, no smaller-batch fallback
+  safetensors: post-residency expert source bytes=0
+  safetensors: post-residency MTP source bytes=0

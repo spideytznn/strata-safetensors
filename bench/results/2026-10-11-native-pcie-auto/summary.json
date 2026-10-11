@@ -1,0 +1,79 @@
+{
+  "status": "pass",
+  "test_reserve_mib": 1024,
+  "desktop_reserve_unchanged_mib": 256,
+  "mtp": "unloaded",
+  "tail_skip": 0,
+  "completed_requests": 24,
+  "compared_full_vectors": 18,
+  "output_tokens": 6144,
+  "fixed_bracket_median_tok_s": 62.82467503586784,
+  "cases": [
+    {
+      "config": "fixed-before-headroom.json",
+      "startup_s": 63.848823999999695,
+      "initial_pcie_frac": "0.25",
+      "pcie_auto": 0,
+      "pcie_balance": 0,
+      "changes": [],
+      "median_decode_tok_s": 62.35063413653623,
+      "change_vs_fixed_bracket_percent": -0.7545457243686049,
+      "expert_slots": 5756,
+      "startup_free_mib": 1312
+    },
+    {
+      "config": "auto-headroom.json",
+      "startup_s": 60.55951540000024,
+      "initial_pcie_frac": "0.25",
+      "pcie_auto": 1,
+      "pcie_balance": 1,
+      "changes": [
+        {
+          "from": 0.25,
+          "to": 0.45
+        }
+      ],
+      "median_decode_tok_s": 60.69950620618489,
+      "change_vs_fixed_bracket_percent": -3.382697687603875,
+      "expert_slots": 5728,
+      "startup_free_mib": 1322
+    },
+    {
+      "config": "auto-share-only-headroom.json",
+      "startup_s": 59.613873299999796,
+      "initial_pcie_frac": "0.25",
+      "pcie_auto": 1,
+      "pcie_balance": 0,
+      "changes": [
+        {
+          "from": 0.25,
+          "to": 0.4
+        },
+        {
+          "from": 0.4,
+          "to": 0.45
+        }
+      ],
+      "median_decode_tok_s": 62.042928893274166,
+      "change_vs_fixed_bracket_percent": -1.244329783078646,
+      "expert_slots": 5748,
+      "startup_free_mib": 1424
+    },
+    {
+      "config": "fixed-after-headroom.json",
+      "startup_s": 63.3371460999997,
+      "initial_pcie_frac": "0.25",
+      "pcie_auto": 0,
+      "pcie_balance": 0,
+      "changes": [],
+      "median_decode_tok_s": 63.33363211506307,
+      "change_vs_fixed_bracket_percent": 0.8101228998075305,
+      "expert_slots": 5762,
+      "startup_free_mib": 1386
+    }
+  ],
+  "limits": "One sequential four-engine screen, uncontrolled clocks and adaptive cache placement; no universal speedup claim.",
+  "runtime_status": "pass",
+  "runtime_completed_requests": 20,
+  "runtime_cancel_visible_tokens": 5
+}

@@ -1,0 +1,20 @@
+{
+  "engine": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-pcie-auto.exe",
+  "engine_sha256": "313bf50e8de4040acbd7ceea33be6f466c7a04f1a527d7f23099f70adbc72d13",
+  "automatic_trial": true,
+  "performance_note": "No speed improvement established in the controlled-profile screen; automatic trial requested by user.",
+  "files": [
+    {
+      "path": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast-v0142.json",
+      "backup": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\pcie-auto-validation\\activation-backup\\rtx5090-262k-fast-v0142.json",
+      "before_sha256": "1eeda230d6cd7f872e14c060d661e468fab9067a34a60cee13ba8e94231dc39c",
+      "after_sha256": "ac91c484afd5e81412d52b4970c7e274b4290bebdc96305447cd9a0252f24288"
+    },
+    {
+      "path": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast.json",
+      "backup": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\pcie-auto-validation\\activation-backup\\rtx5090-262k-fast.json",
+      "before_sha256": "04b0c21bee2f0d58260962768c5443267f743384beb5a98861751018aaa3aefe",
+      "after_sha256": "9554d6039838e35cf8244c2d42aa62766bee0377c2870f4402dd062243af7d05"
+    }
+  ]
+}

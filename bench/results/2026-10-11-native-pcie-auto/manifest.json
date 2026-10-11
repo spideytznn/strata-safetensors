@@ -1,0 +1,13 @@
+{
+  "source_config": "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-fast-v0142.json",
+  "source_sha256": "1eeda230d6cd7f872e14c060d661e468fab9067a34a60cee13ba8e94231dc39c",
+  "exe_sha256": "313bf50e8de4040acbd7ceea33be6f466c7a04f1a527d7f23099f70adbc72d13",
+  "sequence": [
+    "fixed-before",
+    "auto",
+    "fixed-after"
+  ],
+  "mtp": "unloaded",
+  "vision": true,
+  "tail_skip": "0"
+}

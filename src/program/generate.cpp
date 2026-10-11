@@ -2339,7 +2339,9 @@ int strata_main(int argc, char** argv) {
         o.mmap_experts = true; // reuse the resident ExpertSource and dispatch interface
         o.resident_cpu_experts = true; // fully resident at load; reuse the adaptive scheduler
         if (o.expert_profile.empty()) o.expert_profile = "@native-balanced";
-        if (o.pcie_frac < 0) o.pcie_frac = 1.0; // quality reference; measured alternatives stay explicit
+        // Keep an unspecified share negative until the common PCIe probe/default
+        // selection below. Resolving it here would also mark it as explicitly
+        // given, bypassing both decode cost balancing and PcieAuto.
         if (!o.vram_reserve_given) o.vram_reserve_mib = 2048;
         if (!o.adapt_given) o.adapt_every = 0;
         if (o.spec < 2) o.spec = 2;
@@ -9621,6 +9623,7 @@ int strata_main(int argc, char** argv) {
             std::printf("INFO logit_bias=1 context=%lld kv=%s kv_resident=%lld expert_slots=%lld expert_cache_mib=%lld "
                         "expert_slots_primary=%lld expert_cache_primary_mib=%lld spec=%d "
                         "mtp_max=%d lookup=%d vram_free_mib=%lld cvec=%s arena_mib=%lld pool_workers=%d pcie_frac=%.2f "
+                        "pcie_auto=%d pcie_balance=%d "
                         "spec_min_p=%.2f conversation_cache_mib=%lld conversation_cache_slots=%d "
                         "conversation_cache_min_free_mib=%lld conversation_cache_min_tokens=%lld "
                         "tail_role_token=%lld vram_elastic=%d route_tail_skip=%d%s engine=" STRATA_VERSION "\n",
@@ -9632,7 +9635,7 @@ int strata_main(int argc, char** argv) {
                         o.spec, o.mtp_max_t,
                         o.suffix_draft, (long long) (free_b >> 20), cvec_summary.c_str(),
                         (long long) ((o.mmap_experts ? src.resident_bytes() : strata::kernels::cpu::expert_layout().total) >> 20),
-                        pool.workers(), o.pcie_frac,
+                        pool.workers(), o.pcie_frac, pcie_auto.on ? 1 : 0, ver.pcie_balance_on() ? 1 : 0,
                         o.spec_min_p, (long long) o.conversation_cache_mib, o.conversation_cache_slots,
                         (long long) o.conversation_cache_min_free_mib, (long long) o.conversation_cache_min_tokens,
                         (long long) o.tail_role_token, xcache.segmented() ? 1 : 0, strata::core::tail_skip_rank(),

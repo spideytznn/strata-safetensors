@@ -137,7 +137,7 @@ has not been established.
 ### Existing desktop deployment
 
 `START-NATIVE-262K.bat` uses
-[`config/native/rtx5090-262k-fast.json`](config/native/rtx5090-262k-fast.json).
+[`config/native/rtx5090-262k-fast-v0142.json`](config/native/rtx5090-262k-fast-v0142.json).
 This checked-in profile and the local build helper contain deployment-specific
 Windows paths; adapt them before use on another PC. The generic build above
 avoids those fixed paths.
@@ -146,7 +146,8 @@ avoids those fixed paths.
 |---|---|
 | Context / dedicated prefill | 262,144 total tokens / 4,096 rows |
 | KV / vision | INT8 with elastic growth / external GPU encoder, at most 1,024 tokens per image |
-| MTP | `--mtp native --spec 3 --spec-min-p 0.5`; at most two drafts, no forced minimum |
+| MTP | Disabled; no draft weights loaded; suffix drafting also disabled |
+| CPU/PCIe allocation | Single-request automatic trial; explicit `--pcie-frac N` still fixes the share |
 | Target sampling | temperature **0.7**, top_p 0.95, top_k 20, min_p 0, presence_penalty 0, repetition_penalty 1 |
 | Template | Froggeric v22.5; thinking on, effort defaults to medium when not specified |
 | Endpoint | `127.0.0.1:8880`; HTTP Host headers unrestricted |
