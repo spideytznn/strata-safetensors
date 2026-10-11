@@ -183,6 +183,20 @@ public:
     void run_split_multi(ExpertJobMulti* jobs, int n);
     /// Plan v0.3 P6: the same for a native pack's layer (ggml-cpu arithmetic, `nact` activations).
     void run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs, int n);
+    /// Experimental FP32 NVFP4 dependency queue. Only ready down-projection tiles
+    /// are claimed; unfinished gate/up work never blocks a worker holding a tile.
+    void set_native_ready_queue(bool on) { native_ready_queue_ = on; }
+    bool native_ready_queue() const { return native_ready_queue_; }
+    double ms_native_ready = 0;
+    int64_t native_ready_batches = 0;
+    /// Cache warming only: copied descriptors must point to immutable resident
+    /// RAM until finish_warm_ahead(). No source reads or expert arithmetic.
+    struct WarmBlob { const uint8_t* data; size_t bytes; };
+    void start_warm_ahead(const WarmBlob* blobs, int count);
+    void finish_warm_ahead();
+    uint64_t warm_batches = 0;
+    uint64_t warm_bytes() const { return warm_bytes_.load(std::memory_order_relaxed); }
+    double ms_warm_join = 0;
     static constexpr int kMaxSplitMulti = 96;
     /// run_split_multi's phases, accumulated ms: gate/up rows, the intermediate quantization, down rows.
     double ms_multi_gu = 0, ms_multi_q = 0, ms_multi_down = 0;
@@ -224,6 +238,8 @@ private:
     void worker(int id);
     void drain(int id, ExpertScratch& scratch, uint32_t epoch);
     void run_phase(int mode, int n_tasks);
+    void run_native_ready(const NativeFmt& f, ExpertJobMulti* jobs, int n);
+    void drain_native_ready(int id, uint32_t epoch, int first);
     /// Claim the next job of batch `epoch`, or -1 (that batch is exhausted, or it is not the current one).
     int claim(uint32_t epoch);
     /// Publish the batch whose description the caller has just written: reset `done`, then `head`, then the epoch.
@@ -296,6 +312,25 @@ private:
     };
     const NativeFmt* nfmt_ = nullptr;
     std::vector<SplitBufMulti> split_multi_;
+    struct NativeTile { int expert, r0, r1; };
+    struct alignas(64) NativeDependency {
+        std::atomic<int> remaining{0};
+        int down_begin = 0, down_end = 0;
+    };
+    std::vector<NativeTile> native_gu_, native_down_;
+    NativeDependency native_dep_[kMaxSplitMulti];
+    // Producers reserve a slot, fill its index, then release that slot. Consumers
+    // never claim a reservation whose task has not been published yet.
+    std::unique_ptr<std::atomic<int>[]> native_ready_;
+    alignas(64) std::atomic<int> native_ready_head_{0};
+    alignas(64) std::atomic<int> native_ready_tail_{0};
+    int native_total_ = 0;
+    bool native_ready_queue_ = false;
+    std::vector<WarmBlob> warm_jobs_;
+    alignas(64) std::atomic<bool> warm_cancel_{false};
+    alignas(64) std::atomic<uint64_t> warm_bytes_{0};
+    bool warm_active_ = false;   // host thread only
+    uint32_t warm_epoch_ = 0;
     PoolAffinity affinity_ = PoolAffinity::All;
     CpuTopology topo_;
 };

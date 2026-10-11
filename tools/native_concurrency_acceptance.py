@@ -174,13 +174,22 @@ def main():
         return tok.encode(template.render([{"role": "user", "content": text}], enable_thinking=False), parse_special=True)
     prompts = [prompt("Explain TCP and QUIC in detail, including congestion control and multiplexing."),
                prompt("写一个 Python 二分查找函数，解释边界条件和时间复杂度。")]
-    result = {"config": cfg, "exe_sha256": hashlib.sha256(a.exe.read_bytes()).hexdigest(), "cases": []}
+    result = {"passed": False, "config": cfg, "exe_sha256": hashlib.sha256(a.exe.read_bytes()).hexdigest(), "cases": []}
     def save():
         (a.output / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf8")
     save()
     eng = Protocol(cfg, a.output, a.vision)
+    functional_passed = False
     try:
         result["info"] = eng.info
+        info = " ".join(eng.info)
+        for env_key, info_key in (("STRATA_NATIVE_READY_QUEUE", "native_ready_queue"),
+                                  ("STRATA_UNIFIED_EXPERT_PLAN", "unified_expert_plan"),
+                                  ("STRATA_UNIFIED_FETCH_OVERLAP", "expert_fetch_overlap"),
+                                  ("STRATA_NATIVE_WARM_AHEAD", "cpu_warm_ahead")):
+            master = "0" if env_key == "STRATA_NATIVE_WARM_AHEAD" else cfg["env"].get("STRATA_UNIFIED_EXPERT_BATCH", "0")
+            if cfg["env"].get(env_key, master) == "1":
+                assert info_key + "=1" in info, f"requested {env_key} did not activate"
         tail = next((re.search(r"\broute_tail_skip=(\d+)", line) for line in eng.info
                      if "route_tail_skip=" in line), None)
         if tail is not None:
@@ -292,21 +301,26 @@ def main():
                 assert any(row["slot"] == slot and row["overlap_offered"] > 0 and row["accepted"] > 0 for row in stats), f"slot {slot}: no overlapping accepted MTP proposals"
             assert any(row["confidence_skips"] > 0 for row in stats), "confidence threshold never reduced a window"
             assert any(row["max_rows"] == 3 for row in stats), "three-row MTP windows never ran"
-        result["passed"] = not a.batch_mtp
+        functional_passed = True
         save()
         print("cancel/resume, followup, caps: passed", flush=True)
     finally:
         eng.close()
-        if a.batch_mtp:
-            log = eng.log_path.read_text(encoding="utf8")
-            for family in ("expert", "MTP"):
-                values = [int(value) for value in re.findall(r"post-residency " + family + r" source bytes=(\d+)", log)]
-                assert values and all(value == 0 for value in values), f"{family}: missing or nonzero source-read counters"
-            assert eng.proc.returncode == 0, f"private engine exited with {eng.proc.returncode}"
-            result["post_residency_source_bytes"] = {"expert": 0, "MTP": 0}
-            result["private_engine_exit_code"] = eng.proc.returncode
-            result["passed"] = True
-            save()
+        log = eng.log_path.read_text(encoding="utf8")
+        for family in ("expert", "MTP"):
+            values = [int(value) for value in re.findall(r"post-residency " + family + r" source bytes=(\d+)", log)]
+            assert values and all(value == 0 for value in values), f"{family}: missing or nonzero source-read counters"
+        assert eng.proc.returncode == 0, f"private engine exited with {eng.proc.returncode}"
+        if functional_passed and "native_ready_queue=1" in " ".join(eng.info):
+            batches = re.search(r"strata native ready queue: batches=(\d+)", log)
+            assert batches and int(batches[1]) > 0, "CPU ready queue did not execute"
+        if functional_passed and "cpu_warm_ahead=1" in " ".join(eng.info):
+            batches = re.search(r"strata warm ahead: batches=(\d+) RAM_bytes=(\d+)", log)
+            assert batches and all(int(x) > 0 for x in batches.groups()), "RAM warming did not execute"
+        result["post_residency_source_bytes"] = {"expert": 0, "MTP": 0}
+        result["private_engine_exit_code"] = eng.proc.returncode
+        result["passed"] = functional_passed
+        save()
 
 
 if __name__ == "__main__":

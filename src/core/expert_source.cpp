@@ -3558,6 +3558,7 @@ void set_tail_skip_rank(int r) { g_tail_skip_rank.store(r > 0 && r < 10 ? r : 0,
 void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32_t* ids, int64_t n_tok, int64_t k,
                                 float* out) {
     using namespace strata::kernels::cpu;
+    if (d.cpu_warm_ahead) d.pool->finish_warm_ahead();
     if (d.failed) return;
     if (n_tok < 1 || n_tok > MAXT) {
         d.failed = true;
@@ -3666,6 +3667,30 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
             std::stable_sort(mq, mq + nm, [&](int a, int b) { return use[ids[distinct[a]]] > use[ids[distinct[b]]]; });
             for (int j = 0; j < m && j < nm; ++j) pick[mq[j]] = true;
         }
+        bool unified_pick = false;
+        if (d.unified_plan.on && pcie_ok && native && lay.fmt[(size_t) d.layers].fp32_activations &&
+            lay.fmt[(size_t) d.layers].gu_type == kNvfp4Type && lay.fmt[(size_t) d.layers].d_type == kNvfp4Type &&
+            !fetch_on && d.peer == nullptr && d.remote_count == 0 && d.fs == nullptr) {
+            int mq[kMaxWindowEntries], nt[kMaxWindowEntries], nm = 0, vg = 0, ve = 0;
+            bool selected[kMaxWindowEntries];
+            for (int q = 0; q < nd; ++q) {
+                pick[q] = false;
+                const int64_t i0 = distinct[q];
+                const int32_t e = ids[i0];
+                if (skip_d[q] || e < 0 || e >= d.n_expert) continue;
+                int tokens = 0;
+                for (int64_t i = i0; i < n; ++i) tokens += first_of[i] == i0;
+                if (d.host_res[(size_t) d.layers * (size_t) d.n_expert + (size_t) e] >= 0) {
+                    ++vg; ve += tokens;
+                } else {
+                    mq[nm] = q; nt[nm] = tokens;
+                    selected[nm] = nm >= nmiss - m;
+                    ++nm;
+                }
+            }
+            unified_pick = d.unified_plan.choose((int) n_tok, nt, nm, (int) std::min<int64_t>(64, P.staging_cap), vg, ve, selected);
+            if (unified_pick) for (int j = 0; j < nm; ++j) pick[mq[j]] = selected[j];
+        }
         for (int q = 0; q < nd; ++q) {
             const int64_t i0 = distinct[q];
             const int32_t e = ids[i0];
@@ -3690,7 +3715,7 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
                     kd = 0;                        // Foresight: a landed swap-space slot holds it - a GPU group like a hit
                 } else {
                     if (d.fs != nullptr) d.fs->note_miss(d.src, d.layers, e);
-                    if ((fetch_on ? pick[q] : miss_rank >= nmiss - m) && fetches < P.staging_cap && fetches < 64) {
+                    if (((fetch_on || unified_pick) ? pick[q] : miss_rank >= nmiss - m) && fetches < P.staging_cap && fetches < 64) {
                         const uint8_t* src = d.src->stage_for_gpu(d.layers, e);
                         if (src != nullptr) {
                             kd = 1;
@@ -3777,6 +3802,13 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
         P.counts[0] = groups;
         P.counts[1] = entries;
         P.counts[2] = fetches;
+        if (d.unified_plan.on) {
+            P.work = {};
+            P.work.vram_groups = groups;
+            P.work.vram_entries = P.start[groups];
+            P.work.pcie_groups = fetches;
+            P.work.pcie_entries = entries - P.work.vram_entries;
+        }
         std::atomic_thread_fence(std::memory_order_seq_cst);
         pt("publish", fetches);
         if (P.publish) P.publish(P.ctx);
@@ -3903,6 +3935,11 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
         }
     const auto c3 = std::chrono::steady_clock::now();
     if (d.plan != nullptr) d.plan->cpu_jobs = njobs;
+    if (d.plan != nullptr && d.unified_plan.on) {
+        d.plan->work.cpu_groups = njobs;
+        d.plan->work.cpu_entries = 0;
+        for (int e = 0; e < njobs; ++e) d.plan->work.cpu_entries += d.jobs_multi[(size_t) e].nt;
+    }
     pt("run", njobs);
     if (njobs > 0) {
         if (native) d.pool->run_split_multi_native(lay.fmt[(size_t) d.layers], d.jobs_multi.data(), njobs);
@@ -3932,11 +3969,33 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
     d.ms_actq += ms(c1, c2);
     d.ms_jobs += ms(c2, c3);
     d.ms_run += ms(c3, c4);
+    d.multi_misses += njobs;
+    if (d.cpu_warm_ahead && native && d.layers >= 0 && d.layers < lay.n_layers) {
+        if (d.cpu_warm_history.size() != (size_t) lay.n_layers)
+            d.cpu_warm_history.resize((size_t) lay.n_layers);
+        auto& history = d.cpu_warm_history[(size_t) d.layers];
+        history.clear();
+        for (int64_t i = 0; i < n; ++i) {
+            const int e = ids[i];
+            if (kind[i] != -1 || std::any_of(history.begin(), history.end(),
+                                            [e](const auto& h) { return h.expert == e; })) continue;
+            history.push_back({e, {d.jobs_multi[(size_t) d.job_of[(size_t) e]].blob, (size_t) lay.blob_bytes(d.layers)}});
+        }
+        // No warming crosses the final layer/window boundary. Predictions use
+        // only pointers already returned for real CPU work, never source APIs.
+        if (d.layers + 1 < lay.n_layers) {
+            ExpertPool::WarmBlob candidates[kMaxWindowEntries];
+            int count = 0;
+            for (const auto& h : d.cpu_warm_history[(size_t) d.layers + 1])
+                if (!d.host_res || d.host_res[((size_t) d.layers + 1) * (size_t) d.n_expert + (size_t) h.expert] < 0)
+                    candidates[count++] = h.blob;
+            d.pool->start_warm_ahead(candidates, count);
+        }
+    }
     for (int64_t i = 0; i < n_tok * k; ++i) {
         const int64_t e = ids[i];
         if (e >= 0 && e < d.n_expert) d.job_of[(size_t) e] = -1;
     }
-    d.multi_misses += njobs;
     ++d.layers;
     d.experts += n_tok * k;
 }

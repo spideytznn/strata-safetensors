@@ -287,8 +287,14 @@ public:
     /// times its pool, and after each window *model (the dispatch's) takes the costs. One GPU, no batch slots. Set
     /// before `init` (the stamps are captured). `paused`: a request's own --pcie-frac holds meanwhile.
     void set_pcie_balance(PcieModel* model) { bal_ = model; }
+    void set_unified_expert_plan(UnifiedExpertPlan* model) { unified_plan_ = model; }
+    void set_expert_fetch_overlap(bool on) { expert_fetch_overlap_ = on; }
+    bool expert_fetch_overlap() const {
+        return expert_fetch_overlap_ && fetch_cs_ && sink_.pcie_mode == 2 && !prof_on_ && !device_plan_;
+    }
     void pause_pcie_balance(bool paused) {
         bal_paused_ = paused;
+        if (unified_plan_) unified_plan_->paused = paused;
         if (bal_ != nullptr && m_bal_ != nullptr) bal_->on = !paused;
     }
     bool pcie_balance_on() const { return bal_ != nullptr && m_bal_ != nullptr; }
@@ -431,6 +437,9 @@ private:
     int64_t n_vocab_ = 0;
     cudaStream_t cs_ = nullptr;
     cudaStream_t sh_cs_ = nullptr;
+    cudaStream_t fetch_cs_ = nullptr;
+    cudaEvent_t fetch_fork_ = nullptr, fetch_join_ = nullptr;
+    bool expert_fetch_overlap_ = false;
     cudaEvent_t ev_fork_ = nullptr, ev_join_ = nullptr;
     // STRATA_DF_BRANCH: a layer's mixer work that reads only the layer's input, captured as parallel graph branches
     // on these side streams (record_window); the same kernels on the same inputs, only their order is freer
@@ -464,6 +473,8 @@ private:
     std::vector<int32_t> bal_nc_, bal_np_;
     std::vector<char> bal_ok_;
     PcieModel* bal_ = nullptr;
+    UnifiedExpertPlan* unified_plan_ = nullptr;
+    std::vector<BatchExpertWork> bal_work_;
     bool bal_paused_ = false;
     void pcie_balance_window(int64_t steps, int G);
     cudaEvent_t commit_done_ = nullptr;   // recorded after an async commit (set_commit_async); see wait_commit
