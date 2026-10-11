@@ -1,0 +1,53 @@
+{
+  "note": "Both runs use complete-K W4A8; this isolates canonical dense shapes, not a released-binary comparison.",
+  "comparisons": {
+    "0": {
+      "max_abs": 0.0,
+      "rms": 0.0,
+      "kl_reference_candidate": 0.0,
+      "argmax_equal": true
+    },
+    "1": {
+      "max_abs": 0.0,
+      "rms": 0.0,
+      "kl_reference_candidate": 0.0,
+      "argmax_equal": true
+    },
+    "4": {
+      "max_abs": 0.5930275917053223,
+      "rms": 0.08473414570667835,
+      "kl_reference_candidate": 0.00377320757028341,
+      "argmax_equal": true
+    },
+    "5": {
+      "max_abs": 0.8011016845703125,
+      "rms": 0.13388667052698197,
+      "kl_reference_candidate": 0.017399366895008334,
+      "argmax_equal": true
+    },
+    "6": {
+      "max_abs": 0.0,
+      "rms": 0.0,
+      "kl_reference_candidate": 0.0,
+      "argmax_equal": true
+    },
+    "10": {
+      "max_abs": 1.3925447463989258,
+      "rms": 0.1175904970624495,
+      "kl_reference_candidate": 0.00982859209972496,
+      "argmax_equal": true
+    },
+    "11": {
+      "max_abs": 0.8057770729064941,
+      "rms": 0.14003063207585728,
+      "kl_reference_candidate": 0.01047277632265436,
+      "argmax_equal": true
+    },
+    "12": {
+      "max_abs": 0.6629500389099121,
+      "rms": 0.08868468972861109,
+      "kl_reference_candidate": 0.001861625856218134,
+      "argmax_equal": true
+    }
+  }
+}

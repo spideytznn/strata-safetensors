@@ -115,6 +115,11 @@ OpenAI 客户端地址为 **http://127.0.0.1:8880/v1**。
 本机并发配置还启用了按会话长度独立伸缩的 KV 和显存内槽位迁移。
 内存开销、验收及首字/吞吐测量见[原生并发说明](docs/NATIVE_CONCURRENCY.md)。原桌面入口不变。
 
+新增的[调度扩展](docs/NATIVE_BATCH_SCHEDULER.md)包含 CPU 专家依赖队列、活动 token
+预算、物理前缀页共享和实验性的合并预填充。`START-NATIVE-SCHEDULER.bat` 提供四路入口，
+保持原有预填充运算；`START-NATIVE-SCHEDULER-RAGGED.bat` 另行启用合并预填充，浮点运算
+顺序有变化，不能据有限回归宣称质量无损。两个入口均不加载 MTP，现有桌面配置不变。
+
 ## 验收与边界
 
 - 已记录权重布局往返、真实专家 FP64 对照、完整 logits 比较，以及采样、EOS、

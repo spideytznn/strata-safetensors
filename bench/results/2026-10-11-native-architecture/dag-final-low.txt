@@ -1,0 +1,7 @@
+experts=1 dag=0 ms=0.12010
+experts=1 dag=1 ms=0.13076
+experts=5 dag=0 ms=0.36991
+experts=5 dag=1 ms=0.33114
+experts=13 dag=0 ms=1.05604
+experts=13 dag=1 ms=0.89074
+native expert DAG: 144 bitwise comparisons passed

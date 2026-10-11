@@ -215,8 +215,9 @@ def main():
         followups = [ids + ref["ids"] + suffix for ids, ref in zip(prompts, refs)]
         refs2 = [eng.solo(ids, 32, keys) for ids in followups]
         batch2 = eng.batch([(ids, 32, keys) for ids in followups])
-        assert all(x["ids"] == y["ids"] for x, y in zip(refs2, batch2["jobs"]))
         result["cases"].append({"name": "followup", "solo": refs2, "batch": batch2})
+        save()
+        assert all(x["ids"] == y["ids"] for x, y in zip(refs2, batch2["jobs"]))
         # Admission itself can finish: no waiting forever for a BDONE that must not exist.
         short = eng.batch([(prompts[0], 1, keys), (prompts[1], 2, keys)])
         assert [len(x["ids"]) for x in short["jobs"]] == [1, 2]

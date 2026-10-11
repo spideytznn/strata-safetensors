@@ -132,6 +132,15 @@ public:
     /// Positions [pos0, pos0 + n) holding `tokens`; `ss.ple_prev` must be the two tokens before pos0 (oldest
     /// first, -1 for none) and is advanced to the last two of these.
     bool run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& err);
+    std::function<bool(core::SessionState&, int64_t, int64_t, std::string&)> prepare_kv_write;
+    struct PackedSequence {
+        core::SessionState* state;
+        const int64_t* tokens;
+        int64_t count, position;
+    };
+    /// One ragged chunk: dense projections and MoE use the combined rows;
+    /// PLE/GDN/QSA use each sequence's state and absolute positions. No images/MTP.
+    bool run_packed(const std::vector<PackedSequence>& sequences, std::string& err);
 
     const PrefillStats& stats() const { return stats_; }
 
@@ -193,6 +202,8 @@ public:
     static void arm_cpu_share(bool applies, bool by_default = false);
 
 private:
+    struct PackedRows { core::SessionState* state; int64_t offset, count, position; };
+    std::vector<PackedRows> packed_rows_;
     static uint64_t bytes_needed_impl(const core::ModelGeometry& g, const core::SessionState& ss, int64_t chunk,
                                       bool owned_pages, bool src);
     kernels::cpu::ExpertPool* cpu_pool_ = nullptr;   ///< set_cpu_pool

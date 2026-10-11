@@ -1,0 +1,128 @@
+{
+  "status": "passed",
+  "exe_sha256": "d4b0b2e8c067169616268ee45ca854efd6e553790e57cdc67b7b79dd89b5fb44",
+  "runs": [
+    {
+      "name": "cold4-before",
+      "variant": "baseline",
+      "slots": 4,
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\prefill-screen21\\baseline.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\prefill-screen21\\cold4-before",
+        "--parallel",
+        "4",
+        "--rounds",
+        "2",
+        "--clients",
+        "4",
+        "--limit",
+        "128",
+        "--independent-kv",
+        "--device-slot-copy",
+        "--no-vision",
+        "--fixture-tokens",
+        "1800",
+        "--cold-prefill"
+      ],
+      "status": "passed",
+      "output_equal_to_first_baseline": true,
+      "aggregate_tok_s": 55.79672457957595,
+      "last_ttft_s": 4.750598499998887,
+      "peak_active": 4,
+      "packed_chunks": [],
+      "cache_sizing": [
+        "strata generate: expert cache auto: 14.71 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5105 slots"
+      ],
+      "expert_ssd_bytes": 0
+    },
+    {
+      "name": "cold4-ragged",
+      "variant": "ragged",
+      "slots": 4,
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\prefill-screen21\\ragged.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\prefill-screen21\\cold4-ragged",
+        "--parallel",
+        "4",
+        "--rounds",
+        "2",
+        "--clients",
+        "4",
+        "--limit",
+        "128",
+        "--independent-kv",
+        "--device-slot-copy",
+        "--no-vision",
+        "--fixture-tokens",
+        "1800",
+        "--cold-prefill"
+      ],
+      "status": "passed",
+      "output_equal_to_first_baseline": false,
+      "aggregate_tok_s": 65.15894547227487,
+      "last_ttft_s": 3.4838209500012454,
+      "peak_active": 4,
+      "packed_chunks": [
+        "strata packed prefill: 3 independent requests, 4096 rows in 1571.743 ms",
+        "strata packed prefill: 4 independent requests, 2677 rows in 1308.801 ms",
+        "strata packed prefill: 2 independent requests, 3790 rows in 1468.182 ms",
+        "strata packed prefill: 2 independent requests, 3791 rows in 1473.528 ms"
+      ],
+      "cache_sizing": [
+        "strata generate: expert cache auto: 14.71 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5105 slots"
+      ],
+      "expert_ssd_bytes": 0
+    },
+    {
+      "name": "cold4-after",
+      "variant": "baseline",
+      "slots": 4,
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\prefill-screen21\\baseline.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\prefill-screen21\\cold4-after",
+        "--parallel",
+        "4",
+        "--rounds",
+        "2",
+        "--clients",
+        "4",
+        "--limit",
+        "128",
+        "--independent-kv",
+        "--device-slot-copy",
+        "--no-vision",
+        "--fixture-tokens",
+        "1800",
+        "--cold-prefill"
+      ],
+      "status": "passed",
+      "output_equal_to_first_baseline": true,
+      "aggregate_tok_s": 55.42860101720295,
+      "last_ttft_s": 4.754737949999253,
+      "peak_active": 4,
+      "packed_chunks": [],
+      "cache_sizing": [
+        "strata generate: expert cache auto: 14.71 GiB free, 1536 MiB reserved (+0 MiB for the draft head) -> 5105 slots"
+      ],
+      "expert_ssd_bytes": 0
+    }
+  ]
+}

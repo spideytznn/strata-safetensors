@@ -174,6 +174,10 @@ remain available for the paths that need them.
 See [native concurrency](docs/NATIVE_CONCURRENCY.md) for tests, memory costs and
 latency/throughput measurements. The original desktop launcher is unchanged.
 
+The [scheduler extensions](docs/NATIVE_BATCH_SCHEDULER.md) add opt-in CPU expert
+dependencies, live-token admission, shared prefix pages and experimental ragged
+prefill. The added four-slot launchers leave the existing desktop profiles alone.
+
 ## Validation and limits
 
 - Weight-layout roundtrips, real-expert FP64 checks, full-logit comparisons,

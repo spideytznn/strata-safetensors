@@ -2093,6 +2093,7 @@ bool Verifier::run(int T, const int32_t* tokens, int64_t pos0, PoolMultiFn pool,
     const ModelGeometry& g = *g_;
     SessionState& ss = *ss_;
     if (pos0 + T > ss.qsa_states[ss.qsa_primary()].max_cells) { err = "verify: the window runs past the context"; return false; }
+    if (prepare_kv_write && !prepare_kv_write(ss, pos0, pos0 + T, err)) return false;
     if (pre_launch_ && !pre_launch_(cs_, err)) return false;
     refresh_ar();
     if (!capture(T, err) || !capture_commit(err)) return false;
@@ -2837,6 +2838,13 @@ bool Verifier::run_slot_rows(const int* rows, int S, const int32_t* tokens, cons
     using namespace strata::kernels;
     const OnDevice on_device(device_);
     const ModelGeometry& g = *g_;
+    if (prepare_kv_write) {
+        if (S < 1 || S > max_t_) { err = "verify: invalid KV write rows"; return false; }
+        for (int t = 0; t < S; ++t) {
+            if (rows[t] < 0 || rows[t] >= (int) slots_.size()) { err = "verify: invalid KV write slot"; return false; }
+            if (!prepare_kv_write(*slots_[(size_t) rows[t]], pos[t], pos[t] + 1, err)) return false;
+        }
+    }
     if (pre_launch_ && !pre_launch_(cs_, err)) return false;
     if (!stage_batch(rows, S, 0, tokens, pos, err)) return false;
     const cudaError_t le = cudaGraphLaunch(exec_bm_[bkey(rows, S, 0)], cs_);

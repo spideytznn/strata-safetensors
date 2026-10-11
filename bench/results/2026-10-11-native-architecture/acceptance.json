@@ -1,0 +1,130 @@
+{
+  "status": "passed",
+  "exe_sha256": "d4b0b2e8c067169616268ee45ca854efd6e553790e57cdc67b7b79dd89b5fb44",
+  "steps": [
+    {
+      "name": "released-parity",
+      "status": "passed",
+      "result": "final21\\released-parity\\results.json",
+      "source_read_audit": [
+        {
+          "log": "candidate\\engine.log",
+          "source_bytes": {
+            "expert": 0,
+            "MTP": 0
+          }
+        },
+        {
+          "log": "released\\engine.log",
+          "source_bytes": {
+            "expert": 0,
+            "MTP": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "packed-all",
+      "status": "passed",
+      "result": "final21\\packed-all\\results.json",
+      "source_read_audit": [
+        {
+          "log": "engine.log",
+          "source_bytes": {
+            "expert": 0,
+            "MTP": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "full-long",
+      "status": "passed",
+      "result": "final21\\full-long\\results.json",
+      "source_read_audit": [
+        {
+          "log": "engine.log",
+          "source_bytes": {
+            "expert": 0,
+            "MTP": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "prefix261k-before",
+      "status": "passed",
+      "result": "final21\\prefix261k-before\\results.json",
+      "source_read_audit": [
+        {
+          "log": "engine.log",
+          "source_bytes": {
+            "expert": 0,
+            "MTP": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "prefix261k-shared",
+      "status": "passed",
+      "result": "final21\\prefix261k-shared\\results.json",
+      "source_read_audit": [
+        {
+          "log": "engine.log",
+          "source_bytes": {
+            "expert": 0,
+            "MTP": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "http-budget8-root",
+      "status": "passed",
+      "result": "final21\\http-budget8-root\\results.json",
+      "source_read_audit": [
+        {
+          "log": "engine.log",
+          "source_bytes": {
+            "expert": 0,
+            "MTP": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "http-vision",
+      "status": "passed",
+      "result": "final21-vision-retry\\http-vision\\results.json",
+      "source_read_audit": [
+        {
+          "log": "engine.log",
+          "source_bytes": {
+            "expert": 0,
+            "MTP": 0
+          }
+        }
+      ]
+    }
+  ],
+  "low_level_and_server": {
+    "dag-final-low.txt": "passed",
+    "prefix-final-low.txt": "passed",
+    "conversation-final-low.txt": "passed",
+    "server-final-tests.txt": "passed"
+  },
+  "previous_failed_attempt": {
+    "summary": "final21/summary.json",
+    "step": "http-vision",
+    "reason": "Harness exact comparison did not strip the newline from the correct PREFDONE 0 0 0 response. Fixed harness; reran only visual stage."
+  },
+  "quality_scope": "CPU expert arithmetic and feature-off first logits passed byte comparisons. Ragged prefill is opt-in and changes arithmetic relative to released prefill; no general quality-parity claim.",
+  "unvalidated": [
+    "HIP",
+    "SYCL",
+    "multi-GPU",
+    "pipeline windows",
+    "batched MTP"
+  ]
+}

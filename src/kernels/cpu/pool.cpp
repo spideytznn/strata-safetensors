@@ -437,6 +437,7 @@ void ExpertPool::diag(std::FILE* f) const {
 ExpertPool::ExpertPool(int n_workers, bool pin, bool host_works, PoolAffinity affinity, int tasks)
     : tasks_(tasks), host_works_(host_works), affinity_(affinity), topo_(detect_cpu_topology(true, affinity)) {
     if (tasks < 0 || tasks > kMaxTasks) throw std::invalid_argument("expert pool tasks must be in 0..4096");
+    if (const char* e = std::getenv("STRATA_NATIVE_EXPERT_DAG")) native_dag_ = std::atoi(e) == 1;
     if (const char* e = std::getenv("STRATA_POOL_SPIN_US"))   // a test knob; see kSpinBeforeSleep
         spin_before_sleep_ = std::chrono::microseconds((std::max)(0, std::atoi(e)));
     if (n_workers > 0) {
@@ -626,6 +627,34 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
             const int e = (int) i / parts_b_, part = (int) i % parts_b_;
             const int r0 = H * part / parts_b_, r1 = H * (part + 1) / parts_b_;
             s2_expert_down_rows(jobs_[e].blob, split_[(size_t) e].a2, jobs_[e].out, r0, r1);
+        } else if (mode_ == 7) {
+            const NativeTask& task = native_tasks_[i];
+            const int e = task.expert;
+            auto& ready = native_ready_[e].remaining;
+            float* ff[MAXT];
+            for (int t = 0; t < mjobs_[e].nt; ++t) ff[t] = split_multi_[(size_t) e].ff[t];
+            if (!task.down) {
+                native_gu_rows(*nfmt_, mjobs_[e].blob, mjobs_[e].nact, mjobs_[e].nt, ff,
+                               task.begin, task.end);
+                // The RMW release sequence publishes every disjoint gate/up range to
+                // down workers. All gate/up tasks are claimed before any down task;
+                // a down waiter cannot starve an unclaimed producer.
+                ready.fetch_sub(1, std::memory_order_acq_rel);
+            } else {
+                const auto start = std::chrono::steady_clock::now();
+                unsigned spins = 0;
+                while (ready.load(std::memory_order_acquire) != 0) {
+                    _mm_pause();
+                    if ((++spins & 4095u) == 0 && std::chrono::steady_clock::now() - start > kStall) {
+                        std::fprintf(stderr, "strata: native expert dependency stalled\n");
+                        std::abort();
+                    }
+                }
+                const void* hq[MAXT];
+                for (int t = 0; t < mjobs_[e].nt; ++t) hq[t] = ff[t];
+                native_down_rows(*nfmt_, mjobs_[e].blob, hq, mjobs_[e].nt, mjobs_[e].out,
+                                 task.begin, task.end);
+            }
         } else if (mode_ >= 5) {
             // plan v0.3 P6: native layers, 5 = gate/up rows, 6 = down rows
             const int per = mode_ == 5 ? FF : H;
@@ -760,6 +789,10 @@ void ExpertPool::run_split_multi(ExpertJobMulti* jobs, int n) {
 
 void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs, int n) {
     if (n <= 0) return;
+    if (native_dag_ && f.fp32_activations && f.gu_type == kNvfp4Type && f.d_type == kNvfp4Type) {
+        run_native_dag(f, jobs, n);
+        return;
+    }
     const auto t0 = std::chrono::steady_clock::now();
     // more distinct experts than buffers: run them in batches
     for (int b0 = 0; b0 < n; b0 += kMaxSplitMulti) {
@@ -787,6 +820,45 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
     multi_bytes += (int64_t) n * (int64_t) f.bytes;
     mode_ = 0;
     ms_drain_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+void ExpertPool::run_native_dag(const NativeFmt& f, ExpertJobMulti* jobs, int n) {
+    const auto start = std::chrono::steady_clock::now();
+    for (int base = 0; base < n; base += kMaxSplitMulti) {
+        const int count = (std::min)(kMaxSplitMulti, n - base);
+        mjobs_ = jobs + base;
+        nfmt_ = &f;
+        native_tasks_.clear();
+        int tokens = 0;
+        for (int e = 0; e < count; ++e) {
+            if (mjobs_[e].nt < 1 || mjobs_[e].nt > MAXT)
+                throw std::invalid_argument("native expert DAG token count out of range");
+            tokens += (mjobs_[e].nt + 3) / 4;
+        }
+        const int target = phase_tasks((int64_t) count * FF);
+        // Four-row reuse makes token count sublinear in weight-read cost. Keep
+        // each dot product and the kernel's FMA/reduction order unchanged.
+        for (int e = 0; e < count; ++e) {
+            const int weight = (mjobs_[e].nt + 3) / 4;
+            const int parts = (std::min)(FF, (std::max)(1, (target * weight + tokens - 1) / tokens));
+            native_ready_[e].remaining.store(parts, std::memory_order_relaxed);
+            for (int p = 0; p < parts; ++p)
+                native_tasks_.push_back({e, FF * p / parts, FF * (p + 1) / parts, false});
+        }
+        for (int e = 0; e < count; ++e) {
+            const int weight = (mjobs_[e].nt + 3) / 4;
+            const int parts = (std::min)(H, (std::max)(1, (target * weight + tokens - 1) / tokens));
+            for (int p = 0; p < parts; ++p)
+                native_tasks_.push_back({e, H * p / parts, H * (p + 1) / parts, true});
+        }
+        run_phase(7, (int) native_tasks_.size());
+    }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    // Overlapping per-expert stages have no meaningful separate wall times.
+    ms_native_dag += ms;
+    ms_drain_ += ms;
+    multi_bytes += (int64_t) n * (int64_t) f.bytes;
+    mode_ = 0;
 }
 
 void ExpertPool::run(ExpertJob* jobs, int n) {

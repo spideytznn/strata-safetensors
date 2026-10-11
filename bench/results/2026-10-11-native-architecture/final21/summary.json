@@ -1,0 +1,172 @@
+{
+  "status": "failed",
+  "exe_sha256": "d4b0b2e8c067169616268ee45ca854efd6e553790e57cdc67b7b79dd89b5fb44",
+  "steps": [
+    {
+      "name": "released-parity",
+      "status": "passed",
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_default_parity.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\baseline.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\released-parity",
+        "--reference-exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous12.exe"
+      ]
+    },
+    {
+      "name": "packed-all",
+      "status": "passed",
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_packed_acceptance.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\baseline.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\packed-all"
+      ]
+    },
+    {
+      "name": "full-long",
+      "status": "passed",
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_acceptance.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\prefix-dag.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\full-long",
+        "--context",
+        "262144",
+        "--slots",
+        "4",
+        "--limit",
+        "128",
+        "--vision",
+        "--adaptive",
+        "--independent-kv",
+        "--device-slot-copy",
+        "--yield-tokens",
+        "20000",
+        "--growth-tokens",
+        "131000",
+        "--capacity-tokens",
+        "261000",
+        "--eviction-tokens",
+        "32768"
+      ]
+    },
+    {
+      "name": "prefix261k-before",
+      "status": "passed",
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_prefix_acceptance.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\baseline.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\prefix261k-before",
+        "--tokens",
+        "261000",
+        "--slots",
+        "4",
+        "--sharing",
+        "0"
+      ]
+    },
+    {
+      "name": "prefix261k-shared",
+      "status": "passed",
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_prefix_acceptance.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\baseline.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\prefix261k-shared",
+        "--tokens",
+        "261000",
+        "--slots",
+        "4",
+        "--sharing",
+        "1"
+      ]
+    },
+    {
+      "name": "http-budget8-root",
+      "status": "passed",
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\budget8.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\http-budget8-root",
+        "--parallel",
+        "8",
+        "--rounds",
+        "1",
+        "--clients",
+        "8",
+        "--limit",
+        "64",
+        "--independent-kv",
+        "--device-slot-copy",
+        "--fixture-tokens",
+        "1000",
+        "--system-tokens",
+        "2400",
+        "--turn-checkpoints",
+        "--cold-prefill",
+        "--gather-burst",
+        "--no-vision"
+      ]
+    },
+    {
+      "name": "http-vision",
+      "status": "failed",
+      "command": [
+        "G:\\Strata\\Strata-Safetensors\\.venv-native\\Scripts\\python.exe",
+        "G:\\Strata\\Strata-Safetensors\\tools\\native_concurrency_http.py",
+        "--config",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\all.json",
+        "--exe",
+        "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+        "--output",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\final21\\http-vision",
+        "--parallel",
+        "4",
+        "--rounds",
+        "1",
+        "--clients",
+        "4",
+        "--limit",
+        "64",
+        "--independent-kv",
+        "--device-slot-copy",
+        "--fixture-tokens",
+        "1200",
+        "--turn-checkpoints",
+        "--cold-prefill",
+        "--gather-burst",
+        "--packed-vision-guard"
+      ],
+      "error": "CalledProcessError(1, ['G:\\\\Strata\\\\Strata-Safetensors\\\\.venv-native\\\\Scripts\\\\python.exe', 'G:\\\\Strata\\\\Strata-Safetensors\\\\tools\\\\native_concurrency_http.py', '--config', 'G:\\\\Strata\\\\Strata-Safetensors\\\\bench\\\\results\\\\2026-10-11-native-architecture\\\\final21\\\\all.json', '--exe', 'G:\\\\Strata\\\\Strata-Safetensors\\\\build-native-engine\\\\strata-architecture21.exe', '--output', 'G:\\\\Strata\\\\Strata-Safetensors\\\\bench\\\\results\\\\2026-10-11-native-architecture\\\\final21\\\\http-vision', '--parallel', '4', '--rounds', '1', '--clients', '4', '--limit', '64', '--independent-kv', '--device-slot-copy', '--fixture-tokens', '1200', '--turn-checkpoints', '--cold-prefill', '--gather-burst', '--packed-vision-guard'])"
+    }
+  ],
+  "error": "CalledProcessError(1, ['G:\\\\Strata\\\\Strata-Safetensors\\\\.venv-native\\\\Scripts\\\\python.exe', 'G:\\\\Strata\\\\Strata-Safetensors\\\\tools\\\\native_concurrency_http.py', '--config', 'G:\\\\Strata\\\\Strata-Safetensors\\\\bench\\\\results\\\\2026-10-11-native-architecture\\\\final21\\\\all.json', '--exe', 'G:\\\\Strata\\\\Strata-Safetensors\\\\build-native-engine\\\\strata-architecture21.exe', '--output', 'G:\\\\Strata\\\\Strata-Safetensors\\\\bench\\\\results\\\\2026-10-11-native-architecture\\\\final21\\\\http-vision', '--parallel', '4', '--rounds', '1', '--clients', '4', '--limit', '64', '--independent-kv', '--device-slot-copy', '--fixture-tokens', '1200', '--turn-checkpoints', '--cold-prefill', '--gather-burst', '--packed-vision-guard'])"
+}

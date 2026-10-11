@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -204,6 +205,11 @@ bool conversation_kv_validate(const ConversationKv& image, const QsaState& st, c
 bool conversation_kv_restore(const ConversationKv& image, const QsaState& st, const ModelGeometry& g,
                              int64_t upto, bool index, std::string& error) {
     if (!conversation_kv_validate(image, st, g, upto, index, error)) return false;
+    const std::vector<int32_t> target_pool{st.kv_elastic};
+    if (st.kv_elastic >= 0 && !qsa_kv_prepare_write(0, upto, [] { return VmmChunk(0); }, &target_pool)) {
+        error = "conversation restore: cannot make shared KV private";
+        return false;
+    }
     const std::array<const ConversationBuffer*,5> src = {&image.k, &image.v, &image.k_scale, &image.v_scale, &image.pooled};
     const auto dst = pools(st);
     for (size_t i = 0; i < src.size(); ++i)
@@ -246,9 +252,22 @@ bool conversation_kv_copy(const QsaState& from, const QsaState& to, const ModelG
             error = "conversation slot copy: missing K/V buffer";
             return false;
         }
+    std::vector<uint64_t> shared;
+    if (qsa_kv_prefix_sharing() && from.kv_elastic >= 0 && to.kv_elastic >= 0 &&
+        from.kv_elastic != to.kv_elastic && !qsa_kv_share_prefix(from, to, upto, shared)) {
+        error = "conversation slot copy: prefix sharing failed";
+        return false;
+    }
+    uint64_t alias_bytes = 0;
+    for (const auto bytes : shared) alias_bytes += bytes;
+    if (alias_bytes)
+        std::fprintf(stderr, "strata KV shared prefix: source_pool=%d target_pool=%d cells=%lld physical_alias_bytes=%llu\n",
+                     from.kv_elastic, to.kv_elastic, (long long) upto, (unsigned long long) alias_bytes);
     for (size_t i = 0; i < sizes.size(); ++i) {
         if (!sizes[i] || src[i] == dst[i]) continue;
-        const auto status = conversation_detail::copy_nonblocking(dst[i], src[i], sizes[i], false);
+        const size_t skip = i < shared.size() ? (size_t) shared[i] : 0;
+        const auto status = conversation_detail::copy_nonblocking(static_cast<uint8_t*>(dst[i]) + skip,
+                              static_cast<const uint8_t*>(src[i]) + skip, sizes[i] - skip, false);
         if (status != cudaSuccess) {
             error = std::string("conversation slot K/V copy: ") + cudaGetErrorString(status);
             return false;

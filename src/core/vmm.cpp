@@ -104,6 +104,7 @@ bool VmmRange::reserve(uint64_t bytes) {
     if (a.reserve(&p, (size_t) (n * a.gran), 0, 0, 0) != CUDA_SUCCESS) return false;
     base_ = (unsigned long long) p;
     h_.assign((size_t) n, 0);
+    refs_.resize((size_t) n);
     return true;
 }
 
@@ -114,6 +115,7 @@ void VmmRange::release() {
     a.free_va((CUdeviceptr) base_, (size_t) ((uint64_t) h_.size() * a.gran));
     base_ = 0;
     h_.clear();
+    refs_.clear();
 }
 
 int64_t VmmRange::mapped_count() const {
@@ -128,6 +130,10 @@ bool VmmRange::map_one(int64_t i, VmmChunk h) {
         CUDA_SUCCESS)
         return false;
     h_[(size_t) i] = h;
+    refs_[(size_t) i] = std::shared_ptr<VmmChunk>(new VmmChunk(h), [](VmmChunk* p) {
+        vmm_chunk_free(*p);
+        delete p;
+    });
     return true;
 }
 
@@ -171,7 +177,47 @@ VmmChunk VmmRange::unmap(int64_t i) {
     const VmmChunk h = h_[(size_t) i];
     if (a.unmap((CUdeviceptr) (base_ + (uint64_t) i * a.gran), (size_t) a.gran) != CUDA_SUCCESS) return 0;
     h_[(size_t) i] = 0;
+    // A shared chunk cannot be returned to the expert cache while another
+    // sequence still reads it. Only its last mapping transfers the handle.
+    if (refs_[(size_t) i].use_count() > 1) {
+        refs_[(size_t) i].reset();
+        return 0;
+    }
+    *refs_[(size_t) i] = 0;
+    refs_[(size_t) i].reset();
     return h;
+}
+
+bool VmmRange::share(int64_t i, const VmmRange& from, int64_t source, VmmChunk* released) {
+    if (released) *released = 0;
+    if (i < 0 || i >= chunks() || !from.mapped(source) || dev_ != from.dev_) return false;
+    if (this == &from && i == source) return true;
+    if (handle(i) == from.handle(source)) return true;
+    const Api& a = api();
+    const auto old = unmap(i);
+    if (released) *released = old; else vmm_chunk_free(old);
+    const auto h = from.handle(source);
+    if (a.map((CUdeviceptr) (base_ + (uint64_t) i * a.gran), (size_t) a.gran, 0,
+              (CUmemGenericAllocationHandle) h, 0) != CUDA_SUCCESS) return false;
+    h_[(size_t) i] = h;
+    refs_[(size_t) i] = from.refs_[(size_t) source];
+    if (set_access(i, i + 1)) return true;
+    vmm_chunk_free(unmap(i));
+    return false;
+}
+
+bool VmmRange::make_private(int64_t i, VmmChunk replacement) {
+    if (!shared(i)) { vmm_chunk_free(replacement); return mapped(i); }
+    VmmRange temp;
+    const uint64_t gran = vmm_granularity();
+    if (!temp.reserve(gran)) { vmm_chunk_free(replacement); return false; }
+    if (!temp.map_range(0, 1, [&] { const auto h = replacement; replacement = 0; return h; })) return false;
+    if (cudaMemcpy(temp.base(), base() + (uint64_t) i * gran, (size_t) gran, cudaMemcpyDeviceToDevice) != cudaSuccess ||
+        cudaDeviceSynchronize() != cudaSuccess) return false;
+    const VmmChunk h = temp.unmap(0);
+    vmm_chunk_free(unmap(i));
+    if (!map_one(i, h)) { vmm_chunk_free(h); return false; }
+    return commit_run(i, i + 1);
 }
 
 }  // namespace strata::core
@@ -181,7 +227,7 @@ VmmChunk VmmRange::unmap(int64_t i) {
 namespace strata::core {
 bool vmm_available() { return false; }
 uint64_t vmm_granularity() { return 0; }
-VmmChunk vmm_chunk_new() { return 0; }
+VmmChunk vmm_chunk_new(int) { return 0; }
 void vmm_chunk_free(VmmChunk) {}
 bool VmmRange::reserve(uint64_t) { return false; }
 void VmmRange::release() {}
@@ -190,6 +236,8 @@ bool VmmRange::map_one(int64_t, VmmChunk) { return false; }
 bool VmmRange::set_access(int64_t, int64_t) { return false; }
 bool VmmRange::commit_run(int64_t, int64_t) { return false; }
 VmmChunk VmmRange::unmap(int64_t) { return 0; }
+bool VmmRange::share(int64_t, const VmmRange&, int64_t, VmmChunk* released) { if (released) *released = 0; return false; }
+bool VmmRange::make_private(int64_t, VmmChunk) { return false; }
 }  // namespace strata::core
 
 #endif

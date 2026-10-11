@@ -1,0 +1,419 @@
+{
+  "status": "passed",
+  "config": {
+    "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-architecture21.exe",
+    "args": [
+      "--model",
+      "D:\\迅雷下载\\Qwen3.8-flash-next-nvfp4",
+      "--max-context",
+      "32768",
+      "--prefill",
+      "4096",
+      "--spec",
+      "2",
+      "--expert-cache",
+      "auto",
+      "--vram-reserve-mib",
+      "1536",
+      "--suffix-draft",
+      "0",
+      "--pcie-frac",
+      "0.25",
+      "--pcie-mode",
+      "kernel",
+      "--kv",
+      "int8",
+      "--no-prefill-borrow",
+      "--adapt-every",
+      "4",
+      "--adapt-swaps",
+      "96",
+      "--conversation-cache-mib",
+      "4096",
+      "--conversation-cache-slots",
+      "4",
+      "--prompt-cache",
+      "6",
+      "--stats",
+      "--check-logits",
+      "--expert-profile",
+      "G:\\Strata\\Strata-Safetensors\\data\\expert-profile.bin",
+      "--pool-tasks",
+      "40",
+      "--batch",
+      "4"
+    ],
+    "cwd": "G:\\Strata\\Strata-Safetensors",
+    "log": "logs/native-262k-parallel.log",
+    "tokenizer": "D:\\迅雷下载\\Qwen3.8-flash-next-nvfp4",
+    "tokenizer_format": "safetensors",
+    "chat_template": "G:\\Strata\\Strata-Safetensors\\config\\native\\froggeric-v22.5.jinja",
+    "model_name": "Qwen3.8-Flash-Next-NVFP4-Native",
+    "fit_max_tokens": true,
+    "lib_dirs": [
+      "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin\\x64",
+      "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin"
+    ],
+    "env": {
+      "STRATA_NVFP4_F32": "1",
+      "STRATA_NVFP4_TC": "0",
+      "STRATA_PREFILL_NVFP4": "w4a8",
+      "STRATA_PREFILL_TRACE": "1",
+      "STRATA_PREFILL_CPU_SHARE": "0",
+      "STRATA_PREFILL_BF16X2": "1",
+      "STRATA_SPEC_STOP_BOUNDARY": "1",
+      "STRATA_NATIVE_ALLOC_PINNED": "1",
+      "STRATA_NATIVE_LOAD_BATCH": "64",
+      "STRATA_NATIVE_LOAD_WORKERS": "4",
+      "STRATA_PLE_TRACE": "1",
+      "STRATA_NATIVE_KV_GROW": "1",
+      "STRATA_NATIVE_CLOSE_FILES": "1",
+      "STRATA_NATIVE_PREFILL_FIRST": "1",
+      "STRATA_NVFP4_F32_UNROLL": "1",
+      "STRATA_NVFP4_F32_REUSE": "1",
+      "STRATA_OWNED_PRICE": "exact",
+      "STRATA_NVFP4_F32_REUSE_TILE": "4",
+      "STRATA_NVFP4_F32_CANONICAL": "1",
+      "STRATA_ONE_TOKEN_COMMIT": "0",
+      "STRATA_NATIVE_WARM_WEIGHTS": "1",
+      "STRATA_NATIVE_KV_INDEPENDENT": "1",
+      "STRATA_NATIVE_SLOT_COPY": "1",
+      "STRATA_ROUTE_TAIL_SKIP": "0",
+      "STRATA_NATIVE_BATCH_INPLACE": "1",
+      "STRATA_NATIVE_KV_HANDOFF": "1",
+      "STRATA_NATIVE_CONTINUOUS": "1",
+      "STRATA_NATIVE_PREFIX_PAGES": "0",
+      "STRATA_NATIVE_EXPERT_DAG": "0",
+      "STRATA_NATIVE_RAGGED_PREFILL": "1",
+      "STRATA_DUMP_FIRST_LOGITS": "G:\\Strata\\Strata-Safetensors\\bench\\results\\2026-10-11-native-architecture\\packed-root-turn21\\logits.f32"
+    },
+    "allowed_hosts": [
+      "*"
+    ],
+    "sampling": {
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 0.0,
+      "repetition_penalty": 1.0
+    },
+    "vision": {
+      "exe": "G:\\Strata\\Strata-Official\\engine\\q6\\strata-vision.exe",
+      "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+      "model": "G:\\Strata\\Strata-data\\packs\\unsloth-ud-q4_k_xl\\vision-vocab.gguf",
+      "gpu": true,
+      "max_tokens": 1024,
+      "threads": 16
+    },
+    "parallel": 2
+  },
+  "exe_sha256": "d4b0b2e8c067169616268ee45ca854efd6e553790e57cdc67b7b79dd89b5fb44",
+  "cases": [
+    {
+      "name": "ragged-4",
+      "lengths": [
+        4763,
+        4161
+      ],
+      "packed": "PREFDONE 2 3020 1231.439",
+      "cuts": [
+        [
+          2945,
+          4756
+        ],
+        [
+          2945,
+          4154
+        ]
+      ],
+      "chunks": [
+        {
+          "positions": [
+            0,
+            0
+          ],
+          "counts": {
+            "0": 2048,
+            "1": 2048
+          },
+          "done": "PREFDONE 2 4096 1421.566"
+        },
+        {
+          "positions": [
+            2048,
+            2048
+          ],
+          "counts": {
+            "0": 897,
+            "1": 897
+          },
+          "done": "PREFDONE 2 1794 1144.175"
+        },
+        {
+          "positions": [
+            2945,
+            2945
+          ],
+          "counts": {
+            "0": 1811,
+            "1": 1209
+          },
+          "done": "PREFDONE 2 3020 1231.439"
+        }
+      ],
+      "references": [
+        {
+          "ids": [
+            20682,
+            2624,
+            369,
+            449,
+            10727,
+            11767,
+            364,
+            8996,
+            449,
+            1455,
+            494,
+            264,
+            2972,
+            27379,
+            332,
+            1103,
+            314,
+            3470,
+            13,
+            1049,
+            4138,
+            539,
+            18253,
+            48030,
+            279,
+            2624,
+            9581,
+            303,
+            4139,
+            13,
+            1368,
+            279
+          ],
+          "done": "DONE 32 4763 3007.6 610.8 length 0 0 0 9233 14395 6895 0 0.0 4763 965",
+          "wall_s": 3.61925699999847
+        },
+        {
+          "ids": [
+            104980,
+            97560,
+            109446,
+            96621,
+            96762,
+            104670,
+            97447,
+            108695,
+            3709,
+            110920,
+            98293,
+            4960,
+            271,
+            332,
+            48218,
+            220,
+            98300,
+            96553,
+            113508,
+            5205,
+            140386,
+            113264,
+            96114,
+            96263,
+            173609,
+            271,
+            332,
+            103759,
+            98419,
+            9616,
+            97698,
+            110490
+          ],
+          "done": "DONE 32 4161 1278.1 579.6 length 0 0 2945 9256 14410 6872 0 0.0 1216 950",
+          "wall_s": 1.8581817000012961
+        }
+      ],
+      "batch": {
+        "jobs": [
+          {
+            "ids": [
+              20682,
+              2624,
+              369,
+              449,
+              10727,
+              11767,
+              364,
+              8996,
+              449,
+              1455,
+              494,
+              264,
+              2972,
+              27379,
+              332,
+              1103,
+              314,
+              3470,
+              13,
+              1049,
+              4138,
+              539,
+              18253,
+              48030,
+              279,
+              2624,
+              9581,
+              303,
+              4139,
+              13,
+              1368,
+              279
+            ],
+            "times": [
+              0.19330170000102953,
+              0.30169560000285855,
+              0.31986650000180816,
+              0.33806230000118376,
+              0.35606770000231336,
+              0.3821763000014471,
+              0.40058780000254046,
+              0.4220909000032407,
+              0.4423790000000736,
+              0.46697470000071917,
+              0.48526070000298205,
+              0.5049925000021176,
+              0.523064200002409,
+              0.5464526000032492,
+              0.5646508000027097,
+              0.5845074000026216,
+              0.6036614000004192,
+              0.6293598000011116,
+              0.6482912000028591,
+              0.6660323000032804,
+              0.6859461000021838,
+              0.7104032000024745,
+              0.7304892000029213,
+              0.7492004000014276,
+              0.7677510000030452,
+              0.7928051000017149,
+              0.8108294000012393,
+              0.8291359000031662,
+              0.8498566000016581,
+              0.8738138000007893,
+              0.8917711000030977,
+              0.9146665000007488
+            ],
+            "admission": "DONE 1 4763 171.1 21.5 length 0 0 4756 461 480 19 0 0.0 7 0",
+            "continued": true,
+            "done": "BDONE 0 32 length 721.0"
+          },
+          {
+            "ids": [
+              104980,
+              97560,
+              109446,
+              96621,
+              96762,
+              104670,
+              97447,
+              108695,
+              3709,
+              110920,
+              98293,
+              4960,
+              271,
+              332,
+              48218,
+              220,
+              98300,
+              96553,
+              113508,
+              5205,
+              140386,
+              113264,
+              96114,
+              96263,
+              173609,
+              271,
+              332,
+              103759,
+              98419,
+              9616,
+              97698,
+              110490
+            ],
+            "times": [
+              0.27586650000012014,
+              0.30170429999998305,
+              0.3198712000012165,
+              0.338067200002115,
+              0.3560735000028217,
+              0.38218130000313977,
+              0.40059260000271024,
+              0.4220958000005339,
+              0.4423847000034584,
+              0.46697990000029677,
+              0.48526550000315183,
+              0.504995900002541,
+              0.5230699000021559,
+              0.5464578000028268,
+              0.5646563000009337,
+              0.5845125000014377,
+              0.6036670000030426,
+              0.6293647000020428,
+              0.6482964000024367,
+              0.6660367000004044,
+              0.6859520000034536,
+              0.7104081000034057,
+              0.7304945000032603,
+              0.7492055000002438,
+              0.7677567000027921,
+              0.7928104000020539,
+              0.810834200001409,
+              0.8291398000001209,
+              0.8498627000008128,
+              0.873818800002482,
+              0.8917762000019138,
+              0.9146785000011732
+            ],
+            "admission": "DONE 1 4161 60.1 21.7 length 0 0 4154 457 480 23 0 0.0 7 0",
+            "continued": true,
+            "done": "BDONE 1 32 length 638.4"
+          }
+        ],
+        "wall_s": 0.9146830000026966
+      },
+      "comparisons": [
+        {
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "kl_reference_candidate": 0.0,
+          "argmax_equal": true
+        },
+        {
+          "max_abs": 0.0,
+          "rms": 0.0,
+          "kl_reference_candidate": 0.0,
+          "argmax_equal": true
+        }
+      ],
+      "tokens_equal": [
+        true,
+        true
+      ]
+    }
+  ],
+  "info": [
+    "INFO logit_bias=1 context=32768 kv=int8 kv_resident=0 expert_slots=5762 expert_cache_mib=15194 expert_slots_primary=5762 expert_cache_primary_mib=15194 spec=2 mtp_max=0 lookup=0 vram_free_mib=1747 cvec=0 arena_mib=64800 pool_workers=15 pcie_frac=0.25 pcie_auto=0 pcie_balance=0 spec_min_p=0.00 conversation_cache_mib=4096 conversation_cache_slots=4 conversation_cache_min_free_mib=2560 conversation_cache_min_tokens=0 tail_role_token=-1 vram_elastic=0 route_tail_skip=0 batch_slots=4 slot_cache=1 batch_groups=1 batch_inplace=1 continuous_batch=1 expert_dag=0 ragged_boundaries=1 prefix_pages=0 kv_token_budget=0 ragged_prefill=1 kv_handoff=1 engine=0.1.42",
+    "INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=67948118016 expert_cuda_pinned_bytes=67948118016 expert_os_locked_bytes=0 prefill_chunk=4096 prefill_workspace=dedicated",
+    "INFO startup_ms=57443"
+  ]
+}

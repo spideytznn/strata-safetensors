@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <exception>
+#include <stdexcept>
 #include <cuda_runtime.h>
 #include <cmath>
 #include <cstdio>
@@ -525,6 +526,9 @@ uint64_t g_kv_host_bytes = 0;
 
 // ---- the elastic K/V (--kv-grow): one VMM range per state, each pool array at a chunk boundary in it
 bool g_kv_elastic = false;
+bool g_kv_prefix_sharing = false;
+std::function<strata::core::VmmChunk()> g_kv_reset_take;
+std::function<void(strata::core::VmmChunk)> g_kv_reset_give;
 int64_t g_kv_elastic_init = 16384;
 struct ElasticPool {
     strata::core::VmmRange range;
@@ -584,6 +588,83 @@ void qsa_set_kv_elastic(bool enabled, int64_t init_cells) {
     if (init_cells > 0) g_kv_elastic_init = init_cells;
 }
 bool qsa_kv_elastic() { return g_kv_elastic; }
+void qsa_set_kv_prefix_sharing(bool enabled) { g_kv_prefix_sharing = enabled && g_kv_elastic; }
+bool qsa_kv_prefix_sharing() { return g_kv_prefix_sharing; }
+void qsa_set_kv_reset_allocator(std::function<strata::core::VmmChunk()> take,
+                                 std::function<void(strata::core::VmmChunk)> give) {
+    g_kv_reset_take = std::move(take);
+    g_kv_reset_give = std::move(give);
+}
+
+bool qsa_kv_share_prefix(const QsaState& from, const QsaState& to, int64_t cells,
+                         std::vector<uint64_t>& shared_bytes) {
+    if (!g_kv_prefix_sharing || from.kv_elastic < 0 || to.kv_elastic < 0 ||
+        from.kv_elastic == to.kv_elastic || from.kv_mode || to.kv_mode) return false;
+    auto& src = *g_pools[(size_t) from.kv_elastic];
+    auto& dst = *g_pools[(size_t) to.kv_elastic];
+    if (src.per_slot != dst.per_slot || src.page_size != dst.page_size || cells < 0) return false;
+    const uint64_t gran = strata::core::vmm_granularity();
+    const int64_t slots = cells / src.page_size;
+    shared_bytes.assign(src.off.size(), 0);
+    if (cudaDeviceSynchronize() != cudaSuccess) return false;
+    for (size_t a = 0; a < src.off.size(); ++a) {
+        const int64_t count = (int64_t) ((uint64_t) slots * src.per_slot[a] / gran);
+        for (int64_t c = 0; c < count; ++c)
+            if (!src.range.mapped((int64_t) (src.off[a] / gran) + c)) return false;
+    }
+    for (size_t a = 0; a < src.off.size(); ++a) {
+        const int64_t count = (int64_t) ((uint64_t) slots * src.per_slot[a] / gran);
+        for (int64_t c = 0; c < count; ++c) {
+            strata::core::VmmChunk old = 0;
+            const bool ok = dst.range.share((int64_t) (dst.off[a] / gran) + c, src.range,
+                                             (int64_t) (src.off[a] / gran) + c, &old);
+            if (old) { if (g_kv_reset_give) g_kv_reset_give(old); else vmm_chunk_free(old); }
+            if (!ok) return false;
+        }
+        // The copied partial page/chunk must not still alias an older cached
+        // sequence. Completed chunks above stay shared and are not rewritten.
+        const int64_t end = (int64_t) (((uint64_t) ((cells + src.page_size - 1) / src.page_size) * src.per_slot[a] + gran - 1) / gran);
+        for (int64_t c = count; c < end; ++c)
+            if (const int64_t chunk = (int64_t) (dst.off[a] / gran) + c; dst.range.shared(chunk) &&
+                !dst.range.make_private(chunk, g_kv_reset_take ? g_kv_reset_take() : strata::core::VmmChunk(0))) return false;
+        shared_bytes[a] = (uint64_t) count * gran;
+    }
+    return true;
+}
+
+namespace {
+template<class Visit> bool visit_kv_write_chunks(int64_t begin, int64_t end,
+                                                const std::vector<int32_t>* pools, Visit visit) {
+    if (begin < 0 || end < begin) return false;
+    const uint64_t gran = strata::core::vmm_granularity();
+    if (!gran) return true;
+    for (size_t i = 0; i < g_pools.size(); ++i) {
+        if (pools && std::find(pools->begin(), pools->end(), (int32_t) i) == pools->end()) continue;
+        auto& p = *g_pools[i];
+        if (end > p.n_slots * p.page_size) return false;
+        for (size_t a = 0; a < p.off.size(); ++a) {
+            const int64_t lo = (int64_t) ((uint64_t) (begin / p.page_size) * p.per_slot[a] / gran);
+            const int64_t hi = (int64_t) (((uint64_t) ((end + p.page_size - 1) / p.page_size) * p.per_slot[a] + gran - 1) / gran);
+            for (int64_t c = lo; c < hi; ++c)
+                if (!visit(p.range, (int64_t) (p.off[a] / gran) + c)) return false;
+        }
+    }
+    return true;
+}
+}
+int64_t qsa_kv_cow_need(int64_t begin, int64_t end, const std::vector<int32_t>* pools) {
+    if (!g_kv_prefix_sharing) return 0;
+    int64_t count = 0;
+    if (!visit_kv_write_chunks(begin, end, pools, [&](auto& r, int64_t c) { count += r.shared(c); return true; })) return -1;
+    return count;
+}
+bool qsa_kv_prepare_write(int64_t begin, int64_t end, const std::function<strata::core::VmmChunk()>& take,
+                          const std::vector<int32_t>* pools) {
+    if (!g_kv_prefix_sharing) return true;
+    return visit_kv_write_chunks(begin, end, pools, [&](auto& r, int64_t c) {
+        return !r.shared(c) || r.make_private(c, take());
+    });
+}
 int64_t qsa_kv_elastic_cells(const std::vector<int32_t>* pools) {
     int64_t cells = std::numeric_limits<int64_t>::max();
     for (size_t i = 0; i < g_pools.size(); ++i) {
@@ -634,6 +715,14 @@ int64_t qsa_kv_elastic_shrink(int64_t cells, const std::function<void(strata::co
     return n;
 }
 uint64_t qsa_kv_elastic_mapped_bytes() {
+    if (g_kv_prefix_sharing) {
+        auto handles = qsa_kv_elastic_handles();
+        std::sort(handles.begin(), handles.end());
+        uint64_t unique = 0;
+        strata::core::VmmChunk previous = 0;
+        for (const auto& [h, location] : handles) if (h != previous) { ++unique; previous = h; }
+        return unique * strata::core::vmm_granularity();
+    }
     uint64_t n = 0;
     for (const auto& p : g_pools) n += (uint64_t) p->range.mapped_count() * strata::core::vmm_granularity();
     return n;
@@ -649,6 +738,11 @@ std::vector<std::pair<strata::core::VmmChunk, int64_t>> qsa_kv_elastic_handles()
         for (int64_t c = 0; c < g_pools[k]->range.chunks(); ++c)
             if (const strata::core::VmmChunk h = g_pools[k]->range.handle(c)) v.emplace_back(h, ((int64_t) k << 32) | c);
     return v;
+}
+bool qsa_kv_elastic_shared_alias(int64_t a, int64_t b) {
+    const auto pa = (uint64_t) a >> 32, pb = (uint64_t) b >> 32;
+    return g_kv_prefix_sharing && pa < g_pools.size() && pb < g_pools.size() &&
+           g_pools[pa]->range.shares_with(a & 0xffffffff, g_pools[pb]->range, b & 0xffffffff);
 }
 namespace {
 
@@ -889,9 +983,29 @@ uint64_t qsa_state_init(const ModelGeometry& g, int64_t max_cells, void* base, Q
 void qsa_state_zero(const QsaState& st, const ModelGeometry& g, void* stream) {
     const QsaShapes s = qsa_shapes(g);
     cudaStream_t cs = (cudaStream_t) stream;
+    if (g_kv_prefix_sharing && st.kv_elastic >= 0) {
+        // A reset discards this sequence, so keep only its initial working set.
+        // Detaching an entire old 262K prefix merely to zero it wastes VRAM.
+        // Other owners retain shared pages; later growth maps zeroed pages.
+        if (cudaDeviceSynchronize() != cudaSuccess) throw std::runtime_error("KV reset: device did not quiesce");
+        const std::vector<int32_t> pool{st.kv_elastic};
+        qsa_kv_elastic_shrink(g_kv_elastic_init, [](VmmChunk chunk) {
+            if (g_kv_reset_give) g_kv_reset_give(chunk); else vmm_chunk_free(chunk);
+        }, &pool);
+    }
     // an elastic state zeroes what is mapped (the rest is zeroed when it is mapped)
     const int64_t live_slots = st.kv_elastic >= 0 ? pool_slots_mapped(*g_pools[(size_t) st.kv_elastic]) : st.n_slots;
     const size_t rows = (size_t) live_slots * s.n_head_kv * s.page_size;
+    // Selection/gather may touch spare cells. Preserve the original all-zero
+    // reset contract, including cells beyond this sequence's first write.
+    // Every alias must be detached before a reset writes to its backing.
+    if (g_kv_prefix_sharing && st.kv_elastic >= 0) {
+        auto& range = g_pools[(size_t) st.kv_elastic]->range;
+        if (cudaDeviceSynchronize() != cudaSuccess) throw std::runtime_error("KV reset: device did not quiesce");
+        for (int64_t chunk = 0; chunk < range.chunks(); ++chunk)
+            if (range.shared(chunk) && !range.make_private(chunk, g_kv_reset_take ? g_kv_reset_take() : VmmChunk(0)))
+                throw std::runtime_error("KV reset: cannot detach a shared physical page");
+    }
     if (st.kv_hybrid) {
         cudaMemsetAsync(st.k_q, 0, rows * s.head_dim, cs);
         cudaMemsetAsync(st.k_scale, 0, rows * (s.head_dim / strata::kernels::KV_Q8_GROUP) * 2, cs);

@@ -1,5 +1,8 @@
 # Native continuous batching
 
+Further opt-in CPU scheduling, token-budget admission, ragged prefill and physical
+prefix sharing are described in [scheduler extensions](NATIVE_BATCH_SCHEDULER.md).
+
 The native CUDA path has three opt-in architecture changes for target-only
 serving. They use the original safetensors weights and existing forward kernels.
 MTP and route-tail skipping are not required.

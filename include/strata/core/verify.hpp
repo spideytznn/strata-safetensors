@@ -163,6 +163,8 @@ public:
     /// Duplicate rows (speculation) retain the snapshot/commit path. Off by default.
     void set_batch_inplace(bool on) { batch_inplace_ = on; }
     bool batch_inplace() const { return batch_inplace_; }
+    /// Quiescent host boundary before any graph writes this sequence's KV.
+    std::function<bool(SessionState&, int64_t, int64_t, std::string&)> prepare_kv_write;
     /// Native single-GPU resident KV ownership changes; graph caches follow backing IDs, not slot IDs.
     void set_kv_handoff(bool on) { kv_handoff_ = on; }
     /// One batch window over slots [0, S): tokens[s] at positions pos[s]; out[s] = the greedy pick after it.

@@ -1,0 +1,3 @@
+strata KV shared prefix: source_pool=0 target_pool=1 cells=8192 physical_alias_bytes=8388608
+strata KV shared prefix: source_pool=0 target_pool=1 cells=131100 physical_alias_bytes=138412032
+prefix pages: sharing, source/branch COW, fixed addresses, eviction and state reset passed

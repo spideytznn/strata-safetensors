@@ -288,6 +288,17 @@ void qsa_set_kv_resident(int64_t cells);
 /// captured graphs stay valid.  Set before sizing and initializing the session and the drafter.
 void qsa_set_kv_elastic(bool enabled, int64_t init_cells);
 bool qsa_kv_elastic();
+void qsa_set_kv_prefix_sharing(bool enabled);
+bool qsa_kv_prefix_sharing();
+/// A discarded prefix returns unique chunks to the engine's elastic allocator.
+/// Empty callbacks restore standalone allocation/free; caller owns their lifetime.
+void qsa_set_kv_reset_allocator(std::function<VmmChunk()> take, std::function<void(VmmChunk)> give);
+/// Completed whole physical chunks only; the partial tail is copied by the caller.
+bool qsa_kv_share_prefix(const QsaState& from, const QsaState& to, int64_t cells,
+                         std::vector<uint64_t>& shared_bytes);
+int64_t qsa_kv_cow_need(int64_t begin, int64_t end, const std::vector<int32_t>* pools);
+bool qsa_kv_prepare_write(int64_t begin, int64_t end, const std::function<VmmChunk()>& take,
+                          const std::vector<int32_t>* pools);
 /// Optional pool IDs restrict operations to one session; nullptr retains the all-pool path.
 /// Cells every selected elastic state can hold now (INT64_MAX when none is selected).
 int64_t qsa_kv_elastic_cells(const std::vector<int32_t>* pools = nullptr);
@@ -305,6 +316,8 @@ uint64_t qsa_kv_elastic_mapped_bytes();
 uint64_t qsa_kv_elastic_full_bytes();
 /// Every mapped chunk of the elastic pools as (handle, pool << 32 | chunk): a debug check for chunks mapped twice.
 std::vector<std::pair<VmmChunk, int64_t>> qsa_kv_elastic_handles();
+/// Debug locations returned above must share the same reference-counted owner.
+bool qsa_kv_elastic_shared_alias(int64_t a, int64_t b);
 int64_t qsa_kv_resident();
 /// The fewest resident cells a streamed layer may have: one verify window's selections (8 queries x 2,051 cells
 /// in whole blocks) must fit at once, with room to spare.

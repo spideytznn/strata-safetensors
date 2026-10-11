@@ -15,6 +15,10 @@
 #define blackwell_mma_available(cc) false
 #define STRATA_MMQ_XPTR 1
 #define STRATA_MMQ_YPIPE 1
+// A packed request changes the number of expert tiles. Keep complete K reductions
+// in one CTA for the opt-in ragged path, including its ordinary-prefill fallback:
+// stream-k's shape-dependent split/fixup order can amplify through later routing.
+#define STRATA_MMQ_RAGGED_STABLE 1
 #define mul_mat_q_switch_J strata_w4a8_mul_mat_q_switch_J
 #define mul_mat_q_case strata_w4a8_mul_mat_q_case
 #include "mmq_vendor/mmq.cuh"

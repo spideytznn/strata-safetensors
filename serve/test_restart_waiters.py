@@ -28,11 +28,11 @@ class RestartWaiters(unittest.TestCase):
     chat = test_parallel.ParallelService.chat
     _start, tearDown = test_parallel.ParallelService.start, test_parallel.ParallelService.tearDown
 
-    def start(self, slots, fit=None):
+    def start(self, slots, fit=None, more=()):
         """The fake engine, and it stays the engine for the restarts that follow (Popen is patched for the test)."""
         import serve.server as server
         real = REAL_POPEN
-        self._start(slots, fit=fit)
+        self._start(slots, fit=fit, more=more)
         script = Path(self.tmp.name) / "fake_strata.py"
         patch = mock.patch.object(server.subprocess, "Popen",
                                   lambda cmd, **kw: real([sys.executable, str(script), *cmd[1:]], **kw))
@@ -98,6 +98,41 @@ class RestartWaiters(unittest.TestCase):
 
     def test_waiters_go_on_with_the_new_engine_4_slots(self):
         self.go_on(4)
+
+    def test_packed_collectors_finish_or_fail_cleanly_across_restart(self):
+        self.start(4, more=["--ragged"])
+        e = self.engine
+        pack_cv, ctl = e.pack_cv, e.ctl
+        self.assertTrue(ctl.acquire(timeout=5))
+        out, threads = {}, []
+        for i in range(4):
+            thread = threading.Thread(target=self.post, args=(f"packed waiter {i}: " + "context " * 25, out, i))
+            thread.start()
+            threads.append(thread)
+        deadline = time.monotonic() + 10
+        while not e.pack_running and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(e.pack_running)
+        self.kill()
+        restart = threading.Thread(target=e.restart)
+        restart.start()
+        time.sleep(0.1)
+        ctl.release()
+        restart.join(60)
+        self.assertFalse(restart.is_alive())
+        self.joined(threads)
+        self.assertEqual(len(out), 4)
+        self.assertTrue(all(row == ("ok", "ok, done.") or row[:2] == ("http", 503) for row in out.values()), out)
+        deadline = time.monotonic() + 5
+        while e.pack_running and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertFalse(e.pack_running)
+        self.assertIs(e.pack_cv, pack_cv)
+        self.assertIs(e.ctl, ctl)
+        self.assertFalse(any(e.slot_busy))
+        self.assertFalse(e.slot_claims)
+        self.assertEqual(self.chat("after a packed restart")["choices"][0]["message"]["content"], "ok, done.")
+        self.clean()
 
     def stays_down(self, slots):
         self.start(slots)

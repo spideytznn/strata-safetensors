@@ -40,7 +40,10 @@ def reader():
     lines.put(None)
 threading.Thread(target=reader, daemon=True).start()
 print("INFO engine=0.1.39" + (f" batch_slots={fit}" if fit >= 2 else "") +
-      (" slot_cache=1" if "--slotcache" in args else "") + (f" batch_groups={groups}" if groups > 1 else ""), flush=True)
+      (" slot_cache=1" if "--slotcache" in args else "") + (f" batch_groups={groups}" if groups > 1 else "") +
+      (" context=32768 kv_token_budget=16384" if "--token-budget" in args else "") +
+      (" weight_source=safetensors continuous_batch=1 ragged_prefill=1 ragged_boundaries=1 prefill_chunk=" +
+       ("128" if "--small-pack" in args else "4096") if "--ragged" in args else ""), flush=True)
 print("READY 4096 stop", flush=True)
 LONG = list(b"LONGREPLY")
 def continued(ids):        # (the whole reply, how much of it the prompt already ends with: a request continued)
@@ -82,6 +85,12 @@ while True:
         break
     if line.startswith("BYIELD "):
         continue                              # too late: the read it was for has ended
+    if line.startswith("BPREF "):
+        entries = line[6:].split(';')
+        if log:
+            log.write(f"BPREF {len(entries)}\n"); log.flush()
+        print(f"PREFDONE {0 if '--reject-pack' in args else len(entries)} 0 0", flush=True)
+        continue
     if line.startswith("BSTOP "):
         b = int(line.split()[1])
         if b in active:
@@ -242,6 +251,20 @@ class PickSlot(unittest.TestCase):
         self.assertEqual(v[0]["generated"], 4)
         self.assertEqual(v[1], {"slot": 1, "state": "idle", "held_tokens": 2})
 
+    def test_live_token_budget_limits_lengths_instead_of_slot_count(self):
+        e = self.engine(8)
+        e.info = {"context": 262144}
+        e.kv_token_budget = 32768
+        e.slot_tokens = [0] * 8
+        e.slot_busy[0] = True
+        e.slot_tokens[0] = e._slot_charge([1] * 20000, 1000)
+        self.assertEqual(e.slot_tokens[0], 24576)
+        self.assertIsNotNone(e.pick_slot([2] * 4000, 1000))
+        self.assertIsNone(e.pick_slot([2] * 9000, 1000))
+        e.slot_busy[0] = False
+        self.assertIsNotNone(e.pick_slot([2] * 9000, 1000))
+        self.assertEqual(e._slot_charge([2], 0), 262144)
+
 
 class ParallelService(unittest.TestCase):
     """The real StrataEngine and Service over HTTP, the fake engine behind them."""
@@ -298,6 +321,107 @@ class ParallelService(unittest.TestCase):
         self.start(4, fit=2)
         self.assertEqual(self.engine.batch, 2)
         self.assertEqual(self.get("/v1/status")["concurrency"]["serving"], 2)
+
+    def packed_burst(self, reject=False, chunked=False):
+        self.start(4, more=["--ragged"] + (["--reject-pack"] if reject else []) + (["--small-pack"] if chunked else []))
+        gate = threading.Barrier(5)
+        answers, errors = [], []
+        # Hold admission while all four requests reach the burst collector.
+        self.engine.ctl.acquire()
+        def one(i):
+            try:
+                gate.wait(timeout=10)
+                answers.append(self.chat(f"independent packed question {i}"))
+            except Exception as error:
+                errors.append(repr(error))
+        threads = [threading.Thread(target=one, args=(i,)) for i in range(4)]
+        for thread in threads:
+            thread.start()
+        gate.wait(timeout=10)
+        time.sleep(0.1)
+        self.engine.ctl.release()
+        for thread in threads:
+            thread.join(30)
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual(errors, [])
+        self.assertEqual(len(answers), 4)
+        self.assertTrue(all(a["choices"][0]["message"]["content"] == "ok, done." for a in answers))
+        self.assertTrue(any(line.startswith("BPREF ") for line in self.log.read_text().splitlines()))
+        if not chunked:
+            first = next(line for line in self.log.read_text().splitlines() if line.startswith("BPREF "))
+            self.assertEqual(int(first.split()[1]), 4)
+        if chunked:
+            self.assertGreaterEqual(sum(line.startswith("BPREF ") for line in self.log.read_text().splitlines()), 2)
+        self.assertFalse(any(self.engine.slot_busy))
+        self.assertFalse(self.engine.slot_claims)
+        self.assertEqual(self.chat("after the burst")["choices"][0]["message"]["content"], "ok, done.")
+
+    def test_packed_prefill_burst_keeps_independent_slot_owners(self):
+        self.packed_burst()
+
+    def test_packed_prefill_rejection_releases_every_reservation(self):
+        self.packed_burst(reject=True)
+
+    def test_packed_prefill_multiple_chunks_keep_reservations(self):
+        self.packed_burst(chunked=True)
+
+    def test_token_budget_queues_requests_without_holding_control(self):
+        self.start(8, more=["--token-budget"])
+        gate = threading.Barrier(5)
+        answers, errors = [], []
+        def one(i):
+            try:
+                gate.wait(timeout=10)
+                answers.append(self.chat(f"budget question {i} LONGREPLY"))
+            except Exception as error:
+                errors.append(repr(error))
+        threads = [threading.Thread(target=one, args=(i,)) for i in range(4)]
+        for thread in threads: thread.start()
+        gate.wait(timeout=10)
+        for thread in threads: thread.join(30)
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual((len(answers), errors), (4, []))
+        self.assertTrue(all(int(line.split()[3]) <= 1 for line in self.log.read_text().splitlines() if line.startswith("BGEN")))
+        self.assertFalse(any(self.engine.slot_busy))
+
+    def test_abandoned_packed_collector_does_not_leak_a_slot(self):
+        self.start(4, more=["--ragged"])
+        e = self.engine
+        e.ctl.acquire()
+        collector = e._packed_prefill(list(range(100)), 32, {}, threading.Event(), None)
+        next(collector)
+        collector.close()
+        e.ctl.release()
+        deadline = time.monotonic() + 5
+        while e.pack_running and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertFalse(e.pack_running)
+        self.assertFalse(any(e.slot_busy))
+        self.assertFalse(e.slot_claims)
+        self.assertEqual(self.chat("after abandoning")["choices"][0]["message"]["content"], "ok, done.")
+
+    def test_packed_prefill_keeps_root_and_turn_boundaries(self):
+        self.start(4, more=["--ragged", "--prompt-cache-root", "128"])
+        ids = [42] * 1100
+        ids[0] = ids[257] = ids[1092] = 248045
+        e = self.engine
+        with mock.patch("serve.server.threading.Thread"):
+            collector = e._packed_prefill(ids, 32, {}, threading.Event(), None)
+            next(collector)
+        try:
+            with e.pack_cv:
+                self.assertEqual(e.pack_wait[0]["cuts"], [257, 1092])
+                self.assertEqual(e.pack_wait[0]["end"], 1092)
+        finally:
+            collector.close()
+            with e.pack_cv:
+                e.pack_wait.clear()
+                e.pack_running = False
+        # A short suffix of a long root still belongs to the FP32 reader.
+        short = [42] * 300
+        short[0] = short[257] = short[292] = 248045
+        self.assertEqual(list(e._packed_prefill(short, 32, {}, threading.Event(), None)), [])
+        self.assertEqual(list(e._packed_prefill(ids, 32, {"strata_prefix": {"tokens": 300}}, threading.Event(), None)), [])
 
     def test_batch_groups_auto_follows_the_engine(self):
         """--batch-groups auto: the engine picks the groups and says so (INFO batch_groups=G); the server spreads the
