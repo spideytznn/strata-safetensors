@@ -265,6 +265,75 @@ bool conversation_kv_part_sizes(const QsaState& st, const ModelGeometry& g, int6
     return true;
 }
 
+namespace {
+bool handoff_valid(const QsaState& from, const QsaState& to, const ModelGeometry& g,
+                   int64_t upto, std::string& error) {
+    Layout a{}, b{};
+    if (&from == &to || from.kv_elastic < 0 || to.kv_elastic < 0 || from.kv_elastic == to.kv_elastic ||
+        from.kv_mode != 0 || to.kv_mode != 0 || from.kv_q4 || to.kv_q4 || from.kv_hybrid || to.kv_hybrid ||
+        from.max_cells != to.max_cells || from.n_slots != to.n_slots || from.kv_rot != to.kv_rot ||
+        !layout(from, g, upto, true, a, error) || !valid(from, a, upto, error) ||
+        !layout(to, g, upto, true, b, error) || !valid(to, b, upto, error) ||
+        a.format != b.format || a.pooled != b.pooled) {
+        error = "conversation handoff: incompatible resident elastic KV pools";
+        return false;
+    }
+    const std::vector<int32_t> source_pool{from.kv_elastic};
+    if (qsa_kv_elastic_cells(&source_pool) < upto) {
+        error = "conversation handoff: source KV is not mapped through the requested prefix";
+        return false;
+    }
+    return true;
+}
+void handoff_swap(QsaState& from, QsaState& to) {
+    std::swap(from.k_pool, to.k_pool);
+    std::swap(from.v_pool, to.v_pool);
+    std::swap(from.k_q, to.k_q);
+    std::swap(from.v_q, to.v_q);
+    std::swap(from.k_scale, to.k_scale);
+    std::swap(from.v_scale, to.v_scale);
+    std::swap(from.kv_elastic, to.kv_elastic);
+    std::swap(from.idx_pooled, to.idx_pooled);
+    std::swap(from.idx_tail, to.idx_tail);
+    std::swap(from.idx_dead, to.idx_dead);
+    std::swap(from.idx_block_pos, to.idx_block_pos);
+}
+} // namespace
+
+bool conversation_kv_handoff(QsaState& from, QsaState& to, const ModelGeometry& g,
+                             int64_t upto, std::string& error) {
+    if (!handoff_valid(from, to, g, upto, error)) return false;
+    handoff_swap(from, to);
+    return true;
+}
+
+bool conversation_session_handoff(SessionState& from, SessionState& to, const ModelGeometry& g,
+                                  const std::vector<int32_t>& ids, std::string& error) {
+    if (&from == &to || from.max_cells != to.max_cells || from.layer_lo != to.layer_lo ||
+        from.layer_hi != to.layer_hi || from.gdn_alloc != to.gdn_alloc || from.gdn_ord0 != to.gdn_ord0 ||
+        from.qsa_alloc != to.qsa_alloc || from.qsa_ord0 != to.qsa_ord0 ||
+        !from.gdn_state || !to.gdn_state || !from.ple_hist || !to.ple_hist) {
+        error = "conversation handoff: incompatible session state";
+        return false;
+    }
+    // Validate every layer before moving any ownership. Scratch and RoPE stay with the executor.
+    for (int64_t j = 0; j < from.qsa_alloc; ++j)
+        if (!handoff_valid(from.qsa_states[from.qsa_ord0 + j], to.qsa_states[to.qsa_ord0 + j], g,
+                           (int64_t) ids.size(), error)) return false;
+    for (int64_t j = 0; j < from.qsa_alloc; ++j)
+        handoff_swap(from.qsa_states[from.qsa_ord0 + j], to.qsa_states[to.qsa_ord0 + j]);
+    std::swap(from.gdn_state, to.gdn_state);
+    std::swap(from.ple_hist, to.ple_hist);
+    from.ple.hist = from.ple_hist;
+    to.ple.hist = to.ple_hist;
+    std::swap(from.ple_prev[0], to.ple_prev[0]);
+    std::swap(from.ple_prev[1], to.ple_prev[1]);
+    std::swap(from.ple_token, to.ple_token);
+    to.ple_prev[0] = ids.size() >= 2 ? ids[ids.size() - 2] : -1;
+    to.ple_prev[1] = ids.empty() ? -1 : ids.back();
+    return true;
+}
+
 bool conversation_kv_source(SessionKvSource& out, const QsaState& st, const ModelGeometry& g,
                             int64_t upto, bool index, std::string& error) {
     Layout l{};

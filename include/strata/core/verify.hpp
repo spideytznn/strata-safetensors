@@ -159,6 +159,12 @@ public:
     // split's stages each get their own sessions, and run_slots/commit_slots continue into the next stage.
     bool init_slots(const std::vector<SessionState*>& slots, std::string& err);
     int n_slots() const { return (int) slots_.size(); }
+    /// Target-only batching: distinct slots advance state in the forward graph. Set before init_slots.
+    /// Duplicate rows (speculation) retain the snapshot/commit path. Off by default.
+    void set_batch_inplace(bool on) { batch_inplace_ = on; }
+    bool batch_inplace() const { return batch_inplace_; }
+    /// Native single-GPU resident KV ownership changes; graph caches follow backing IDs, not slot IDs.
+    void set_kv_handoff(bool on) { kv_handoff_ = on; }
     /// One batch window over slots [0, S): tokens[s] at positions pos[s]; out[s] = the greedy pick after it.
     bool run_slots(int S, const int32_t* tokens, const int64_t* pos, PoolMultiFn pool, void* user, int32_t* out,
                    std::string& err);
@@ -305,6 +311,13 @@ private:
     // batch windows (see init_slots)
     std::vector<SessionState*> slots_;
     bool batch_rec_ = false;               ///< record_window is capturing a batch window
+    bool batch_inplace_ = false;
+    bool batch_inplace_rows(const int* rows, int n) const {
+        if (!batch_inplace_) return false;
+        for (int i = 0; i < n; ++i)
+            for (int j = 0; j < i; ++j) if (rows[i] == rows[j]) return false;
+        return n > 0;
+    }
     int row_base_ = 0;                     ///< ... its hand-off rows start here (a pipeline group's own rows)
     int brow_[8] = {};                     ///< ... and row t is slot brow_[t]
     bool last_batch_ = false;              ///< the last run was a batch window (set_plan_slot: one group)
@@ -316,6 +329,11 @@ private:
     std::vector<int> bkey(const int* rows, int S, int hbase) const {   // #871: the doorbell variant has its own graphs
         std::vector<int> k = batch_key(rows, S, hbase);
         k.push_back(ar_off_ ? 1 : 0);
+        if (kv_handoff_)
+            for (int t = 0; t < S; ++t) {
+                const auto& s = *slots_[(size_t) rows[t]];
+                k.push_back(s.qsa_states[s.qsa_primary()].kv_elastic);
+            }
         return k;
     }
     static std::vector<int> batch_key(const int* rows, int S, int hbase) {
@@ -441,6 +459,14 @@ private:
     cudaGraphExec_t exec_[9] = {};
     cudaGraphExec_t exec_nr_[9] = {};   // #871: the doorbell variant of a stage that is all-resident otherwise
     cudaGraphExec_t commit_exec_ = nullptr;
+    bool kv_handoff_ = false;
+    int32_t main_kv_key_ = -1;
+    struct KvGraphs {
+        cudaGraphExec_t exec[9] = {}, nr[9] = {};
+        cudaGraphExec_t commit = nullptr;
+    };
+    std::map<int32_t, KvGraphs> kv_graphs_;
+    bool select_kv_graphs(std::string& err);
 
     // mapped staging (host pointer, device alias)
     int32_t* h_tok_ = nullptr;   int32_t* m_tok_ = nullptr;     // T

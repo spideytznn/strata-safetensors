@@ -25,9 +25,12 @@ def main():
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--parallel", type=int, default=2)
     ap.add_argument("--rounds", type=int, default=3)
+    ap.add_argument("--clients", type=int, nargs="+", default=[1, 2, 3])
+    ap.add_argument("--limit", type=int, default=96)
     ap.add_argument("--independent-kv", action="store_true", help="opt into per-session elastic KV mappings")
     ap.add_argument("--device-slot-copy", action="store_true", help="opt into direct device slot migration")
     ap.add_argument("--long-tokens", type=int, default=0, help="replace the first fixture with a repeated-text long prompt")
+    ap.add_argument("--cold-admission-tokens", type=int, default=0, help="also check a cold long read yielding to a late short request")
     a = ap.parse_args()
     a.output.mkdir(parents=True, exist_ok=False)
     cfg = json.loads(a.config.read_text(encoding="utf8"))
@@ -68,12 +71,14 @@ def main():
             assert response.status == 200 and "# TYPE" in metrics and "vllm:" in metrics
         result["http_checks"] = {"unrestricted_host": True, "prometheus_metrics": True}
 
-        def chat(name, content, limit=96, barrier=None, started=None, disconnect=False, anthropic=False):
+        def chat(name, content, limit=a.limit, barrier=None, started=None, disconnect=False, anthropic=False, checkpoint=True):
             if barrier:
                 barrier.wait(timeout=30)
             body = {"model": "qwen3.8-flash-next", "messages": [{"role": "user", "content": content}],
                     "max_tokens": limit, "temperature": 0, "stream": True,
                     "chat_template_kwargs": {"enable_thinking": False}}
+            if not checkpoint:
+                body["strata_checkpoint"] = False
             if anthropic:
                 body.pop("chat_template_kwargs")
                 body["thinking"] = {"type": "disabled"}
@@ -115,6 +120,16 @@ def main():
         questions = ["Explain TCP and QUIC in detail, including congestion control and multiplexing.",
                      "写一个 Python 二分查找函数，解释边界条件和时间复杂度。",
                      "Explain how a B-tree splits a node; give a worked example."]
+        if max(a.clients) > len(questions):
+            questions.extend([
+                "Explain database transactions and isolation levels with detailed examples.",
+                "Describe merge sort with Python code, correctness and complexity.",
+                "Explain how an operating system schedules threads on many CPU cores.",
+                "Describe DNS resolution from a browser to an authoritative name server.",
+                "Explain Unicode encoding with examples of UTF-8 and UTF-16.",
+            ][:max(a.clients) - len(questions)])
+        if not a.clients or min(a.clients) < 1 or max(a.clients) > len(questions):
+            raise ValueError("clients must be in 1..8")
         if a.long_tokens:
             paragraph = "The committee reviewed the budget, the schedule and open questions. A report follows next quarter. "
             questions[0] = paragraph * (a.long_tokens // len(tok.encode(paragraph)) + 1) + \
@@ -122,8 +137,8 @@ def main():
         result["fixture_body_tokens"] = [len(tok.encode(q)) for q in questions]
         refs = [chat(f"reference-{i}", text) for i, text in enumerate(questions)]
         save()
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            for count in (1, 2, 3):
+        with ThreadPoolExecutor(max_workers=max(4, max(a.clients))) as pool:
+            for count in a.clients:
                 for round_id in range(a.rounds):
                     gate = threading.Barrier(count)
                     t0 = time.perf_counter()
@@ -132,7 +147,7 @@ def main():
                     rows = [f.result(timeout=300) for f in futures]
                     for i, row in enumerate(rows):
                         assert row["text"] == refs[i]["text"], row["name"] + " differs from serial reference"
-                        assert row["usage"] and row["usage"]["completion_tokens"] <= 96
+                        assert row["usage"] and row["usage"]["completion_tokens"] <= a.limit
                     elapsed = time.perf_counter() - t0
                     result["rounds"].append({"clients": count, "round": round_id, "wall_s": elapsed,
                         "aggregate_tok_s": sum(r["usage"]["completion_tokens"] for r in rows) / elapsed,
@@ -167,6 +182,29 @@ def main():
                 assert late.result(timeout=300)["text"] == refs[1]["text"]
             anth = chat("anthropic", questions[0], anthropic=True)
             assert anth["text"] == refs[0]["text"]
+            if a.cold_admission_tokens:
+                paragraph = "An independent cold admission exercises the prompt scheduler and sequence state. "
+                cold_text = paragraph * (a.cold_admission_tokens // len(tok.encode(paragraph)) + 1) + \
+                    "\nExplain why a written schedule helps a project."
+                cold_ref = chat("cold-reference", cold_text, limit=64, checkpoint=False)
+                log_before = (a.output / "engine.log").stat().st_size
+                cold = pool.submit(chat, "cold-staggered", cold_text, limit=64, checkpoint=False)
+                deadline = time.monotonic() + 30
+                while not any(s and s.get("state") == "reading" and s.get("prompt_tokens", 0) > 10000
+                              for s in engine.slot_live) and not cold.done() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                assert not cold.done(), "cold admission finished before a short request could arrive"
+                short = pool.submit(chat, "cold-short", questions[1])
+                assert short.result(timeout=300)["text"] == refs[1]["text"]
+                assert cold.result(timeout=300)["text"] == cold_ref["text"]
+                with (a.output / "engine.log").open("rb") as log:
+                    log.seek(log_before)
+                    trace = log.read().decode("utf8")
+                assert "the prompt read gives way" in trace, "no real chunk-boundary yield occurred"
+                result["cold_admission"] = {"body_tokens": len(tok.encode(cold_text)), "yielded": True,
+                                             "output_identical": True}
+                save()
+                print("cold long admission yielded to a late short request; both outputs identical", flush=True)
         assert not any(engine.slot_busy)
         assert engine.vision_readers == 0 and not engine.vision_writer
         result["passed"] = True

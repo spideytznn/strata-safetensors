@@ -6707,7 +6707,16 @@ int strata_main(int argc, char** argv) {
         const char* v = std::getenv("STRATA_NATIVE_KV_INDEPENDENT");
         return v != nullptr && std::atoi(v) != 0;
     }();
-    // Pool IDs and virtual addresses remain stable for the lifetime of each session.
+    // Backing IDs/addresses stay stable; the optional handoff changes which session owns them.
+    const bool native_kv_handoff = native_kv_independent && strata::core::qsa_kv_elastic() &&
+                                  stages.empty() && o.mtp.empty() && [] {
+        const char* v = std::getenv("STRATA_NATIVE_KV_HANDOFF");
+        return v != nullptr && std::atoi(v) != 0;
+    }();
+    const bool native_continuous = safetensors && o.batch > 0 && stages.empty() && o.mtp.empty() && [] {
+        const char* v = std::getenv("STRATA_NATIVE_CONTINUOUS");
+        return v != nullptr && std::atoi(v) != 0;
+    }();
     std::vector<std::pair<strata::core::SessionState*, std::vector<int32_t>>> kv_session_pools;
     auto register_kv_session = [&](strata::core::SessionState& session) {
         std::vector<int32_t> ids;
@@ -6730,6 +6739,14 @@ int strata_main(int argc, char** argv) {
             if (entry.first == session) return &entry.second;
         std::fprintf(stderr, "strata: unregistered independent K/V session\n");
         std::abort();
+    };
+    auto kv_refresh_owners = [&] {
+        if (!native_kv_handoff) return;
+        for (auto& [session, ids] : kv_session_pools) {
+            ids.clear();
+            for (int64_t j = 0; j < session->qsa_alloc; ++j)
+                ids.push_back(session->qsa_states[session->qsa_ord0 + j].kv_elastic);
+        }
     };
     struct KvGrow {
         bool on = false;
@@ -7962,6 +7979,11 @@ int strata_main(int argc, char** argv) {
                 std::vector<strata::core::SessionState*> ptrs;
                 for (auto& u : bslot_ss[k]) ptrs.push_back(u.get());
                 strata::core::Verifier& vk = k == 0 ? ver : stages[k - 1]->ver;
+                const char* inplace = std::getenv("STRATA_NATIVE_BATCH_INPLACE");
+                vk.set_batch_inplace(safetensors && !batch_mtp && stages.empty() &&
+                                     inplace != nullptr && std::atoi(inplace) != 0);
+                vk.set_kv_handoff(native_kv_handoff);
+                if (native_kv_handoff) vk.set_batch_graph_limit(32);
                 const strata::core::OnDevice on_k(k == 0 ? 0 : stages[k - 1]->dev);
                 if (!vk.init_slots(ptrs, err)) {
                     std::fprintf(stderr, "strata serve: --batch, stage %zu: %s\n", k + 1, err.c_str());
@@ -9641,7 +9663,10 @@ int strata_main(int argc, char** argv) {
                         (long long) o.tail_role_token, xcache.segmented() ? 1 : 0, strata::core::tail_skip_rank(),
                         o.batch > 0 ? (" batch_slots=" + std::to_string(o.batch) +
                                        " slot_cache=" + std::to_string(o.prompt_cache > 0 ? 1 : 0) +
-                                       " batch_groups=" + std::to_string(o.batch_groups)).c_str() : "");
+                                       " batch_groups=" + std::to_string(o.batch_groups) +
+                                       " batch_inplace=" + std::to_string(ver.batch_inplace() ? 1 : 0) +
+                                       " continuous_batch=" + std::to_string(native_continuous ? 1 : 0) +
+                                       " kv_handoff=" + std::to_string(native_kv_handoff ? 1 : 0)).c_str() : "");
             if (safetensors)
                 std::printf("INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=%llu "
                             "expert_cuda_pinned_bytes=%llu expert_os_locked_bytes=%llu "
@@ -9890,10 +9915,10 @@ int strata_main(int argc, char** argv) {
         double bt_adapt_wait = 0;
         bool in_prompt_read = false;   // batch_step runs between a prompt's chunks: the adaptive tier stands still then
         int64_t bt_a_rounds0 = 0, bt_a_swapped0 = 0;   // the asynchronous tier's counters when the timed windows began
-        const bool native_slot_copy = safetensors && o.mtp.empty() && [] {
+        const bool native_slot_copy = native_kv_handoff || (safetensors && o.mtp.empty() && [] {
             const char* v = std::getenv("STRATA_NATIVE_SLOT_COPY");
             return v != nullptr && std::atoi(v) != 0;
-        }();
+        }());
         if (native_slot_copy)
             std::fprintf(stderr, "strata: native batch slot copies stay on the device\n");
         Clock::time_point bt_start = Clock::now();
@@ -9910,7 +9935,7 @@ int strata_main(int argc, char** argv) {
         // the session a request just left behind (its prompt) -> slot b's sessions, on every stage
         auto copy_to_slot = [&](int b, const std::vector<int32_t>& ids, std::string& e) -> bool {
             const int64_t upto = (int64_t) ids.size();
-            if (native_kv_independent &&
+            if (native_kv_independent && !native_kv_handoff &&
                 !kvg_ensure(upto + 256, [&] { cudaDeviceSynchronize(); apply_pending(true); }, bslot_ss[0][(size_t) b].get())) {
                 e = "batch admission: destination K/V cannot grow";
                 return false;
@@ -9920,11 +9945,19 @@ int strata_main(int argc, char** argv) {
                 strata::core::SessionState& to = *bslot_ss[k][(size_t) b];
                 const strata::core::OnDevice on_k(k == 0 ? 0 : stages[k - 1]->dev);
                 if (cudaDeviceSynchronize() != cudaSuccess) { e = "batch admission: device sync failed"; return false; }
+                if (native_kv_handoff) {
+                    if (!strata::core::conversation_session_handoff(from, to, g, ids, e)) return false;
+                    kv_refresh_owners();
+                    continue;
+                }
                 if (native_slot_copy) {
                     if (!strata::core::conversation_checkpoint_copy(from, to, g, ids, e)) return false;
-                    for (int64_t j = 0; j < from.qsa_alloc; ++j)
-                        if (!strata::core::conversation_kv_copy(from.qsa_states[from.qsa_ord0 + j],
-                                                               to.qsa_states[to.qsa_ord0 + j], g, upto, true, e)) return false;
+                    for (int64_t j = 0; j < from.qsa_alloc; ++j) {
+                        auto& f = from.qsa_states[from.qsa_ord0 + j];
+                        auto& t = to.qsa_states[to.qsa_ord0 + j];
+                        if (!strata::core::conversation_kv_copy(f, t, g, upto, true, e)) return false;
+                    }
+                    kv_refresh_owners();
                     if (cudaDeviceSynchronize() != cudaSuccess) { e = "batch admission: device copy failed"; return false; }
                     continue;
                 }
@@ -9947,6 +9980,10 @@ int strata_main(int argc, char** argv) {
                 e = "batch admission: destination K/V cannot shrink";
                 return false;
             }
+            if (native_kv_handoff) {
+                live_ok = false;  // its KV now belongs exclusively to the admitted slot
+                conversations.limit_reuse(0);  // retained host chunks describe the previous backing's prefix
+            }
             if (batch_mtp) {
                 // Admission first builds the solo draft KV; copy it into the slot before drafting.  Both drafters' K/V
                 // are on the drafter's device (the last stage's GPU with a layer split): the copy's ring refill is a
@@ -9968,7 +10005,8 @@ int strata_main(int argc, char** argv) {
         // `at`: one of the slot's checkpoints - only the K/V up to it is copied and its state restored instead
         auto copy_from_slot = [&](int b, const ConvCheckpoint* at, std::string& e) -> bool {
             const int64_t upto = at != nullptr ? (int64_t) at->ids.size() : (int64_t) bs[(size_t) b].ids.size();
-            if (native_kv_independent &&
+            const bool transfer = native_kv_handoff && !bs[(size_t) b].active;
+            if (native_kv_independent && !transfer &&
                 !kvg_ensure(upto + 256, [&] { cudaDeviceSynchronize(); apply_pending(true); })) {
                 e = "batch slot restore: destination K/V cannot grow";
                 return false;
@@ -9979,14 +10017,26 @@ int strata_main(int argc, char** argv) {
                 strata::core::SessionState& to = k == 0 ? ss : stages[k - 1]->ss;
                 const strata::core::OnDevice on_k(k == 0 ? 0 : stages[k - 1]->dev);
                 if (cudaDeviceSynchronize() != cudaSuccess) { e = "batch slot restore: device sync failed"; return false; }
+                if (transfer) {
+                    if (!strata::core::conversation_session_handoff(from, to, g,
+                            at ? at->ids : bs[(size_t) b].ids, e)) return false;
+                    kv_refresh_owners();
+                    // Rewind only after ownership moves: the checkpoint's moving indexer spare must win.
+                    if (at && !strata::core::conversation_checkpoint_restore(*at, to, g, e)) return false;
+                    continue;
+                }
                 if (native_slot_copy) {
                     if (at != nullptr) {
-                        if (!strata::core::conversation_checkpoint_restore(k == 0 ? *at : at->stage_parts[k - 1], to, g, e))
+                        if (!native_kv_handoff && !strata::core::conversation_checkpoint_restore(k == 0 ? *at : at->stage_parts[k - 1], to, g, e))
                             return false;
                     } else if (!strata::core::conversation_checkpoint_copy(from, to, g, bs[(size_t) b].ids, e)) return false;
-                    for (int64_t j = 0; j < from.qsa_alloc; ++j)
-                        if (!strata::core::conversation_kv_copy(from.qsa_states[from.qsa_ord0 + j],
-                                                               to.qsa_states[to.qsa_ord0 + j], g, upto, true, e)) return false;
+                    for (int64_t j = 0; j < from.qsa_alloc; ++j) {
+                        auto& f = from.qsa_states[from.qsa_ord0 + j];
+                        auto& t = to.qsa_states[to.qsa_ord0 + j];
+                        if (!strata::core::conversation_kv_copy(f, t, g, upto, true, e)) return false;
+                    }
+                    kv_refresh_owners();
+                    if (native_kv_handoff && at && !strata::core::conversation_checkpoint_restore(*at, to, g, e)) return false;
                     if (cudaDeviceSynchronize() != cudaSuccess) { e = "batch slot restore: device copy failed"; return false; }
                     continue;
                 }
@@ -10009,6 +10059,10 @@ int strata_main(int argc, char** argv) {
                         return false;
                 }
                 if (cudaDeviceSynchronize() != cudaSuccess) { e = "batch slot restore: device sync failed"; return false; }
+            }
+            if (native_kv_handoff) {
+                if (transfer) bs[(size_t) b].cached = false;  // a live prefix fork keeps its source
+                conversations.limit_reuse(0);
             }
             if (batch_mtp) {
                 // A returning solo request resumes from its slot's draft KV (on the drafter's device, as above).
@@ -10934,7 +10988,7 @@ int strata_main(int argc, char** argv) {
                 return 1;
             }
             auto kv_quiesce = [&] { cudaDeviceSynchronize(); apply_pending(true); };
-            if (kvg.on) {   // the elastic K/V: this prompt's cells (it gives back what it does not need below)
+            if (kvg.on && !native_kv_handoff) {   // a handoff chooses the owning pool before growing it
                 // a failed growth may leave the tier half-changed: the engine stops (as for any CUDA failure)
                 if (!kvg_ensure(n + 256, kv_quiesce)) {
                     std::printf("ERR the K/V cannot grow to this prompt: no VRAM is left\n");
@@ -10957,17 +11011,17 @@ int strata_main(int argc, char** argv) {
             int slot_source = -1;
             int64_t slot_tokens = 0;
             bool resumed_from0 = false;   // a prompt read parked in a slot (BYIELD) that had started at token 0
-            const ConvCheckpoint* slot_ck = nullptr;   // the slot's checkpoint the prompt continues from (else its end)
+            ConvCheckpoint* slot_ck = nullptr;   // the slot's checkpoint the prompt continues from (else its end)
             if (o.prompt_cache > 0 && req_imgs.empty())
                 for (int b = 0; b < (int) bs.size(); ++b) {
-                    const BSlot& sl = bs[(size_t) b];
-                    if (sl.active || !sl.cached || sl.cvec != want_cvec) continue;
+                    BSlot& sl = bs[(size_t) b];
+                    if (sl.img || (sl.active && !native_kv_handoff) || (!sl.active && !sl.cached) || sl.cvec != want_cvec) continue;
                     if ((int64_t) sl.ids.size() > std::max(resume, slot_tokens) && starts_with(sl.ids, {})) {
                         slot_source = b;
                         slot_tokens = (int64_t) sl.ids.size();
                         slot_ck = nullptr;
                     }
-                    for (const ConvCheckpoint& c : sl.checks)
+                    for (ConvCheckpoint& c : sl.checks)
                         if ((int64_t) c.ids.size() > std::max(resume, slot_tokens) && starts_with(c.ids, c.imgs)) {
                             slot_source = b;
                             slot_tokens = (int64_t) c.ids.size();
@@ -11016,9 +11070,44 @@ int strata_main(int argc, char** argv) {
                 std::printf("ERR %s\n", err.c_str());
                 return 1;
             }
+            // A new admission already owns an idle destination. Let the reader borrow its backing
+            // before reading/restoring/cloning the prompt, then copy_to_slot returns it to that same
+            // slot. Besides avoiding a duplicate large KV allocation, this keeps ordinary slot graph
+            // bindings stable across unrelated requests. Never overwrite a live reader prefix or an
+            // idle source which the request is about to continue.
+            const bool borrow_admission = native_kv_handoff && admit_slot >= 0 &&
+                !bs[(size_t) admit_slot].active && (resume == 0 || incoming || slot_source >= 0) &&
+                (slot_source < 0 || bs[(size_t) slot_source].active);
+            if (borrow_admission) {
+                kv_quiesce();
+                BSlot& idle = bs[(size_t) admit_slot];
+                auto& storage = *bslot_ss[0][(size_t) admit_slot];
+                if (!strata::core::conversation_session_handoff(storage, ss, g, {}, err)) {
+                    std::printf("ERR borrowing admission KV: %s\n", err.c_str());
+                    return 1;
+                }
+                kv_refresh_owners();
+                idle.cached = false;
+                idle.partial = false;
+                idle.ids.clear();
+                idle.checks.clear();
+                live.clear(); live_imgs.clear(); checks.clear(); live_ok = false;
+                conversations.limit_reuse(0);
+                if (!kvg_trim(kvg.step, 0, &storage)) {
+                    std::printf("ERR trimming the borrowed reader's previous KV\n");
+                    return 1;
+                }
+                std::fprintf(stderr, "strata batch: reader borrowed idle slot %d backing\n", admit_slot);
+            }
+            if (native_kv_handoff && slot_source < 0 && !kvg_ensure(n + 256, kv_quiesce)) {
+                std::printf("ERR the prompt reader's KV cannot grow\n");
+                return 1;
+            }
             if (slot_source >= 0) {
+                const bool transfer = native_kv_handoff && !bs[(size_t) slot_source].active;
                 const auto t0 = Clock::now();
                 if (!copy_from_slot(slot_source, slot_ck, err)) {
+                    if (native_kv_handoff) { std::printf("ERR KV handoff: %s\n", err.c_str()); return 1; }
                     // the main session may be half written: read this prompt from the start
                     std::fprintf(stderr, "strata batch: restoring slot %d failed (%s); reading the prompt\n",
                                  slot_source, err.c_str());
@@ -11030,27 +11119,45 @@ int strata_main(int argc, char** argv) {
                     from_live = false;
                 } else {
                     checks.clear();   // the main session's checkpoints were of the conversation it held before
+                    const bool at_checkpoint = slot_ck != nullptr;
+                    BSlot& source = bs[(size_t) slot_source];
+                    live = at_checkpoint ? slot_ck->ids : source.ids;
                     // a read that gave way, the same request again (into its own slot): on with it - its segments and
                     // checkpoints as if it had not stopped
-                    if (slot_ck == nullptr && bs[(size_t) slot_source].partial && admit_slot == slot_source) {
-                        resumed_from0 = bs[(size_t) slot_source].partial_from0;
-                        for (const ConvCheckpoint& c : bs[(size_t) slot_source].checks) checks.push_back(c);
-                        bs[(size_t) slot_source].partial = false;
+                    const bool partial_resume = !at_checkpoint && source.partial && admit_slot == slot_source;
+                    if (partial_resume) {
+                        resumed_from0 = source.partial_from0;
+                        source.partial = false;
                     }
-                    if (slot_ck != nullptr) {
-                        live = slot_ck->ids;
-                        checks.push_back(*slot_ck);   // the main session's chain has it now
+                    if (transfer) {
+                        // Return the valid prefix chain as well as its backing. Earlier branch points
+                        // must survive continuation; snapshots beyond a rewind are no longer reusable.
+                        for (ConvCheckpoint& c : source.checks)
+                            if (c.ids.size() <= live.size() && std::equal(c.ids.begin(), c.ids.end(), live.begin())) {
+                                if (at_checkpoint && c.ids.size() == live.size()) c.used = ++check_clock;
+                                checks.push_back(std::move(c));
+                            }
+                        source.checks.clear();
+                    } else if (at_checkpoint) {
+                        checks.push_back(*slot_ck);   // a live fork keeps its source's checkpoint
                         checks.back().used = ++check_clock;
-                    } else {
-                        live = bs[(size_t) slot_source].ids;
-                    }
+                    } else if (partial_resume)
+                        for (const ConvCheckpoint& c : source.checks) checks.push_back(c);
                     live_imgs.clear();
                     resume = slot_tokens;
                     from_live = true;
                     std::fprintf(stderr, "strata batch: slot %d gave back %lld tokens of this conversation (%s) in "
                                  "%.1f ms\n", slot_source, (long long) slot_tokens,
-                                 slot_ck != nullptr ? "its turn checkpoint" : "all it holds",
+                                 at_checkpoint ? "its turn checkpoint" : "all it holds",
                                  std::chrono::duration<double, std::milli>(Clock::now() - t0).count());
+                    if (native_kv_handoff && !transfer)
+                        std::fprintf(stderr, "strata batch: active prefix cloned: slot=%d tokens=%lld (source remains active)\n",
+                                     slot_source, (long long) slot_tokens);
+                }
+                if (native_kv_handoff && (!kvg_ensure(n + 256, kv_quiesce) ||
+                    (transfer && !kvg_trim(kvg.step, 0, bslot_ss[0][(size_t) slot_source].get())))) {
+                    std::printf("ERR KV handoff: cannot resize the transferred pools\n");
+                    return 1;
                 }
             }
             // the elastic K/V: a parked conversation is restored whole, and it may be longer than this prompt
@@ -11584,18 +11691,22 @@ int strata_main(int argc, char** argv) {
                             sl.partial = true;
                             sl.partial_from0 = read_from == 0 || resumed_from0;
                             sl.cvec = cvec_cached;
-                            for (const ConvCheckpoint& c : checks)   // the root / periodic checkpoints of this read
+                            for (ConvCheckpoint& c : checks)   // the root / periodic checkpoints of this read
                                 if ((int64_t) c.ids.size() <= q && std::equal(c.ids.begin(), c.ids.end(), ids.begin(),
-                                        [](int32_t x, int64_t y) { return (int64_t) x == y; }))
-                                    sl.checks.push_back(c);
+                                        [](int32_t x, int64_t y) { return (int64_t) x == y; })) {
+                                    if (native_kv_handoff) sl.checks.push_back(std::move(c));
+                                    else sl.checks.push_back(c);
+                                }
                             yielded_at = q;
                             yielded_slot = ys;
+                            if (native_kv_handoff) checks.clear();  // checkpoint ownership moved with the KV
                             std::fprintf(stderr, "strata batch: the prompt read gives way at %lld of %lld tokens; slot %d "
                                                  "holds it (copied in %.1f ms)\n", (long long) q, (long long) n, ys,
                                          std::chrono::duration<double, std::milli>(Clock::now() - ty).count());
                             e = "yield";
                             return false;
                         }
+                        if (can && native_kv_handoff) { batch_fatal = true; e = "KV handoff failed: " + ye; return false; }
                         if (can) bs[(size_t) ys].cached = false;   // half written
                         std::fprintf(stderr, "strata batch: BYIELD %d not taken at %lld of %lld%s%s\n", ys, (long long) q,
                                      (long long) n, ye.empty() ? "" : ": ", ye.c_str());
@@ -12731,7 +12842,9 @@ int strata_main(int argc, char** argv) {
                 }
             }
             if (drive.d.fs) std::fprintf(stderr, "strata serve: %s\n", drive.d.fs->report().c_str());
-            if (!cancelled) {
+            if (native_kv_handoff && yielded_at >= 0) {
+                live.clear(); live_imgs.clear(); checks.clear(); live_ok = false;
+            } else if (!cancelled) {
                 // a prompt stopped halfway leaves the session somewhere between two chunks: nothing to continue from
                 // (the checkpoints taken while reading it are still good)
                 live.swap(consumed);
@@ -12909,6 +13022,7 @@ int strata_main(int argc, char** argv) {
                             (int64_t) live.size() == p;
                 const auto tc0 = Clock::now();
                 if (cont && !copy_to_slot(admit_slot, live, err)) {
+                    if (native_kv_handoff) { std::printf("ERR KV handoff: %s\n", err.c_str()); return 1; }
                     std::fprintf(stderr, "strata serve: batch admission failed: %s\n", err.c_str());
                     bs[(size_t) admit_slot].cached = false;   // its sessions may be half written
                     cont = false;
@@ -12936,14 +13050,27 @@ int strata_main(int argc, char** argv) {
                     }
                     sl.cvec = cvec_cached;
                     sl.img = !live_imgs.empty();   // pictures: not matched again by tokens alone, so not cached
-                    const ConvCheckpoint* best = nullptr;
-                    for (const ConvCheckpoint& c : checks)
-                        if (c.ids.size() < live.size() && (best == nullptr || c.ids.size() > best->ids.size()) &&
-                            std::equal(c.ids.begin(), c.ids.end(), live.begin()))
-                            best = &c;
-                    if (best != nullptr && !sl.img) sl.checks.push_back(*best);
-                    std::fprintf(stderr, "strata batch: slot %d takes %lld tokens (copied in %.1f ms)\n", admit_slot,
-                                 (long long) live.size(), std::chrono::duration<double, std::milli>(Clock::now() - tc0).count());
+                    if (native_kv_handoff && !sl.img) {
+                        // The reader relinquishes its whole prefix chain. Keep the bounded chain with
+                        // its new owner: a sibling can diverge before the last turn checkpoint.
+                        for (ConvCheckpoint& c : checks)
+                            if (c.ids.size() < live.size() && std::equal(c.ids.begin(), c.ids.end(), live.begin()))
+                                sl.checks.push_back(std::move(c));
+                    } else if (!sl.img) {
+                        ConvCheckpoint* best = nullptr;
+                        for (ConvCheckpoint& c : checks)
+                            if (c.ids.size() < live.size() && (best == nullptr || c.ids.size() > best->ids.size()) &&
+                                std::equal(c.ids.begin(), c.ids.end(), live.begin()))
+                                best = &c;
+                        if (best != nullptr) sl.checks.push_back(*best);
+                    }
+                    std::fprintf(stderr, "strata batch: slot %d takes %lld tokens (%s in %.1f ms)\n", admit_slot,
+                                 (long long) live.size(), native_kv_handoff ? "KV ownership handed off" : "copied",
+                                 std::chrono::duration<double, std::milli>(Clock::now() - tc0).count());
+                    if (native_kv_handoff) {
+                        live.clear(); live_imgs.clear(); checks.clear(); live_ok = false;
+                        if (!kvg_trim(kvg.step, 0)) { std::printf("ERR trimming idle prompt KV\n"); return 1; }
+                    }
                 }
                 std::printf("BADM %d %d\n", admit_slot, cont ? 1 : 0);
                 std::fflush(stdout);

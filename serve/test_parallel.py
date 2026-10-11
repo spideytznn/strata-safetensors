@@ -501,6 +501,25 @@ class ParallelService(unittest.TestCase):
         with self.svc.status_lock:
             self.assertEqual(len(self.svc.history), 2)
 
+    def test_native_continuous_has_no_solo_migrations(self):
+        self.start(2, slot_cache=True)
+        self.engine.info.update(weight_source="safetensors", continuous_batch=1)
+        res = {}
+        th = threading.Thread(target=lambda: res.setdefault("long", self.chat("LONGREPLY please", max_tokens=200)))
+        th.start()
+        time.sleep(0.05)
+        short = self.chat("short", max_tokens=200)
+        th.join(30)
+        self.assertFalse(th.is_alive())
+        self.assertEqual(short["choices"][0]["message"]["content"], "ok, done.")
+        self.assertEqual(res["long"]["choices"][0]["message"]["content"], "ok, " + "la " * 15 + "done.")
+        kinds = [x.split()[0] for x in self.log.read_text().splitlines()]
+        self.assertEqual(kinds, ["BGEN", "BGEN"])
+        self.assertFalse(any(self.engine.slot_busy))
+        # A later lone request also enters one slot once.
+        self.chat("third")
+        self.assertEqual([x.split()[0] for x in self.log.read_text().splitlines()], ["BGEN"] * 3)
+
     def test_next_turn_goes_back_to_its_slot(self):
         self.start(2)
         a = "conversation A, first turn"

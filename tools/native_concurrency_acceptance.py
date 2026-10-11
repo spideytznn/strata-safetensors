@@ -140,6 +140,8 @@ def main():
     ap.add_argument("--independent-kv", action="store_true", help="opt into per-session elastic KV mappings")
     ap.add_argument("--device-slot-copy", action="store_true", help="opt into direct device slot migration")
     ap.add_argument("--limit", type=int, default=64)
+    ap.add_argument("--slots", type=int, choices=range(2, 9), default=2)
+    ap.add_argument("--yield-tokens", type=int, default=0, help="check ownership across a real chunk-boundary BYIELD")
     ap.add_argument("--growth-tokens", type=int, default=0, help="also test long-slot KV growth beside a short admission")
     ap.add_argument("--capacity-tokens", type=int, default=0, help="exact token count for a near-capacity two-long-slot check")
     a = ap.parse_args()
@@ -152,7 +154,7 @@ def main():
             args[args.index(flag) + 1] = str(value)
         else:
             args.extend([flag, str(value)])
-    setting("--batch", 2)
+    setting("--batch", a.slots)
     setting("--max-context", a.context)
     setting("--vram-reserve-mib", 1536)
     if not a.adaptive:
@@ -179,7 +181,7 @@ def main():
         if tail is not None:
             assert tail.group(1) == "0", "quality acceptance requires all routed experts (tail skip off)"
         result["info"] = eng.info
-        assert any("batch_slots=2" in line for line in eng.info), eng.info
+        assert any(f"batch_slots={a.slots}" in line for line in eng.info), eng.info
         pairs = [
             ("greedy", ["temperature=0", "temperature=0"]),
             ("seeded", ["temperature=0.7 top_p=0.95 top_k=20 seed=6101", "temperature=1 top_p=0.8 top_k=12 seed=2718"]),
@@ -224,6 +226,42 @@ def main():
         eos = eng.batch([(ids, 48, keys) for ids in eos_prompts])
         assert all(x["ids"] == y["ids"] and len(y["ids"]) < 48 for x, y in zip(eos_refs, eos["jobs"]))
         result["cases"].append({"name": "eos", "solo": eos_refs, "batch": eos})
+        if a.slots > 2:
+            extra = [prompt(f"Request {i}: explain how databases handle concurrent transactions with examples.")
+                     for i in range(a.slots)]
+            for mode in ("temperature=0", "temperature=0.7 top_p=0.95 top_k=20 seed=4129 penalty_last_n=128 penalty_freq=0.1"):
+                limits = [max(24, a.limit // 2) if i % 2 == 0 else a.limit for i in range(a.slots)]
+                multi_refs = [eng.solo(p, cap, mode) for p, cap in zip(extra, limits)]
+                multi = eng.batch([(p, cap, mode) for p, cap in zip(extra, limits)])
+                result["cases"].append({"name": "multislot", "sampling": mode, "solo": multi_refs, "batch": multi})
+                save()
+                assert all(x["ids"] == y["ids"] for x, y in zip(multi_refs, multi["jobs"])), "multi-slot mismatch"
+                print(f"{a.slots} slots, unequal output limits: identical ({mode})", flush=True)
+        if a.yield_tokens:
+            # No retained live/parked reference: the yielded request must really read from token zero.
+            long_ids = prompt(("A separate admission checks persistent state ownership. " * a.yield_tokens)[:a.yield_tokens * 4])
+            cold_keys = "temperature=0 ckpt=0"
+            ref = eng.solo(long_ids, 64, cold_keys)
+            for head in ("GEN", "BGEN 0"):
+                eng.send(f"{head} 64 {cold_keys} {','.join(map(str, long_ids))}")
+                eng.send("BYIELD 0")
+                yielded = None
+                while True:
+                    line = eng.read()
+                    if line.startswith("YIELDED "):
+                        yielded = line
+                    if line.startswith("BADM "):
+                        assert head == "BGEN 0" and line.split()[1:] == ["0", "0"]
+                        break
+                    if line.startswith("DONE ") and head == "GEN":
+                        break
+                assert yielded is not None, "long admission did not yield at a chunk boundary"
+                resumed_batch = eng.batch([(long_ids, 64, cold_keys), (prompts[1], 64, "temperature=0")])
+                result["cases"].append({"name": "yield_resume_" + head.split()[0], "prompt_tokens": len(long_ids),
+                                        "yielded": yielded, "solo": ref, "batch": resumed_batch})
+                save()
+                assert resumed_batch["jobs"][0]["ids"] == ref["ids"], "yield/resume changed tokens"
+                print(f"real {head} BYIELD/resume: {len(long_ids)} tokens, identical", flush=True)
         if a.capacity_tokens:
             header = tok.encode("<|im_start|>user\n", parse_special=True)
             tail = tok.encode("\nWrite a detailed, 2000-word explanation of why schedules are useful, with many examples.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n", parse_special=True)

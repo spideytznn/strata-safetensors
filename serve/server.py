@@ -752,6 +752,7 @@ class StrataEngine:
         # what each slot's sessions hold (prompt + every token a window fed), so a conversation's next turn goes to
         # the slot that has its start (the engine checks it again); when the slot was last used
         self.slot_held: list[list[int]] = [[] for _ in range(self.batch)]
+        self.slot_prompts: list[list[int]] = [[] for _ in range(self.batch)]
         self.slot_used = [0.0] * self.batch
         self.slot_live: list[dict | None] = [None] * self.batch   # /metrics: the request in each slot
         # #1012: the admission state belongs to the server, not to one engine process.  restart() runs this again
@@ -1226,11 +1227,16 @@ class StrataEngine:
     SOLO_AGAIN_MAX = 2      # how often a request left alone in a slot goes back to the solo path
     SOLO_AGAIN_MIN_LEFT = 32  # ... only with at least this many tokens still allowed (max_tokens)
 
+    def _continuous_slots(self) -> bool:
+        """A target-only native request keeps its slot for its whole decode lifetime."""
+        return ((self.info or {}).get("weight_source") == "safetensors" and
+                (self.info or {}).get("continuous_batch") == 1)
+
     def _may_go_solo(self, left: int, times: int, embeddings) -> bool:
         """A request decoding in a slot that is alone now (no other slot busy, nobody waiting) goes back to the solo
         path with its MTP drafts: the engine continues it from the slot's sessions (its slot cache; INFO
         slot_cache=1).  STRATA_PARALLEL_SOLO=0 keeps it in the slot."""
-        if (embeddings or times >= self.SOLO_AGAIN_MAX or left < self.SOLO_AGAIN_MIN_LEFT or
+        if (self._continuous_slots() or embeddings or times >= self.SOLO_AGAIN_MAX or left < self.SOLO_AGAIN_MIN_LEFT or
                 not (self.info or {}).get("slot_cache") or os.environ.get("STRATA_PARALLEL_SOLO") == "0"):
             return False
         with self.slot_cv:
@@ -1278,7 +1284,7 @@ class StrataEngine:
                     holding, born = True, self.gen                  # (the engine it now has the control lines of)
                 with self.slot_cv:
                     alone = not any(self.slot_busy) and self.waiting == 0
-                if alone and left > 1:
+                if alone and left > 1 and (embeddings or not self._continuous_slots()):
                     head = f"GENI {left}{keys} {embeddings}" if embeddings else f"GEN {left}{keys}"
                     self._send(f"{head} {','.join(str(int(t)) for t in prompt)}")
                     phase = "solo"
@@ -1388,6 +1394,7 @@ class StrataEngine:
                     self.slot_live[slot] = live
                     self._send(f"{head} {','.join(str(int(t)) for t in prompt)}")
                     self.slot_held[slot] = []               # the admission overwrites what the slot held
+                    self.slot_prompts[slot] = list(prompt) if not embeddings and self._continuous_slots() else []
                     phase = "admit"
                     self._ctl_mode, self._ctl_result, self._yielded = "batch", None, None
                     self._ctl_erred = False
@@ -1541,6 +1548,15 @@ class StrataEngine:
         # without --batch-groups a held prefix of any length is taken, as before
         if held_prefix(best) >= (self.SLOT_PREFIX_MIN if self.slot_groups > 1 else 1):
             return best
+        # A repeated prompt is shorter than the completed conversation in slot_held. Its turn
+        # checkpoint is still useful. Keep this request on that slot instead of moving its backing
+        # into the LRU slot and creating another graph binding. The engine remains authoritative
+        # about whether a checkpoint actually exists (e.g. ckpt=0 may have disabled it).
+        prompts = getattr(self, "slot_prompts", None)
+        if prompts is not None and self._continuous_slots():
+            for b in free:
+                if prompts[b] and prompts[b] == prompt:
+                    return b
         # with --batch-groups: the group with the fewest busy slots first, so the requests spread over the
         # pipeline's stages (two requests in one group leave the other stage idle); then empty, then least recent
         busy_in = {}
