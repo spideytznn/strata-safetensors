@@ -2,8 +2,10 @@
 
 The CUDA native backend can decode two text requests in one target-model window
 with `"parallel": 2` in the server config (`--batch 2` / `--slots 2` in the
-engine). This is opt-in. Both desktop entries now leave MTP unloaded; the serial entry retains its sampling settings.
-The v0.1.42 upgrade uses a separate config, preserving the original local file.
+engine). This is opt-in. The desktop parallel entry leaves MTP unloaded;
+the local single-request entry enables native MTP. See the dated
+[feature/profile inventory](FORK_FEATURES.md) for current settings.
+The measurements below retain their historical executables and configurations.
 
 ## Local launch
 
@@ -13,8 +15,9 @@ Use `START-NATIVE-262K-PARALLEL.bat`, or the desktop
 using that port before launching this one. The profile keeps original safetensors
 weights, INT8 KV, 262144 context, a dedicated 4096-row prefill workspace, the
 existing external GPU vision encoder and unrestricted HTTP Host headers.
-After the 2026-10-11 rollback it uses `strata-two-slot.exe`, rebuilt from the
-pre-continuous-batching source at `34541c37`, with tail skipping explicitly off.
+The current local profile uses `strata-upstream143.exe`, with tail skipping
+explicitly off. The 2026-10-11 rollback used `strata-two-slot.exe`, rebuilt
+from the pre-continuous-batching source at `34541c37`.
 The later continuous lifetime/handoff, CPU DAG, shared-prefix pages and ragged
 prefill changes are removed from the active source. Adaptive hot-expert promotion
 and the earlier independent-KV/device-copy fixes remain. The desktop profile is
@@ -41,8 +44,9 @@ When another text request arrives, the server drains the solo generation and
 resumes it in an independent batch slot. Slots verify one target token each per
 window. A custom config can still load native MTP for solo requests, as in the
 initial acceptance runs below; concurrent slots remain target-only.
-`--batch-mtp` is explicitly refused for native weights until its combined state,
-sampling and performance are validated. No target weights or projections are
+The unused native `--batch-mtp` extension was removed in the
+[desktop-scope cleanup](DESKTOP_SCOPE.md). It is rejected for safetensors;
+upstream GGUF batch-MTP support remains. No target weights or projections are
 requantized by concurrency.
 
 More than two requests wait for a free slot. Admissions share one prompt reader;

@@ -5,7 +5,8 @@
 [中文说明](README.zh-CN.md) · [Runtime details](docs/SAFETENSORS_NATIVE.md) · [Measurements](bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/README.md) · [Upstream Strata](https://github.com/Niko1221/Strata)
 
 Upstream v0.1.43 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
-See [integration and validation scope](docs/UPSTREAM_V0143.md).
+See [integration and validation scope](docs/UPSTREAM_V0143.md) and the
+[fork feature inventory / local profile snapshot](docs/FORK_FEATURES.md).
 
 strata-safetensors adapts Strata's forward pass, expert scheduler and session cache
 to the original Hugging Face checkpoint. It keeps the checkpoint's expert codes
@@ -14,11 +15,13 @@ ngram rows from SSD on demand. No main-model GGUF conversion or persistent
 converted expert pack is required.
 
 The validated deployment is **Windows + RTX 5090 32 GB + Ryzen 9950X3D + 96 GB RAM**.
-The active branch is `main`; the executable and CLI retain the name `strata`.
+The maintained stable line is `main`; the executable and CLI retain the name `strata`.
+Local desktop-scope cleanup is on `cleanup/desktop-native-20261012`; it is not a remote release announcement.
 
 `main` is the maintained stable line. Its validated native deployment supports
 one or two text requests, adaptive hot-expert promotion, INT8 KV and vision,
-with MTP unloaded. The later vLLM-style scheduler experiments were rolled back;
+with MTP unloaded in the stable rollback profiles. Local single-request MTP
+was subsequently enabled; see the dated inventory above. The later vLLM-style scheduler experiments were rolled back;
 no warm-decode speedup is claimed for them. See the
 [stable validation record](bench/results/2026-10-11-two-slot-rollback/README.md),
 [release checks](docs/STABLE_NATIVE.md)
@@ -47,8 +50,9 @@ numerical comparisons and remaining limits.
 - **Keep experts resident.** The full expert arena is CUDA-pinned and GPU-mapped,
   avoiding an extra host staging copy. Runtime SSD reads are for ngram rows,
   plus session files when explicitly saving or restoring.
-- **Use both processors.** The tuned profile runs about 75% of cold experts on
-  CPU and 25% on GPU. These fractions apply to cache misses, not all model work.
+- **Use both processors.** The parallel desktop profile runs about 75% of cold experts on
+  CPU and 25% on GPU; the single entry auto-selects its share at startup.
+  These fractions apply to cache misses, not all model work.
   AVX-512 row-loop specialization and GPU weight reuse reduce repeated work.
 - **Allocate prefill space first.** Allocate and write the requested workspace
   before sizing the expert cache. Budget late allocations, including MTP, and
@@ -59,12 +63,10 @@ numerical comparisons and remaining limits.
 - **Reuse conversation state.** Keep both KV and linear-attention state so a
   resumed session processes its new suffix rather than its entire history.
 
-SM120 FP4 Tensor Core kernels are implemented and available as opt-in paths.
-They are **not the selected desktop default**: measured FP4 decode did not
-establish an end-to-end advantage, and FP4 prefill changed outputs. The current
-desktop uses NVFP4 weights with FP32 decode activations, W4A8 expert prefill and
-original BF16 projections. Format preservation does not imply byte-identical
-arithmetic or equivalence to an unquantized BF16 model.
+The retained desktop path uses NVFP4 weights with FP32 decode activations,
+W4A8 expert prefill and original BF16 dense weights. Unused FP4 MMA and Q8 MTP
+projection experiments were removed; see [the desktop scope](docs/DESKTOP_SCOPE.md).
+Preserving weight codes does not establish bitwise equivalence to an unquantized BF16 model.
 
 ## Measured performance
 
@@ -84,9 +86,10 @@ over English, Chinese and code. It used one fresh engine per profile and is
 not a repeated throughput estimate. That candidate used four drafts, a 0.7
 confidence gate and a two-draft floor.
 
-**The stable desktop deployment uses temperature 0.7 with MTP unloaded.** The
-figures above describe archived MTP configurations, not the current target-only
-deployment, and are not a speed promise for every prompt. The rollback's latest
+**The 2026-10-12 local single-request file enables MTP at temperature 1.0;
+the parallel file unloads MTP at temperature 0.7.** The figures above describe
+archived MTP configurations, not new measurements of these settings, and are
+not a speed promise for every prompt. The rollback's
 checks establish tested correctness and adaptive promotion, not a new throughput
 improvement.
 
@@ -104,7 +107,7 @@ cd strata-safetensors
 python -m venv .venv-native
 .\.venv-native\Scripts\python.exe -m pip install -r requirements-native.txt
 
-cmake -S . -B build-native-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTRATA_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 -DSTRATA_NVFP4_TC=ON -DSTRATA_BUILD_TESTS=OFF "-DCMAKE_CXX_FLAGS=/utf-8 /EHsc"
+cmake -S . -B build-native-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTRATA_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 -DSTRATA_BUILD_TESTS=OFF "-DCMAKE_CXX_FLAGS=/utf-8 /EHsc"
 cmake --build build-native-engine --target strata --parallel 2
 
 .\.venv-native\Scripts\python.exe tools\native_config.py --model "D:\Models\Qwen3.8-Flash-Next-NVFP4" --output strata-native-local.json --exe build-native-engine\strata.exe --context 262144 --prefill 4096 --kv int8 --dedicated-prefill --mtp 0 --parallel 2 --load-batch 64 --load-workers 4
@@ -112,8 +115,8 @@ cmake --build build-native-engine --target strata --parallel 2
 
 CMake fetches its pinned ggml dependency unless `STRATA_GGML_DIR` is supplied.
 The generator validates model metadata, refuses to overwrite an existing config,
-and refuses output inside the model directory. Its generated config keeps
-reference FP16 prefill and does **not** reproduce every tuned desktop setting.
+and refuses output inside the model directory. Its generated config selects
+W4A8 expert prefill and does **not** reproduce every tuned desktop setting.
 Before starting, add this top-level `sampling` field to `strata-native-local.json`
 for Qwen's official thinking baseline:
 
@@ -152,14 +155,14 @@ This checked-in profile and the local build helper contain deployment-specific
 Windows paths; adapt them before use on another PC. The generic build above
 avoids those fixed paths.
 
-| Setting | Current desktop deployment |
+| Setting | Local desktop files, 2026-10-12 (not shared-web overrides) |
 |---|---|
 | Context / dedicated prefill | 262,144 total tokens / 4,096 rows |
 | KV / vision | INT8 with elastic growth / external GPU encoder, at most 1,024 tokens per image |
-| Explicit VRAM reserve | 1,024 MiB single-request / 1,536 MiB two-request; the engine also checks final startup headroom |
-| MTP | Disabled; no draft weights loaded; suffix drafting also disabled |
+| Explicit VRAM reserve | 700 MiB single-request / 1,536 MiB two-request; the engine also checks final startup headroom |
+| MTP | Single: native / spec 3 / min-p 0.5. Parallel: fully unloaded. Suffix drafting disabled in both |
 | CPU/PCIe allocation | Single-request automatic trial; explicit `--pcie-frac N` still fixes the share |
-| Target sampling | temperature **0.7**, top_p 0.95, top_k 20, min_p 0, presence_penalty 0, repetition_penalty 1 |
+| Target sampling | File temperature: single **1.0**, parallel **0.7**; top_p 0.95, top_k 20, min_p 0, presence_penalty 0, repetition_penalty 1 |
 | Template | Froggeric v22.5; thinking on, effort defaults to medium when not specified |
 | Endpoint | `127.0.0.1:8880`; HTTP Host headers unrestricted |
 | Output budget | `fit_max_tokens: true` fits the requested output cap to remaining context; input is not truncated |
@@ -172,9 +175,8 @@ Explicit client parameters and persisted shared web settings can override
 server defaults. Output-budget fitting does not change a client's compaction
 policy; set the client context to 262,144 as well.
 
-The older unloaded MTP comparison is
-[`rtx5090-262k-no-mtp.json`](config/native/rtx5090-262k-no-mtp.json).
-`START-NATIVE-262K-STABLE.bat` retains the earlier efficiency14 profile.
+Only the single-request and parallel desktop profiles are maintained.
+Historical and experimental profiles and launchers were removed.
 
 `START-NATIVE-262K-PARALLEL.bat` selects an opt-in **two-request text batch**,
 with the same 262K context and dedicated 4096-row prefill. Images run exclusively;
@@ -183,9 +185,10 @@ Native target-only batching also offers independent per-session elastic KV and
 direct device slot migration; the measured local profile enables both.
 See [native concurrency](docs/NATIVE_CONCURRENCY.md) for tests, memory costs and
 latency/throughput measurements. The original desktop launcher is unchanged.
-The checked-in parallel profile selects `build-native-engine/strata-two-slot.exe`.
-To build that exact executable name, add `-DSTRATA_EXECUTABLE_NAME=strata-two-slot`
+The current local profiles select `build-native-engine/strata-desktop-cleanup.exe`.
+To build that executable name, add `-DSTRATA_EXECUTABLE_NAME=strata-desktop-cleanup`
 to the CMake configure command above, or use the generic config's `strata.exe`.
+Native batch MTP is not retained. Upstream GGUF batch-MTP support remains.
 Prebuilt local executables and machine-specific visual assets are not distributed
 by Git clone.
 
@@ -214,6 +217,7 @@ by Git clone.
 
 ## Documentation and provenance
 
+- [Differences from official Strata, feature status and profile catalog](docs/FORK_FEATURES.md)
 - [Native implementation, diagnostics and acceptance](docs/SAFETENSORS_NATIVE.md)
 - [Earlier CPU/GPU performance comparisons](bench/results/2026-10-10-safetensors-runtime/p10-native-performance/README.md)
 - [Workspace and speculation measurements](bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/README.md)

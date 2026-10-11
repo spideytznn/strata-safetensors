@@ -1,5 +1,7 @@
 # NVFP4 routed experts
 
+
+Historical GGUF-fork record: conversion and fidelity-sidecar tools were removed in the 2026-10-12 desktop cleanup. Commands require the recorded historical Git revision; current runtime is documented in [SAFETENSORS_NATIVE](SAFETENSORS_NATIVE.md).
 Measured on Windows 11 with an RTX 5090 (32 GB, sm_120), Ryzen 9 9950X3D and 128 GB DDR5-5600, 2026-09-29.
 
 The target is a ModelOpt NVFP4 checkpoint of Qwen3.8-Flash-Next (OrcaRouter's abliteration,

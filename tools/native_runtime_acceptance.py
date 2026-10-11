@@ -55,6 +55,9 @@ def main():
         assert int(active.strip() or '0')==0,'Another Strata process is running'
         folder=a.output/f'k{k}';folder.mkdir()
         args=list(cfg['args'])
+        # Variant zero must unload an MTP already enabled by the desktop profile.
+        while '--mtp' in args:
+            at=args.index('--mtp'); del args[at:at+2]
         def setting(flag,value):
             if flag in args: args[args.index(flag)+1]=str(value)
             else: args.extend([flag,str(value)])

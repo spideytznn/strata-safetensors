@@ -46,7 +46,6 @@ def main():
     p.add_argument('--capacities', nargs='+', type=int,
                    help='Screen explicit preallocated prompt capacities; preserves other config settings.')
     p.add_argument('--reserve-mib', type=int, help='Explicit test override for capacity screening only.')
-    p.add_argument('--draft-batch-bf16', action='store_true', help='Test the existing opt-in BF16 draft KV batch path.')
     p.add_argument('--profile-configs', type=Path, nargs='+', help='Compare complete desktop configs with round order rotated.')
     a = p.parse_args()
     assert a.rounds > 0 and a.new > 0
@@ -55,10 +54,9 @@ def main():
     base = json.loads(a.config.read_text(encoding='utf-8-sig'))
     if not a.capacities and not a.profile_configs:
         assert base['args'][base['args'].index('--prefill')+1] == '4096'
-    assert not a.draft_batch_bf16 or a.capacities, 'Use --capacities for the BF16 draft batch screen'
     assert '--vision' in base['args'] and base['vision']['gpu']
     assert not (a.prefill_first and a.capacities)
-    assert not a.profile_configs or not (a.prefill_first or a.capacities or a.draft_batch_bf16 or a.reserve_mib is not None)
+    assert not a.profile_configs or not (a.prefill_first or a.capacities or a.reserve_mib is not None)
     assert a.reserve_mib is None or a.capacities, '--reserve-mib is for --capacities only'
     if a.profile_configs:
         profiles = {path.stem:json.loads(path.read_text(encoding='utf-8-sig')) for path in a.profile_configs}
@@ -73,8 +71,6 @@ def main():
         for c,cfg in zip(a.capacities,profiles.values()):
             cfg['args'][cfg['args'].index('--prefill')+1] = str(c)
             cfg.setdefault('env',{})['STRATA_NATIVE_PREFILL_FIRST'] = '1'
-            if a.draft_batch_bf16:
-                cfg['env']['STRATA_MTP_BATCH_BF16'] = '1'
             if a.reserve_mib is not None:
                 assert a.reserve_mib >= 0
                 cfg['args'][cfg['args'].index('--vram-reserve-mib')+1] = str(a.reserve_mib)

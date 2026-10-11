@@ -1,5 +1,7 @@
 # Strata v0.1.43 integration
 
+
+Current feature status is in [the desktop cleanup record](DESKTOP_SCOPE.md). Native batch-MTP and other unused experiments described below were subsequently removed. This is an integration-time record.
 This merges upstream tag `v0.1.43`, commit
 `7695859aa13afb248bdb4d36f9b2e95707db079d`, into the safetensors fork after
 `36902c911f21adf1fc18c4364772108f907ae8f0`. The latter reverted the local

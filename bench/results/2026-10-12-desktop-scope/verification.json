@@ -1,0 +1,187 @@
+{
+  "date": "2026-10-12",
+  "branch": "cleanup/desktop-native-20261012",
+  "before_commit": "c6f52f10a1107e28aa223cee33a16cddb17bb750",
+  "official_baseline": "7695859aa13afb248bdb4d36f9b2e95707db079d",
+  "hardware": "Windows / RTX 5090 32GB / Ryzen 9950X3D / 96GB RAM / CUDA 13 / SM120",
+  "candidate_exe_sha256": "5aacebd1375f6d462794f959736bb4ac82c1021d00543290bddd0adc6364b8f5",
+  "baseline_exe_sha256": "107cc652237172c0312275edb0d758bca90691293180a944b7b82b7322d4e465",
+  "tracked_files_deleted": 68,
+  "archived_removed_files_including_local_backups": 71,
+  "restored_exact_upstream_files": [
+    "setup.py",
+    "tools/iq_pack.py",
+    "tools/test_setup_bench_tips.py",
+    "tools/test_setup_draft_vocab.py",
+    "tools/test_setup_engine_hash.py",
+    "tools/test_setup_golden.json",
+    "tools/test_setup_golden.py",
+    "tools/test_setup_hotfix_tag.py",
+    "tools/test_setup_pins.py",
+    "tools/test_setup_risk.py",
+    "tools/test_setup_unsloth.py",
+    "data/draft_vocab.bin"
+  ],
+  "tests": {
+    "cuda_build": "pass",
+    "server": {
+      "run": 719,
+      "skipped": 12,
+      "status": "pass"
+    },
+    "tools": {
+      "run": 686,
+      "skipped": 11,
+      "status": "pass",
+      "reader_excluded_from_discovery": "Requires explicit --exe; tested separately by standalone CTest",
+      "gguf_py": "STRATA_GGUF_PY points to existing sibling dependency"
+    },
+    "standalone_reader_ctest": {
+      "tests": 5,
+      "status": "pass"
+    },
+    "cpu_ctest": {
+      "tests": 10,
+      "status": "pass"
+    },
+    "gpu_and_route_policy_ctest": {
+      "tests": 8,
+      "status": "pass"
+    },
+    "generator_single_parallel": "pass",
+    "retained_quality_tools_import_and_help": "pass"
+  },
+  "runtime": {
+    "variants": {
+      "0": {
+        "completed_requests": 20,
+        "tokens_equal": true,
+        "completed_main_states_equal": true,
+        "cancelled_prefix_equal": true,
+        "baseline_exe_sha256": "107cc652237172c0312275edb0d758bca90691293180a944b7b82b7322d4e465",
+        "candidate_exe_sha256": "5aacebd1375f6d462794f959736bb4ac82c1021d00543290bddd0adc6364b8f5"
+      },
+      "2": {
+        "completed_requests": 20,
+        "tokens_equal": true,
+        "completed_main_states_equal": true,
+        "cancelled_prefix_equal": true,
+        "baseline_exe_sha256": "107cc652237172c0312275edb0d758bca90691293180a944b7b82b7322d4e465",
+        "candidate_exe_sha256": "5aacebd1375f6d462794f959736bb4ac82c1021d00543290bddd0adc6364b8f5"
+      }
+    },
+    "long_prefill": {
+      "status": "pass",
+      "input_lengths": [
+        8199,
+        24583
+      ],
+      "chunk": 4096,
+      "corresponding_requests": 10,
+      "all_tokens_equal": true,
+      "all_committed_main_states_equal": true,
+      "self_state_checks": {
+        "details-8199-warm": true,
+        "details-24583-warm": true,
+        "A+-restored": true,
+        "details-24583-disk-restored-after-short": true
+      },
+      "snapshot_diagnostic_only": true,
+      "draft_kv_snapshot_checks": [
+        2,
+        2
+      ]
+    },
+    "parallel": {
+      "status": "pass",
+      "cases": [
+        "greedy",
+        "seeded",
+        "penalties",
+        "cancel_resume",
+        "followup",
+        "caps",
+        "eos",
+        "kv_growth_long_slot"
+      ],
+      "long_slot_input_tokens": 37933,
+      "batch_adaptive": {
+        "two_row_rounds": 137,
+        "promoted": 13107
+      },
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      }
+    },
+    "vision": {
+      "status": "pass",
+      "requests": 8,
+      "cases": [
+        "red-cold-or-return",
+        "red-warm",
+        "blue-cold-or-return",
+        "blue-warm",
+        "red-cold-or-return",
+        "red-warm",
+        "text-after-images",
+        "image-official-thinking-sampling"
+      ],
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      }
+    }
+  },
+  "limitations": [
+    "No new speed claim; state/snapshot diagnostics add overhead, auto-sized expert caches varied between starts.",
+    "Initial strict STRATA_KVG_CHECK=2 audit failed on the pre-cleanup executable during overlap: three request-end audits had 96 transient device/host table differences; all 23 audits had zero weight-content errors. Source review identifies pending exchange publication; retain this failed attempt. The successful rerun keeps overlap enabled and checks output/main state plus draft-KV snapshot verification without this incompatible audit.",
+    "Initial generic tool discovery had missing gguf-py, reader --exe and a fork-changed vocabulary; corrected dependency invocation, separate reader CTest and exact upstream vocabulary rerun pass.",
+    "An initial baseline runtime attempt was interrupted by closing the app and was not counted.",
+    "HIP/SYCL/Linux/multi-GPU native execution not validated; no broad model-quality or retrieval claim."
+  ],
+  "local_raw_records": [
+    "local-desktop-scope-20261012-baseline-r2",
+    "local-desktop-scope-20261012-candidate",
+    "local-desktop-scope-20261012-parallel",
+    "local-desktop-scope-20261012-long-pair",
+    "local-desktop-scope-20261012-long-pair-r2",
+    "local-desktop-scope-20261012-vision"
+  ],
+  "deployment": {
+    "status": "selected for next desktop start",
+    "config_changes": [
+      {
+        "config": "config\\native\\rtx5090-262k-fast-v0142.json",
+        "changed_fields": [
+          "exe"
+        ],
+        "old_exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-upstream143.exe",
+        "new_exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-desktop-cleanup.exe",
+        "settings_sidecar_unchanged": true,
+        "config_sha256_after": "6a5e43737f80100c51b59c336c763b7be895f4fe97a4d15335846282cecce152"
+      },
+      {
+        "config": "config\\native\\rtx5090-262k-parallel.json",
+        "changed_fields": [
+          "exe"
+        ],
+        "old_exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-upstream143.exe",
+        "new_exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-desktop-cleanup.exe",
+        "settings_sidecar_unchanged": true,
+        "config_sha256_after": "f1115ee57e38016c1b624b694b63e8644c467fccc43397d1c64b7eade35de39e"
+      }
+    ],
+    "old_binary_preserved": true,
+    "desktop_service_started": false,
+    "remote_push": false
+  },
+  "final_checks": {
+    "active_markdown_links": "pass",
+    "desktop_launcher_config_and_port": "pass",
+    "only_exe_field_changed_on_activation": "pass",
+    "python_tool_syntax": "pass",
+    "candidate_binary_hash_unchanged_since_runtime_tests": "pass",
+    "git_diff_check": "pass"
+  }
+}

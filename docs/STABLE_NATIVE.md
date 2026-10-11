@@ -5,7 +5,7 @@ CUDA 13 / SM120, RTX 5090 32GB, Ryzen 9950X3D and 96GB RAM, using the original
 Qwen3.8-Flash-Next NVIDIA NVFP4 checkpoint. The supported desktop profiles are
 single-request or two-request text decoding. Images run exclusively.
 
-The current desktop profiles keep MTP unloaded, INT8 KV, original BF16 dense
+The stable rollback profiles keep MTP unloaded, INT8 KV, original BF16 dense
 weights and all routed expert contributions (`STRATA_ROUTE_TAIL_SKIP=0`). The
 two-request profile keeps independent KV/device copies and adaptive hot-expert
 promotion. Expert RAM stays resident; post-residency expert source reads must
@@ -16,6 +16,15 @@ were rolled back. Their archived records do not establish a warm-decode speed
 gain. Historical MTP timings are not current target-only performance figures.
 Local build executables are not shipped by Git clone; follow the source-build
 instructions and adapt the checked-in machine-specific paths.
+
+The local v0.1.43 integration and subsequent user profile choices are tracked
+separately in the [feature/profile inventory](FORK_FEATURES.md). In particular,
+local single-request MTP is enabled while desktop parallel MTP remains unloaded.
+This page states the stable-line acceptance policy, not a live configuration snapshot.
+
+The [desktop scope](DESKTOP_SCOPE.md) removes unused fork extensions and
+keeps the original upstream installer. Regression tools for the retained
+paths remain part of maintenance, even though desktop launchers do not invoke them.
 
 ## Checks before updating main
 

@@ -20,12 +20,7 @@ What the first run does (each step is skipped when it is already done):
   6. prepares the model for Strata and fetches the MTP draft layer (~5 GB, from the original Qwen checkpoint)
   7. writes run-<model>.bat / run-<model>.sh and starts the model
 
-This fork (sergqwer/strata-nvfp4) also offers its NVFP4 models, ready-made on Hugging Face and the default where the PC
-meets their requirements: huihui-nvfp4 (huihui-ai's abliterated Flash-Next) and orca-nvfp4 (OrcaRouter's), every expert
-NVFP4 by GPTQ; nothing is converted on the PC, and the engine is this fork's (its release's, or compiled from this
-source).  --dry-run shows what setup would do for them.
-
-Options: --family huihui-nvfp4|orca-nvfp4|qwen|swift|coder|unsloth, --model Q2_0|IQ2_XS|IQ3_XXS|IQ3_S, --context 32768, --rope-scaling none|linear|yarn
+Options: --family qwen|swift, --model Q2_0|IQ2_XS|IQ3_XXS|IQ3_S, --context 32768, --rope-scaling none|linear|yarn
 (--rope-scale F; past the trained 262144 the setup adds yarn and the factor is the final context over 262144,
 at least 1 - an explicit --rope-scaling none is refused for such a context), --vision yes|no|gpu|cpu, --port
 8080, --yes (recommended
@@ -176,17 +171,13 @@ LLAMA_CPP_ZIP = f"https://github.com/ggml-org/llama.cpp/archive/{LLAMA_CPP_COMMI
 # "https://github.com/<you>/Strata/releases/latest/download/" (or pass --prebuilt / set STRATA_PREBUILT_URL).
 # With the default, the release of this checkout's own version (PREBUILT_TAG_URL, CMakeLists.txt's version) is
 # tried first and the latest release is the fallback (#214): an older checkout keeps the engine it shipped with.
-# This fork: the engine comes from sergqwer/strata-nvfp4's releases (built from this source, with the NVFP4 path), never
-# from upstream's (Niko1221/Strata), which cannot run the NVFP4 models.  The tag is release_version()'s.
-FORK_REPO = "sergqwer/strata-nvfp4"
-PREBUILT_URL = f"https://github.com/{FORK_REPO}/releases/latest/download/"
+PREBUILT_URL = "https://github.com/Niko1221/Strata/releases/latest/download/"
 # The repository the release assets and their SHA-256 come from; `engine_digest` reads the API here even
 # when --prebuilt points the download somewhere else, because the hash is only worth having if it comes
 # from somewhere the download does not.
-REPO = FORK_REPO
-PREBUILT_TAG_URL = f"https://github.com/{FORK_REPO}/releases/download/v{{version}}/"
+REPO = "Niko1221/Strata"
+PREBUILT_TAG_URL = "https://github.com/Niko1221/Strata/releases/download/v{version}/"
 PREBUILT_ASSET = "strata-windows-x64.zip" if WIN else "strata-linux-x64.zip"
-FORK_ASSETS = ("strata-windows-x64.zip",)   # what the fork publishes for setup: the Windows CUDA 13 engine only
 # the CUDA libraries the ready-made engine loads (the same CUDA 13.0 it is built with), from NVIDIA's pip packages
 CUDA_WHEELS = ["nvidia-cublas==13.0.2.14", "nvidia-cuda-runtime==13.0.96"]
 MIN_DRIVER = 580                       # CUDA 13.0
@@ -201,7 +192,7 @@ CUDA12_WHEELS = ["nvidia-cublas-cu12==12.9.1.4", "nvidia-cuda-runtime-cu12==12.9
 # toolkit the CUDA 12 zip is built with (cuBLAS 12.9.1.4, runtime 12.9.79).  Not tested on such an old driver here.
 CUDA12_MIN_DRIVER = 528 if WIN else 525
 ENGINE12_DIR = "engine-cuda12"
-MIN_ENGINE = (0, 1, 43)                # versions compare all numbers; v0.1.43: adaptive-tier copies overlap on CUDA, P100 (sm_60) kernel tables, RDNA4 (gfx1200/gfx1201) defaults (route tail skip, measured PCIe share, 16K prompt chunks, fused IQ3 prompt experts); v0.1.42.1: the GGUF-in-place file tier on Windows unmaps every shard, dual-socket starts judge each NUMA node and STRATA_DROP_CACHE_ON_EXIT, tools/strata_bench.py; v0.1.42: optional STRATA_ROUTE_TAIL_SKIP (this fork defaults to 0), the AMD 2-GPU checkpoint fix (H13), Phase 2 fixes and opt-ins; v0.1.41.1 (folded into 0.1.42): the #1576 card order, #1616 stage size, #1595 CPU share, #1630/#1607 Windows HIP chunk cap and commit-limit warning, #1603 parallel-request bookkeeping; v0.1.41: CPU prefill share on by default (NVIDIA, chunks < 1024), --batch-groups auto, the file tier read in batches on Windows, Pascal decode fix, per-arch tables; v0.1.40.3: the #1357 MTP router guard, the #1376 Windows HIP cache floor, #461 runtime DLLs, Intel A750 first-request fix; v0.1.40.2: F4 verify windows, the Linux file tier (#1194), the stager wait (#1057), #1264/#1201/#1139 fixes, opt-in CPU share (#1282), Intel Arc; v0.1.40: --resident-experts on a layer split with the split+resident variant (#848), --kv k8v4 with KV streaming (#711); v0.1.39: the #577 file-tier regression fixed, the OpenAI Responses API (#451, Codex), a reply stuck on one token ended (#606), the head before the arena (#620), effort_position (#458), --vram-reserve hot resize opt-in (#533), PR batch; v0.1.38: prompts faster (one gather per expert group #372, the first chunk's PLE rows beside layer 0 #374, DeltaNet three heads per thread #413), --kv q4_0 prompts on tensor cores (#452), Q5_0 experts on the GPU (#473), IQ4_XS on AVX-2 (#415), unbuffered expert loading on Windows (#357 #362), --peer-device (#531), a 6 GB card starts (#496), PR batch; v0.1.37: a silent engine is restarted (#481), Windows AMD counts the desktop's VRAM (#380 #377 #497), a steadier PCIe probe (#485), fixes #496 #495 #498 #505 #493; v0.1.36: a cancelled prompt logged as read so far (#471), the draft-head hint (#474), UPDATE.bat (#475), --expert-profile-save (#477); v0.1.35: Windows AMD uses its bundled HIP runtime (#468 #461), the low-RAM resident mode on Windows 32 GB (#467), fixes #460 #459 #446 #447 #457 #448 #444; v0.1.34: AMD on Windows (a ready-made HIP engine), an MCP server for AI assistants (tools/strata_mcp.py), a shorter README; v0.1.33: a portable image encoder again (#411 #412), setup recommends instead of forcing (#406 #403 #364 #384), fixes #352 #365 #369 #371 #375 #393 #408 #414; v0.1.32: split prompts faster (#340), AMD router +12%, Unsloth Q4 in setup, faster Q4 prompts, #326/#327/#342/#344 fixes, PR batch; v0.1.31: Unsloth UD-Q4_K_XL (experimental), GGUF-in-place low-RAM mode, Windows GGUF load 2x, server race + tokenizer fixes, AMD intrinsics; v0.1.30: short prompts faster (streaming from 1024 tokens), resident low-RAM variant, multi-GPU session carve, RDNA4; v0.1.29: sampled answers faster (split top-k), #154 correctness fixes; v0.1.28: the expert cache reserves the draft head, a cancelled request no longer fails the next; v0.1.27: RTX 20 (sm_75) in the ready-made engine, the HIP build without CUDA headers; v0.1.26: the draft layer's prompt pass in batches; v0.1.25: faster prompts (grouping off the copy engine, fused hyper-connection kernels), AMD HIP backend, --kv k8v4; v0.1.24: long prompts faster (QSA select on tensor cores); v0.1.23: image requests honor sampling, 8 GB cards start, batched verify window; v0.1.22: faster prompts (tensor-core attention), multi-GPU across images/steering/KV streaming; v0.1.21: multi-GPU layer split (--gpus); v0.1.20: system-prompt checkpoint, PCIe probe, hit rate; v0.1.19: penalties
+MIN_ENGINE = (0, 1, 43)                # versions compare all numbers; v0.1.43: adaptive-tier copies overlap on CUDA, P100 (sm_60) kernel tables, RDNA4 (gfx1200/gfx1201) defaults (route tail skip, measured PCIe share, 16K prompt chunks, fused IQ3 prompt experts); v0.1.42.1: the GGUF-in-place file tier on Windows unmaps every shard, dual-socket starts judge each NUMA node and STRATA_DROP_CACHE_ON_EXIT, tools/strata_bench.py; v0.1.42: STRATA_ROUTE_TAIL_SKIP=7 default on CUDA (+13-16% decode), the AMD 2-GPU checkpoint fix (H13), Phase 2 fixes and opt-ins; v0.1.41.1 (folded into 0.1.42): the #1576 card order, #1616 stage size, #1595 CPU share, #1630/#1607 Windows HIP chunk cap and commit-limit warning, #1603 parallel-request bookkeeping; v0.1.41: CPU prefill share on by default (NVIDIA, chunks < 1024), --batch-groups auto, the file tier read in batches on Windows, Pascal decode fix, per-arch tables; v0.1.40.3: the #1357 MTP router guard, the #1376 Windows HIP cache floor, #461 runtime DLLs, Intel A750 first-request fix; v0.1.40.2: F4 verify windows, the Linux file tier (#1194), the stager wait (#1057), #1264/#1201/#1139 fixes, opt-in CPU share (#1282), Intel Arc; v0.1.40: --resident-experts on a layer split with the split+resident variant (#848), --kv k8v4 with KV streaming (#711); v0.1.39: the #577 file-tier regression fixed, the OpenAI Responses API (#451, Codex), a reply stuck on one token ended (#606), the head before the arena (#620), effort_position (#458), --vram-reserve hot resize opt-in (#533), PR batch; v0.1.38: prompts faster (one gather per expert group #372, the first chunk's PLE rows beside layer 0 #374, DeltaNet three heads per thread #413), --kv q4_0 prompts on tensor cores (#452), Q5_0 experts on the GPU (#473), IQ4_XS on AVX-2 (#415), unbuffered expert loading on Windows (#357 #362), --peer-device (#531), a 6 GB card starts (#496), PR batch; v0.1.37: a silent engine is restarted (#481), Windows AMD counts the desktop's VRAM (#380 #377 #497), a steadier PCIe probe (#485), fixes #496 #495 #498 #505 #493; v0.1.36: a cancelled prompt logged as read so far (#471), the draft-head hint (#474), UPDATE.bat (#475), --expert-profile-save (#477); v0.1.35: Windows AMD uses its bundled HIP runtime (#468 #461), the low-RAM resident mode on Windows 32 GB (#467), fixes #460 #459 #446 #447 #457 #448 #444; v0.1.34: AMD on Windows (a ready-made HIP engine), an MCP server for AI assistants (tools/strata_mcp.py), a shorter README; v0.1.33: a portable image encoder again (#411 #412), setup recommends instead of forcing (#406 #403 #364 #384), fixes #352 #365 #369 #371 #375 #393 #408 #414; v0.1.32: split prompts faster (#340), AMD router +12%, Unsloth Q4 in setup, faster Q4 prompts, #326/#327/#342/#344 fixes, PR batch; v0.1.31: Unsloth UD-Q4_K_XL (experimental), GGUF-in-place low-RAM mode, Windows GGUF load 2x, server race + tokenizer fixes, AMD intrinsics; v0.1.30: short prompts faster (streaming from 1024 tokens), resident low-RAM variant, multi-GPU session carve, RDNA4; v0.1.29: sampled answers faster (split top-k), #154 correctness fixes; v0.1.28: the expert cache reserves the draft head, a cancelled request no longer fails the next; v0.1.27: RTX 20 (sm_75) in the ready-made engine, the HIP build without CUDA headers; v0.1.26: the draft layer's prompt pass in batches; v0.1.25: faster prompts (grouping off the copy engine, fused hyper-connection kernels), AMD HIP backend, --kv k8v4; v0.1.24: long prompts faster (QSA select on tensor cores); v0.1.23: image requests honor sampling, 8 GB cards start, batched verify window; v0.1.22: faster prompts (tensor-core attention), multi-GPU across images/steering/KV streaming; v0.1.21: multi-GPU layer split (--gpus); v0.1.20: system-prompt checkpoint, PCIe probe, hit rate; v0.1.19: penalties
 # KV bytes per context token and attention layer: 8-bit 1056, rotated 4-bit 576, hybrid K8V4 (8-bit K, 4-bit V) 816
 KV_CELL_BYTES = {"q4_0": 576, "k8v4": 816}
 PY_PACKAGES = ["numpy", "jinja2", "regex", "pyyaml", "tqdm", "requests", "cmake", "ninja", "pillow", "psutil"]
@@ -437,9 +428,6 @@ def ram_gb():
     return 0.0
 
 
-PAGE_FILE_SHORT = None        # page_file_warning()'s summary line once the PC was checked (--check, the install)
-PAGE_FILE_WARN_MB = 60000     # the engine's kPageFileWarnMb (memory.hpp): below it in all, both warn
-PAGE_FILE_ADVISE_MB = 64000   # what both advise: "64 GB" as the Virtual memory dialog takes it (its MB are MiB)
 _MM_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
 
 
@@ -472,23 +460,12 @@ def parse_paging_file(line: str):
     return s[0].upper(), initial, maximum
 
 
-def page_file_allowed_mb(initial: int, maximum: int, ram_mb: float, volume_mb: float, free_mb: float,
-                         current_mb: float) -> int:
-    """What one page file can reach (MB): a set size its maximum; a system-managed one Windows' documented maximum,
-    3 x RAM (at least 4096) but at most an eighth of its volume; either way no more than the file is now plus the
-    volume's free space.  The engine's page_file_allowed_mb (memory.hpp) is the same."""
-    if maximum > 0:
-        want = max(initial, maximum)
-    else:
-        want = max(3 * int(ram_mb), 4096)
-        if volume_mb > 0:
-            want = min(want, int(volume_mb) // 8)
-    return int(min(want, int(current_mb) + int(free_mb)))
+PAGE_FILE_FIXED_MB = 65536   # the advice: a fixed size (initial = maximum) of 64 GB, the size #60's PC started with
 
 
-def _volume_mb(drive: str):
-    """(volume MB, free MB, the page file's size now in MB) of a drive, None when it cannot be read.  The page file
-    is locked: its size comes from the directory entry."""
+def _drive_mb(drive: str):
+    """(free MB, the page file's size now in MB) of a drive, None when it cannot be read.  The page file is locked:
+    its size comes from the directory entry."""
     root = f"{drive}:\\"
     try:
         du = shutil.disk_usage(root)
@@ -503,87 +480,7 @@ def _volume_mb(drive: str):
                     break
     except OSError:
         pass
-    return du.total / 2**20, du.free / 2**20, current / 2**20
-
-
-PAGE_FILE_FIXED_MB = 65536
-
-def _drive_mb(drive: str):
-    vol = _volume_mb(drive)
-    return None if vol is None else vol[1:]
-
-
-def page_files():
-    """(MB in all, detail) of the page files Windows is set to use (PagingFiles), each counted by
-    page_file_allowed_mb; None off Windows or when the setting cannot be read.  The engine reads the same."""
-    if not WIN:
-        return None
-    lines = _mm_multi_sz("PagingFiles")
-    if lines is None:
-        return None
-    auto = []                                          # "?:\pagefile.sys": where Windows keeps it now, else C:
-    for s in _mm_multi_sz("ExistingPageFiles") or []:
-        i = s.find(":")
-        if i > 0:
-            auto.append(s[i - 1].upper())
-    auto = auto or [(os.environ.get("SystemDrive") or "C:")[0].upper()]
-    ram_mb = ram_gb() * 1024
-    total, parts = 0, []
-    for line in lines:
-        e = parse_paging_file(line)
-        if e is None:
-            continue
-        drive, initial, maximum = e
-        for d in (auto if drive == "?" else [drive]):
-            vol = _volume_mb(d)
-            mb = page_file_allowed_mb(initial, maximum, ram_mb, *vol) if vol else max(maximum, 0)
-            total += mb
-            if maximum > 0:
-                part = f"{d}: {maximum} MB" if initial == maximum else f"{d}: {initial}-{maximum} MB"
-                part += f" (only {mb} fit the free disk)" if mb < maximum else ""
-            else:
-                part = f"{d}: system-managed, now {int(vol[2]) if vol else 0} MB, can grow to {mb}"
-            parts.append(part)
-    return total, ", ".join(parts) or "no page file"
-
-
-def page_file_allowed_gb():
-    """The page files' size in all (GiB, as page_files counts them) on Windows, None elsewhere (strata_mcp's report)."""
-    pf = page_files()
-    return None if pf is None else pf[0] / 1024
-
-
-def page_file_warning():
-    """(the highlighted warning, its one-line summary) when Windows' page files are below PAGE_FILE_WARN_MB in all,
-    else None.  A warning only, never a stop.  Why: the commit limit is RAM + page file, and under Windows' driver
-    model the card's allocations are charged to it too (issue #60).  When it runs out the engine opens a smaller expert
-    cache (a quarter less a try) and an expert arena that cannot be committed stops the start."""
-    pf = page_files()
-    if pf is None or pf[0] >= PAGE_FILE_WARN_MB:
-        return None
-    mb, detail = pf
-    long = (f"WARNING: the page file is too small - INCREASE it to {PAGE_FILE_ADVISE_MB} MB (64 GB). Windows' page "
-            f"file is {mb} MB in all ({detail}). Windows lets all programs together commit only RAM + page file, and "
-            "the engine commits ~100 GiB with the NVFP4 models (~80 in the low-RAM mode): the experts in RAM plus "
-            "~30 GiB that WDDM charges for the VRAM it uses. With a page file below "
-            f"{PAGE_FILE_WARN_MB} MB the model can run significantly slower (the engine makes its expert cache in "
-            "VRAM smaller when the commit runs out) or, at worst, not start at all. To increase it: System Properties "
-            "(Win+R, sysdm.cpl) > Advanced > Performance: Settings > Advanced > Virtual memory: Change, untick "
-            "\"Automatically manage\", choose the drive, Custom size: initial and maximum "
-            f"{PAGE_FILE_ADVISE_MB} MB, Set, OK, then restart Windows.")
-    short = (f"WARNING: the page file is too small ({mb} MB): INCREASE it to {PAGE_FILE_ADVISE_MB} MB, or the model "
-             "can run significantly slower or not start (see above)")
-    return long, short
-
-
-def alert(msg):
-    """A warning that must not be missed: framed by lines of '!'."""
-    bar = "  " + "!" * 100
-    say()
-    say(bar)
-    for line in textwrap.wrap(msg, 100, initial_indent="  [!]  ", subsequent_indent="       "):
-        say(line)
-    say(bar)
+    return du.free / 2**20, current / 2**20
 
 
 def page_file_setting():
@@ -1549,11 +1446,9 @@ def drop_archive(z: Path) -> None:
     z.with_name(z.name + ".done").unlink(missing_ok=True)
 
 
-def download(url, dst: Path, what=None, unpinned_ok=True):
+def download(url, dst: Path, what=None):
     """Resumable HTTP(S) download with a progress line; `file://` and plain paths are copied (tests, mirrors).
-    A finished file gets a <name>.done mark, so a later run skips it without asking the server.
-    unpinned_ok False (this fork's NVFP4 files, pinned with their SHA-256): a revision gone from the repository is an
-    error, never the repository's current file."""
+    A finished file gets a <name>.done mark, so a later run skips it without asking the server."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists() and done(dst):
         ok(f"{what or dst.name} already downloaded")
@@ -1581,9 +1476,6 @@ def download(url, dst: Path, what=None, unpinned_ok=True):
             total = int(urllib.request.urlopen(req, timeout=60).headers.get("Content-Length", 0))
             break
         except urllib.error.HTTPError as e:
-            if e.code == 404 and hf_unpinned(url) != url and not unpinned_ok:
-                fail(f"{what or dst.name}: not at its pinned revision any more ({url})",
-                     "update Strata (UPDATE.bat / git pull): it lists the files of the current upload")
             if e.code == 404 and hf_unpinned(url) != url:  # #214: the pinned revision is gone from the repository
                 warn(f"{what or dst.name}: not at the pinned revision any more; downloading the repository's "
                      "current file")
@@ -2570,9 +2462,6 @@ def get_prebuilt_hip(url_base, gpu, updating=False) -> Path | None:
             return eng
     if not url_base:
         return None
-    if fork_release(url_base):                         # this fork publishes no AMD engine (FORK_ASSETS)
-        warn(f"{FORK_REPO} publishes no ready-made AMD engine")
-        return None
     eng.mkdir(exist_ok=True)
     z = eng / WIN_HIP_ASSET
     bases = prebuilt_bases(url_base)
@@ -2585,7 +2474,7 @@ def get_prebuilt_hip(url_base, gpu, updating=False) -> Path | None:
             break
         except OSError as e:
             if i + 1 < len(bases):
-                say(f"  No ready-made AMD engine for v{release_version()} ({e}): the latest release instead")
+                say(f"  No ready-made AMD engine for v{source_version()} ({e}): the latest release instead")
                 continue
             warn(f"no ready-made AMD engine at {base} ({e})")
             return None
@@ -2989,12 +2878,11 @@ def engine_refused(asset: str, e: Exception, updating: bool) -> None:
 
 def prebuilt_bases(url_base) -> list[str]:
     """Where to look for the ready-made engine, in order (each ending in a slash).  The default: the release of this
-    checkout's version first, then the latest (#214); an explicit --prebuilt / STRATA_PREBUILT_URL: only that.
-    This fork's tag is its release version (v0.1.40.3-nvfp4.1), not the engine's (CMakeLists.txt)."""
+    checkout's version first, then the latest (#214); an explicit --prebuilt / STRATA_PREBUILT_URL: only that."""
     base = url_base if url_base.endswith(("/", "\\")) else url_base + "/"
     if base != PREBUILT_URL:
         return [base]
-    return [PREBUILT_TAG_URL.format(version=release_version()), base]
+    return [PREBUILT_TAG_URL.format(version=source_version()), base]
 
 
 PREVIOUS_ENGINE = ".previous"
@@ -3075,18 +2963,13 @@ def rollback_engine(toolkit=13) -> int:
 def get_prebuilt(url_base, gpu, vision, updating=False, toolkit=13) -> Path | None:
     """The ready-made engine in engine/ (kept between runs), or None when there is none for this PC.
     updating: called to replace an installed engine, which starts instead when this fails (no compile).
-    toolkit 12: the experimental CUDA 12 engine (CUDA12_ASSET) in engine-cuda12/.
-    This fork: an installed upstream engine that runs the GGUF models (fork_optional) is replaced by this fork's when
-    it can be and kept - returned, said once - when it cannot.  An installed engine's BUILD.json is dropped only once
-    the asset is known to be published for this PC (fork_unavailable, then GitHub's answer)."""
+    toolkit 12: the experimental CUDA 12 engine (CUDA12_ASSET) in engine-cuda12/."""
     eng = engine_dir(toolkit)
     asset = CUDA12_ASSET if int(toolkit) == 12 else PREBUILT_ASSET
     info = eng / "BUILD.json"
-    meta, meta_text, upstream, optional = {}, None, False, False
     if info.exists() and (eng / EXE).exists() and json.loads(info.read_text(encoding="utf-8")).get("backend") != "hip":
-        meta_text = info.read_text(encoding="utf-8")
-        meta = json.loads(meta_text)
-        ver = version_tuple(meta.get("version"))
+        meta = json.loads(info.read_text(encoding="utf-8"))
+        ver = tuple(int(x) for x in str(meta.get("version", "0")).split(".")[:4] if x.isdigit())
         if meta.get("source") == "local":              # compiled here: build_engine checks its source and cards
             return None
         have = [int(a) for a in meta.get("archs", [])]
@@ -3096,37 +2979,14 @@ def get_prebuilt(url_base, gpu, vision, updating=False, toolkit=13) -> Path | No
             warn(f"the installed engine is built for {', '.join(str(a) for a in have)}; your GPU is "
                  f"{', '.join(str(x) for x in miss)}: compiling instead")
             return None
-        upstream = not meta.get("fork") and fork_release(url_base)   # upstream's ready-made engine: no NVFP4 path
-        if ver >= MIN_ENGINE and not upstream:
+        if ver >= MIN_ENGINE:
             ok("ready-made engine already installed")
             return eng
-        optional = fork_optional(meta, url_base)
-    installed = meta.get("version")                    # `meta` becomes the download's below
-
-    def kept(why: str, final: bool) -> Path:
-        """The installed upstream engine stays (it runs the GGUF models); said once, remembered (fork_note_write)."""
-        if not info.exists():
-            info.write_text(meta_text, encoding="utf-8")
-        fork_note_write(eng, why, final)
-        warn(f"kept the installed engine {installed} (upstream Strata's; it runs the GGUF models): {why}. "
-             "The NVFP4 models need this fork's engine: setup --build compiles it"
-             + ("" if final else " (setup tries the release again in a day)"))
-        return eng
-
+        say(f"  Updating the ready-made engine ({meta.get('version')} -> {'.'.join(map(str, MIN_ENGINE))} or newer) ...")
+        info.replace(eng / "BUILD.json.prev")   # kept for the .previous copy
     if not url_base:
         return None
-    why = fork_unavailable(asset, gpu) if fork_release(url_base) else None
-    if why:                                            # known without asking GitHub: nothing downloaded or dropped
-        if optional:
-            return kept(why, True)
-        if meta_text is not None and updating:         # said once (fork_note_skip), not on every start
-            fork_note_write(eng, why, True)
-            warn(f"engine {meta.get('version')} is older than this setup needs ({version_text(MIN_ENGINE)}), and "
-                 f"{why}: setup --build compiles this fork's")
-            return None
-        say(f"  {why}: " + ("setup --build compiles this fork's from source" if updating else
-                            "compiling it from this source"))
-        return None
+    eng.mkdir(exist_ok=True)
     z = eng / asset
     bases = prebuilt_bases(url_base)
     for i, base in enumerate(bases):
@@ -3138,30 +2998,17 @@ def get_prebuilt(url_base, gpu, vision, updating=False, toolkit=13) -> Path | No
             break
         except OSError as e:
             if i + 1 < len(bases):                     # #214: this checkout's release is not published (yet)
-                if not optional:
-                    say(f"  No ready-made engine for v{release_version()} ({e}): the latest release instead")
+                say(f"  No ready-made engine for v{source_version()} ({e}): the latest release instead")
                 continue
-            if optional:
-                return kept(f"{FORK_REPO}'s release has no {asset} yet, or GitHub did not answer ({e})", False)
             warn(f"no ready-made engine at {base} ({e})" + ("" if updating else ": compiling instead"))
             return None
-    if meta_text is not None:                          # published: now the installed engine is replaced
-        say("  Replacing upstream Strata's ready-made engine with this fork's (it runs every model here) ..." if upstream
-            else f"  Updating the ready-made engine ({meta.get('version')} -> {version_text(MIN_ENGINE)} or newer) ...")
-        info.replace(eng / "BUILD.json.prev")   # kept for the .previous copy
-    eng.mkdir(exist_ok=True)
     say("  Downloading the ready-made Strata engine" + (" (CUDA 12, experimental)" if int(toolkit) == 12 else "") + " ...")
-    try:
-        download(base + asset, z, "Strata engine")
-    except BaseException:                              # stopped: the installed engine is untouched, its BUILD.json back
-        if meta_text is not None and not info.exists():
-            info.write_text(meta_text, encoding="utf-8")
-        raise
+    download(base + asset, z, "Strata engine")
     try:
         verify_engine_archive(z, asset, base)
     except UnverifiedEngine as e:
-        engine_refused(asset, e, updating or optional)
-        return kept(f"its download could not be verified ({e})", False) if optional else None
+        engine_refused(asset, e, updating)
+        return None
     tmp = eng / "_unpack"
     shutil.rmtree(tmp, ignore_errors=True)
     try:
@@ -3171,12 +3018,8 @@ def get_prebuilt(url_base, gpu, vision, updating=False, toolkit=13) -> Path | No
         drop_archive(z)                                # every later run fail on it instead of downloading it again
         raise
     meta = json.loads((tmp / "BUILD.json").read_text(encoding="utf-8"))
-    if version_tuple(meta.get("version")) < MIN_ENGINE:
-        need = version_text(MIN_ENGINE)
-        if optional:
-            shutil.rmtree(tmp, ignore_errors=True)
-            drop_archive(z)
-            return kept(f"the published engine is {meta.get('version')}, this setup needs {need}", False)
+    if tuple(int(x) for x in str(meta.get("version", "0")).split(".")[:4] if x.isdigit()) < MIN_ENGINE:
+        need = ".".join(map(str, MIN_ENGINE))
         if updating:                                   # these files are newer than the published release (#58)
             warn(f"engine {need} is not published yet (the release may still be uploading): run this again "
                  f"in a few minutes to update it")
@@ -3190,21 +3033,12 @@ def get_prebuilt(url_base, gpu, vision, updating=False, toolkit=13) -> Path | No
     miss = [int(x) for x in gpu.get("archs", [gpu["arch"]])
             if int(x) not in archs and not (meta.get("ptx") and int(x) > max(archs))]
     if miss:
-        shutil.rmtree(tmp, ignore_errors=True)
-        drop_archive(z)
-        if optional:
-            return kept(f"the published engine is built for {', '.join(str(a) for a in archs)}; your GPU is "
-                        f"{', '.join(str(x) for x in miss)}", True)
         warn(f"the ready-made engine is built for {', '.join(str(a) for a in archs)}; your GPU is "
              f"{', '.join(str(x) for x in miss)}" + ("" if updating else ": compiling instead"))
+        shutil.rmtree(tmp, ignore_errors=True)
+        drop_archive(z)
         return None
-    try:
-        install_unpacked(tmp, eng)
-    except OSError:
-        if optional and meta_text is not None and not info.exists() and (eng / EXE).exists():
-            info.write_text(meta_text, encoding="utf-8")   # the swap put the old engine back: its BUILD.json too
-        raise
-    fork_note_clear(eng)
+    install_unpacked(tmp, eng)
     shutil.rmtree(tmp, ignore_errors=True)
     drop_archive(z)
     if not (eng / EXE).exists():
@@ -3259,7 +3093,7 @@ def update_installed_engine(url_base, toolkit=None) -> None:
     meta_text = info.read_text(encoding="utf-8")
     meta = json.loads(meta_text)
     if meta.get("backend") == "hip" and WIN:           # AMD on Windows: the ready-made HIP engine, when older
-        ver = version_tuple(meta.get("version"))
+        ver = tuple(int(x) for x in str(meta.get("version", "0")).split(".")[:4] if x.isdigit())
         if meta.get("source") == "prebuilt" and ver < WIN_HIP_MIN_ENGINE:
             try:
                 g = next((x for x in amd_gpus() if amd_problem(x) is None), None)
@@ -3287,16 +3121,14 @@ def update_installed_engine(url_base, toolkit=None) -> None:
                 warn(f"could not compile the updated engine{'' if isinstance(e, SystemExit) else f' ({e})'}: "
                      "starting the installed one")
         return
-    ver = version_tuple(meta.get("version"))
+    ver = tuple(int(x) for x in str(meta.get("version", "0")).split(".")[:4] if x.isdigit())
     local = meta.get("source") == "local"
     vision = meta.get("vision") or "none"
     if local:                                          # compiled here: is it older than the source (a git pull)?
         if meta.get("src") == source_hash(ENGINE_SOURCES) and \
                 (vision == "none" or meta.get("vision_src") == source_hash(VISION_SOURCES)):
             return
-    elif ver >= MIN_ENGINE and (meta.get("fork") or not fork_release(url_base)):   # upstream's: replaced by the fork's
-        return
-    elif fork_release(url_base) and fork_note_skip(eng):   # refused for this release: said once, not on every start
+    elif ver >= MIN_ENGINE:
         return
     try:                                               # a running engine cannot be replaced (Windows keeps it locked)
         for x in (EXE, VEXE):
@@ -3332,10 +3164,7 @@ def update_installed_engine(url_base, toolkit=None) -> None:
             info.write_text(meta_text)                 # get_prebuilt drops it before downloading: put it back
         warn(f"could not update the engine: starting the installed {meta.get('version')}")
         return
-    if info.exists() and info.read_text(encoding="utf-8") == meta_text:
-        return                                         # kept as it was (get_prebuilt said why)
-    if not bundled_cuda(new):                          # the fork's zip carries its own cuBLAS
-        pip_cuda_libs(toolkit)
+    pip_cuda_libs(toolkit)
 
 
 def pip_cuda_libs(toolkit=13) -> None:
@@ -3541,10 +3370,6 @@ def prebuilt_vision(meta: dict, gpu: dict, vision: str) -> str:
     of compiling one, which fails on most Windows PCs (no Visual Studio / CUDA toolkit); --build compiles it."""
     if vision != "gpu":
         return vision
-    if meta.get("vision") == "cpu":                    # this fork's release: the encoder runs on the CPU only
-        ok("images: the ready-made image encoder runs on the CPU (2-6 s a picture; the VRAM stays with the experts); "
-           "setup --build compiles one for the GPU")
-        return "cpu"
     va = [int(x) for x in meta.get("vision_archs", meta.get("archs", []))]
     if va and int(gpu["arch"]) not in va and not (meta.get("ptx") and int(gpu["arch"]) > max(va)):
         warn(f"the ready-made image encoder has no code for your GPU (sm_{gpu['arch']}): it runs on the CPU instead "
@@ -4189,15 +4014,12 @@ def choices_from_config(cfg_path: Path) -> dict:
     model = (tag[len(FAMILIES[family]["tag"]):] if tag.startswith(FAMILIES[family]["tag"]) else tag).upper()
     if model not in MODELS:                            # (sizes have no dash except UD-Q4_K_XL: the old rule)
         model = tag.split("-")[-1].upper()
-    nv = next((f for f, d in NVFP4_FAMILIES.items() if tag.lower() == (d["tag"] + NVFP4_MODEL).lower()), None)
-    if nv:                                             # this fork's NVFP4 models: one size each
-        family, model = nv, NVFP4_MODEL
     a = cfg.get("args", [])
     val = lambda k: a[a.index(k) + 1] if k in a and a.index(k) + 1 < len(a) else None   # noqa: E731
     vis = cfg.get("vision")
     esp = val("--control-vector-scaled")
     esp_path = esp.rsplit(":", 1)[0] if esp else None
-    return {"family": family, "model": model if model in MODELS or nv else None,
+    return {"family": family, "model": model if model in MODELS else None,
             "context": int(val("--max-context")) if val("--max-context") else None,
             "kv": val("--kv") if val("--kv") in ("int8", "q4_0") else None,
             "vision": ("gpu" if vis.get("gpu") else "cpu") if isinstance(vis, dict) else "none",
@@ -4260,7 +4082,7 @@ def engine_version(exe: Path) -> tuple:
             v = m.group(1).decode() if m else "0.1.12"
         except OSError:
             v = "0"
-    return version_tuple(v)
+    return tuple(int(x) for x in v.split(".")[:4] if x.isdigit())
 
 
 def is_wsl() -> bool:
@@ -4375,9 +4197,7 @@ def setup_calibration(cfg: dict, hip: bool) -> dict | None:
 def upgrade_config(cfg_path: Path, cfg: dict) -> dict:
     """Configs written before v0.1.13 read prompts in fixed 2048-token chunks; the engine now picks the chunk
     itself (`--prefill auto`: up to 8192, as the free VRAM allows - about 2x faster on long prompts).  Under WSL,
-    KV streaming is dropped: its RAM copy must be pinned, and the driver pins only about 1 GB there.  This fork: images
-    set up for the GPU encoder get the CPU settings when the engine's encoder is CPU-only (its release's BUILD.json
-    "vision": "cpu", installed over an upstream engine by an update)."""
+    KV streaming is dropped: its RAM copy must be pinned, and the driver pins only about 1 GB there."""
     a = cfg.get("args", [])
     changed = False
     ver = engine_version(cfg["exe"]) if "--prefill" in a else (0, 0, 0)
@@ -4388,29 +4208,12 @@ def upgrade_config(cfg_path: Path, cfg: dict) -> dict:
     elif "--prefill" in a and a[a.index("--prefill") + 1] == "auto" and (0, 0, 0) < ver < (0, 1, 13):
         a[a.index("--prefill") + 1] = "2048"           # an older engine kept after a failed update (issue #49)
         changed = True
-        warn(f"the installed engine is {version_text(ver)}: prompts are read in 2048-token chunks until it is updated")
+        warn(f"the installed engine is {'.'.join(map(str, ver))}: prompts are read in 2048-token chunks until it is updated")
     if is_wsl() and "--kv-resident" in a:
         i = a.index("--kv-resident")
         del a[i:i + 2]
         changed = True
         ok("WSL: KV streaming off (the driver pins only about 1 GB of RAM); the KV cache stays in VRAM")
-    vis = cfg.get("vision")
-    if isinstance(vis, dict) and vis.get("gpu") and cfg.get("backend") != "hip":
-        try:                                           # this fork's release engine: its image encoder is CPU-only
-            emeta = json.loads((Path(cfg["exe"]).parent / "BUILD.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError, KeyError, TypeError):
-            emeta = {}
-        if isinstance(emeta, dict) and emeta.get("vision") == "cpu":
-            vis["gpu"] = False                         # the CPU settings (VISION["cpu"]), as setup writes them
-            vis["threads"] = vis.get("threads") or max(1, (os.cpu_count() or 8) // 2)
-            if vis.get("max_tokens") in (None, VISION["gpu"]["max_tokens"]):
-                vis["max_tokens"] = VISION["cpu"]["max_tokens"]
-            if "--vram-reserve-mib" in a[:-1] and a[a.index("--vram-reserve-mib") + 1] == str(VISION["gpu"]["reserve_mib"]):
-                a[a.index("--vram-reserve-mib") + 1] = str(VISION["cpu"]["reserve_mib"])
-            changed = True
-            ok(f"images: engine {emeta.get('version')}'s image encoder runs on the CPU, so this model's images now use "
-               f"the CPU settings ({vis['threads']} threads, up to {vis['max_tokens']} image tokens a picture); "
-               "setup --build compiles an encoder for the GPU")
     if changed:
         write_config(cfg_path, cfg)
     return cfg
@@ -4440,7 +4243,7 @@ def update_install(have: list, a) -> int:
         ok(f"{cfg.get('model_name', cfg_path.stem)}: up to date")
     ver = engine_version(Path(json.loads(have[0].read_text(encoding="utf-8-sig"))["exe"]))
     say()
-    ok("Strata is updated" + (f" (engine {version_text(ver)})" if any(ver) else "") +
+    ok("Strata is updated" + (f" (engine {'.'.join(map(str, ver))})" if any(ver) else "") +
        ". Start the model with " + ("START-HERE.bat" if WIN else "./setup.sh") + " when you want it.")
     return 0
 
@@ -4741,9 +4544,7 @@ def parallel_note(asked: int | None, vram_gbs, arena_gb: float, ctx: int, kv: st
     return lines
 
 
-# bench #433 #440 #834 #669 measured upstream's auto (8192-token chunks) against auto:32768: +21-35% with 96 GB, ~3x
-# slower with 32 GB.  This fork's plain auto already goes up to 32768 (generate.cpp, #282), so there is no tip to
-# give for it; auto:8192 is upstream's auto.
+PREFILL_BIG_RAM_GB = 96        # bench #433 #440 #834 #669: --prefill auto:32768 +21-35% at 96 GB, ~3x slower at 32 GB
 PREFILL_RISK_RAM_GB = 64       # below this an explicit auto:32768 is warned about
 HEADROOM_RAM_GB = 48           # bench #834: STRATA_RESIDENT_HEADROOM_GIB=6 on a PC with this much RAM or less
 AGENT_CACHE_FREE_GB = 24       # bench #882 #440: RAM left beside the model for the conversation cache
@@ -4767,8 +4568,11 @@ def bench_tips(args, env, ram: float, model_ram_gb: float, vram_gb: float, visio
                     "has run up to 7x slower (#780 #781); a smaller number, or auto, leaves the driver room")
     prefill = arg_after(args, "--prefill")
     if prefill == "auto:32768" and ram < PREFILL_RISK_RAM_GB:
-        tips.append(f"warning: --prefill auto:32768 on {ram:.0f} GB of RAM: with 32 GB, 32768-token chunks read prompts "
-                    "~3x slower than 8192-token ones (#834 #669); --prefill auto:8192 keeps them at 8192")
+        tips.append(f"warning: --prefill auto:32768 on {ram:.0f} GB of RAM: it ran ~3x slower than --prefill auto with "
+                    "32 GB (#834 #669); it paid off (+21-35%) with 96 GB")
+    elif prefill == "auto" and ram >= PREFILL_BIG_RAM_GB:
+        tips.append(f"tip: with {ram:.0f} GB of RAM, --prefill auto:32768 in the config's args read prompts 21-35% "
+                    "faster in community benchmarks (#433 #440 #834); not set, nothing changes")
     resident = any(a in args for a in ("--resident-experts", "--resident-budget-gib"))
     if resident and ram <= HEADROOM_RAM_GB and "STRATA_RESIDENT_HEADROOM_GIB" not in (env or {}):
         tips.append(f"tip: on a PC with {ram:.0f} GB of RAM, \"env\": {{\"STRATA_RESIDENT_HEADROOM_GIB\": \"6\"}} in the "
@@ -4955,726 +4759,6 @@ def resolve_rope(ctx: int, scaling, scale, trained: int = 262144):
     return scaling or "yarn", scale if scale is not None else derived_factor(ctx, trained)
 
 
-# ------------------------------------------------------------------------------------------------ this fork
-def version_tuple(v) -> tuple:
-    """An engine version as numbers: "0.1.40.3" -> (0, 1, 40, 3); this fork's "0.1.40.3-nvfp4.1" -> (0, 1, 40, 3, 1),
-    above the upstream version it is built on (read number by number it was 0.1.40, an engine to replace)."""
-    m = re.match(r"\s*(\d+(?:\.\d+)*)(?:-nvfp4\.(\d+))?", str(v or ""))
-    if not m:
-        return ()
-    nums = tuple(int(x) for x in m.group(1).split("."))[:5]
-    if m.group(2) is not None:
-        nums = (nums + (0, 0, 0, 0))[:4] + (int(m.group(2)),)
-    return nums
-
-
-def version_text(v: tuple) -> str:
-    """(0, 1, 40, 3, 1) -> "0.1.40.3-nvfp4.1", (0, 1, 41, 0, 1) -> "0.1.41-nvfp4.1" (the tag's spelling); four numbers
-    or fewer as they are."""
-    if len(v) > 4:
-        return ".".join(map(str, v[:4] if v[3] else v[:3])) + f"-nvfp4.{v[4]}"
-    return ".".join(map(str, v))
-
-
-def release_version() -> str:
-    """This fork's release, its tag v<this>: release/make_windows_bundle.py's VERSION, else the engine source's."""
-    try:
-        m = re.search(r'^VERSION = "([^"]+)"', (ROOT / "release" / "make_windows_bundle.py").read_text(encoding="utf-8"),
-                      re.M)
-        return m.group(1) if m else source_version()
-    except OSError:
-        try:
-            return source_version()
-        except OSError:
-            return "0"
-
-
-# The fork's own release or newer, so a `git pull` brings its engine as upstream's MIN_ENGINE bump does
-# (WIN_HIP_MIN_ENGINE keeps upstream's number: the fork publishes no AMD engine).  UPSTREAM_MIN_ENGINE: what the GGUF
-# models need, so an upstream engine that new is worth keeping when the fork's cannot replace it (fork_optional).
-UPSTREAM_MIN_ENGINE = MIN_ENGINE
-MIN_ENGINE = max(MIN_ENGINE, version_tuple(release_version()))
-FORK_ARCHS = (75, 86, 89, 120)         # the release engine's cards, no PTX (release/make_windows_bundle.py's BUILD.json)
-FORK_NOTE = "fork-engine.json"         # in the engine folder: why this PC kept its engine, for which release
-
-
-def fork_release(url_base) -> bool:
-    """Whether the ready-made engine comes from this fork's releases (the default, not an explicit --prebuilt)."""
-    base = str(url_base or "")
-    return (base if base.endswith(("/", "\\")) else base + "/") == PREBUILT_URL
-
-
-def fork_engine(meta: dict) -> bool:
-    """An engine of this fork: its release's (BUILD.json names the fork) or one compiled from this source."""
-    return bool(meta.get("fork")) or meta.get("source") == "local"
-
-
-def fork_optional(meta: dict, url_base) -> bool:
-    """An installed ready-made engine of upstream's that runs the GGUF models (UPSTREAM_MIN_ENGINE or newer): replaced
-    by this fork's when it can be (the NVFP4 models need it), kept when it cannot."""
-    return fork_release(url_base) and not fork_engine(meta) and \
-        version_tuple(meta.get("version")) >= UPSTREAM_MIN_ENGINE
-
-
-def fork_unavailable(asset: str, gpu: dict) -> str | None:
-    """Why this fork's release has no engine for this PC, known without asking GitHub: it publishes no such asset
-    (Linux, the CUDA 12 engine), or the engine has no code for a card (FORK_ARCHS, no PTX); None: it may have one."""
-    if asset not in FORK_ASSETS:
-        return f"{FORK_REPO} publishes a ready-made engine for Windows (CUDA 13) only"
-    miss = [int(x) for x in gpu.get("archs", [gpu["arch"]]) if int(x) not in FORK_ARCHS]
-    if miss:
-        return (f"{FORK_REPO}'s ready-made engine is built for {', '.join(f'sm_{a}' for a in FORK_ARCHS)}; your GPU is "
-                f"{', '.join(f'sm_{x}' for x in miss)}")
-    return None
-
-
-def fork_note_write(eng: Path, why: str, final: bool) -> None:
-    """Remember that this release's engine could not replace the installed one: final (no asset or no code for this
-    PC) until the next release, else (not published yet, offline) for a day."""
-    try:
-        Path(eng, FORK_NOTE).write_text(json.dumps({"release": release_version(), "why": why, "final": final,
-                                                    "time": time.time()}), encoding="utf-8")
-    except OSError:
-        pass
-
-
-def fork_note_skip(eng: Path) -> bool:
-    """A refusal fork_note_write remembered still holds: START does not ask GitHub or say it again."""
-    try:
-        n = json.loads(Path(eng, FORK_NOTE).read_text(encoding="utf-8"))
-        return n.get("release") == release_version() and (bool(n.get("final")) or
-                                                          time.time() - float(n.get("time", 0)) < 86400)
-    except (OSError, ValueError, TypeError, AttributeError):
-        return False
-
-
-def fork_note_clear(eng: Path) -> None:
-    Path(eng, FORK_NOTE).unlink(missing_ok=True)
-
-
-def bundled_cuda(eng) -> bool:
-    """The engine folder carries its own cuBLAS (the fork's zip: BUILD.json "cuda_libs": "bundled"), so no pip wheels."""
-    try:
-        return json.loads((Path(eng) / "BUILD.json").read_text(encoding="utf-8")).get("cuda_libs") == "bundled"
-    except (OSError, ValueError, TypeError, AttributeError):
-        return False
-
-
-# The NVFP4 models: huihui-ai's and OrcaRouter's abliterated Flash-Next with every expert NVFP4 by GPTQ, ready-made on
-# Hugging Face - nothing is converted on the PC.  NVFP4_REPOS holds one table per repository, what its upload fixed:
-# the commit, and per component its files (path in the repository: bytes, SHA-256).  A family takes each component
-# from the repository its "sources" name - its own, or a shared one (the PLE table and the embedding, when they are
-# Qwen's own) - and is offered only once all of them are listed (nvfp4_files).
-NVFP4_MODEL = "NVFP4"                  # the one size: strata-huihui-nvfp4.json, run-huihui-nvfp4.bat
-HUIHUI_REPO = "Maximilian228/Huihui-Qwen3.8-Flash-Next-abliterated-NVFP4-GPTQ-Strata"
-ORCA_REPO = "Maximilian228/OrcaRouter-Qwen3.8-Flash-Next-Uncensored-NVFP4-GPTQ-Strata"
-# pack: the experts pack folder (index.txt, experts.bin, dense.bin, native_experts.txt, tokenizer/); dense: the GGUF
-# with the dense weights (--native and --native-dense-gguf); ple: the FP8 n-gram table (--ple-gguf); embd: the BF16
-# token embedding (--embd-gguf); mtp: the draft head's runtime folder (experts.bin, dense.bin, dense.txt; --mtp);
-# profile: the expert profile (optional; without it data/expert-profile.bin)
-NVFP4_COMPONENTS = ("pack", "dense", "ple", "embd", "mtp", "profile")
-NVFP4_REPOS = {
-    # tools/nvfp4_table.py <repo> --revision <commit> (2026-10-09, the uploads' commits): "revision" pins every
-    # download, each component {path: (bytes, "sha256")}.
-    HUIHUI_REPO: {
-        "revision": "10c65c98b3494ec099144d706f75fdaa1ad683f9",
-        "pack": {
-            "pack/dense.bin": (1538035200, "974df6dcefcae85e3fd2c19fcc12eeaacaadde8261ab732d5af5af6ce2e25a7a"),
-            "pack/experts.bin": (67948118016, "835d070d705c9346cdb9e3c9cf20eeaf4f192f56f1c31c248057d5efe851e932"),
-            "pack/index.txt": (93691, "075533ae81d693aef618d8b6d1ec0c19c35763d497f5b93fbc6b522554ae454e"),
-            "pack/native_experts.txt": (1599, "615f655fb28bf60b243664860b135710bf4177b111c6be89073e780a35de1018"),
-            "pack/tokenizer/chat_template.jinja": (8952, "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041"),
-            "pack/tokenizer/merges.txt": (3600844, "080cf95432173729d160346b7882bd2a644b07f7a3813a3eb73f4e66787bfde9"),
-            "pack/tokenizer/token_type.json": (744960, "5088c8c298fc06af8382ddb3b76c888703ac2634e82263b97eedcc2ad202738b"),
-            "pack/tokenizer/tokenizer.json": (554, "87be2ac47d8bc7393b7435df6ccd276740019a393941a2585d5edce59f450c54"),
-            "pack/tokenizer/vocab.json": (5737005, "4ba64f0332abcfb0b600b7df1537d1e836e68009d5fb7cdb77339738dc6365c4"),
-        },
-        "dense": {"huihui-nvfp4-dense.gguf": (5991569792, "4a61a287a832429aa2faf0022e15da6359a90492b6248fb83e716b2e053581a0")},
-        "ple": {"ple-fp8.gguf": (51200246144, "40f95a6242e08e9aea2e525cd3b21c3239163d1040682facf5cf2484192d42ce")},
-        "embd": {"token-embd-bf16.gguf": (1271398656, "2533a5c442a0609ba08fef6d7c52f9944c688fdbcc1c2ee5adc760a15b28f359")},
-        "mtp": {
-            "mtp/dense.bin": (116099072, "c724dc0b0822ada5d2977bf5bde821605feabaa64ea2e0045b67ca656329070a"),
-            "mtp/dense.txt": (1880, "8773c81ebb0986e37fe94a8a9933e87be48b1fabc6889a0106bcdab179d1c2ac"),
-            "mtp/draft_vocab.bin": (235852, "25d7fd1670a2e0ec885868d1718d410a3baab03bceeacf0a156cf93ffe4e1ef4"),
-            "mtp/experts.bin": (707788800, "09398406be61f1f54c93861f449e48b8df0bfccbc9ec9b2b7636775a6ea9244f"),
-        },
-        "profile": {},
-    },
-    ORCA_REPO: {
-        "revision": "34c2fc2cd547c5278800c67c3ab9f0e3405f6942",
-        "pack": {
-            "pack/dense.bin": (1538625024, "0c83c1629ffdb6b13ee2a504f37aa7837ba62c4ecbaebf40eb0beb82b2075bca"),
-            "pack/experts.bin": (67948118016, "11285bd6f1c5d8d9338905f5b16a89c3910651da7835a259c26b6a1a1eb91e71"),
-            "pack/index.txt": (117515, "53440aa4730542ae0042e18e63e6d47af72ed869e6c85963dad84d2cf3ed01d4"),
-            "pack/native_experts.txt": (1599, "615f655fb28bf60b243664860b135710bf4177b111c6be89073e780a35de1018"),
-            "pack/tokenizer/chat_template.jinja": (8952, "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041"),
-            "pack/tokenizer/merges.txt": (3600844, "080cf95432173729d160346b7882bd2a644b07f7a3813a3eb73f4e66787bfde9"),
-            "pack/tokenizer/token_type.json": (744960, "5088c8c298fc06af8382ddb3b76c888703ac2634e82263b97eedcc2ad202738b"),
-            "pack/tokenizer/tokenizer.json": (554, "87be2ac47d8bc7393b7435df6ccd276740019a393941a2585d5edce59f450c54"),
-            "pack/tokenizer/vocab.json": (5737005, "4ba64f0332abcfb0b600b7df1537d1e836e68009d5fb7cdb77339738dc6365c4"),
-        },
-        "dense": {"orca-nvfp4-dense.gguf": (5992177344, "6efd902e5fdb9dd58ce32608b645296721d11d0fc60a9677d4f322452a927ffe")},
-        "ple": {"ple-fp8.gguf": (51200246144, "40f95a6242e08e9aea2e525cd3b21c3239163d1040682facf5cf2484192d42ce")},
-        "embd": {"token-embd-bf16.gguf": (1271398688, "62cb3bbd00013a04e76b831acafd9b87ed1376b59a50e85b0e91278f72e3a8c8")},
-        "mtp": {
-            "mtp/dense.bin": (116099072, "85f313ccb60e934e61b31001a42349f0503e97586d9cc2529cb227cfab14e3ac"),
-            "mtp/dense.txt": (1880, "8773c81ebb0986e37fe94a8a9933e87be48b1fabc6889a0106bcdab179d1c2ac"),
-            "mtp/draft_vocab.bin": (235852, "25d7fd1670a2e0ec885868d1718d410a3baab03bceeacf0a156cf93ffe4e1ef4"),
-            "mtp/experts.bin": (707788800, "96bdec41a96658aa7c3f28fdd388b2ccf4bffa253de85bee94b20231fdfa8bf3"),
-        },
-        "profile": {},
-    },
-}
-NVFP4_FAMILIES = {
-    "huihui-nvfp4": {"title": "Huihui Qwen3.8-Flash-Next abliterated (NVFP4)",
-                     "by": "huihui-ai's abliterated Flash-Next, every expert NVFP4 by GPTQ (this fork)",
-                     "about": "4.5-bit experts, closer to the full model than the 2-3-bit GGUFs; it does not refuse",
-                     "tag": "huihui-", "name": "huihui-qwen3.8-flash-next-abliterated",
-                     "license": "Qwen Community License 1.0, Qwen3.8-Flash-Next's, which huihui-ai's abliterated build "
-                                "keeps: https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated",
-                     "sources": {c: HUIHUI_REPO for c in NVFP4_COMPONENTS}},
-    "orca-nvfp4": {"title": "OrcaRouter Qwen3.8-Flash-Next Uncensored (NVFP4)",
-                   "by": "OrcaRouter's uncensored Flash-Next, every expert NVFP4 by GPTQ (this fork)",
-                   "about": "the same quantization of another abliteration; it does not refuse",
-                   "tag": "orca-", "name": "orcarouter-qwen3.8-flash-next-uncensored",
-                   "license": "Qwen Community License 1.0, Qwen3.8-Flash-Next's: the LICENSE file OrcaRouter ships "
-                              "(its model card says Apache 2.0): https://huggingface.co/OrcaRouter/Qwen3.8-Flash-Next-Uncensored",
-                   "sources": {c: ORCA_REPO for c in NVFP4_COMPONENTS}},
-}
-NVFP4_DEFAULT = "huihui-nvfp4"         # this fork's recommended model, where the PC meets its requirements
-NVFP4_MIN_ARCH = 75                    # RTX 20 and newer (docs/NVFP4.md, "Other GPUs")
-NVFP4_MIN_VRAM_GB = 11.5               # a 12 GB card (nvidia-smi lists ~11.99); an 8 GB one has no room for the cache
-NVFP4_MIN_RAM_GB = 60                  # a 64 GB PC (63.7 listed), the README's floor
-NVFP4_ALL_RAM_GB = 92                  # the engine's rule (memory.hpp kLowRamBelowGib, the same ullTotalPhys GiB as
-                                       # ram_gb()): from here every expert stays in RAM - a 96 GB PC lists 93.4-95.6 -
-                                       # below it the engine's own low-RAM mode (a 64 GB PC)
-NVFP4_CONTEXTS = ((28, 262144), (20, 131072), (14, 65536), (0, 32768))   # VRAM -> context, the README's table
-NVFP4_VISION_TOKENS = 1024             # the tray's: the encoder runs on the CPU
-
-
-def nvfp4_files(family: str) -> tuple:
-    """(files, None), files as (component, repo, revision, path, bytes, sha256), or ([], why) while NVFP4_REPOS does not
-    list what the engine reads yet (`why` is for users: the files are not published yet).  An empty "profile" is
-    allowed: the shipped data/expert-profile.bin."""
-    files, src = [], NVFP4_FAMILIES[family]["sources"]
-    for comp in NVFP4_COMPONENTS:
-        repo = src.get(comp)
-        table = NVFP4_REPOS.get(repo) or {}
-        listed = table.get(comp) or {}
-        if not listed:
-            if comp == "profile":
-                continue
-            return [], f"its {comp} files are not on Hugging Face yet ({repo})"
-        if not re.fullmatch(r"[0-9a-f]{40}", str(table.get("revision") or "")):
-            return [], f"its upload is not finished yet ({repo})"
-        for path, (size, sha) in listed.items():
-            if not re.fullmatch(r"[0-9a-f]{64}", str(sha)) or int(size) <= 0:
-                return [], f"its upload is not finished yet ({repo}: {path})"
-            files.append((comp, repo, table["revision"], path, int(size), str(sha)))
-    by = {}
-    for f in files:
-        by.setdefault(f[0], []).append(f[3])
-    for comp, marker, need in (("pack", "index.txt", ("experts.bin", "tokenizer/vocab.json")),
-                               ("mtp", "experts.bin", ())):
-        tops = [p[:-len(marker)] for p in by[comp] if p == marker or p.endswith("/" + marker)]
-        if len(tops) != 1 or any(tops[0] + n not in by[comp] for n in need):
-            return [], f"its {comp} files in {src[comp]} are not one folder with {', '.join((marker, *need))}"
-    for comp in ("dense", "ple", "embd"):
-        if len(by[comp]) != 1 or not by[comp][0].endswith(".gguf"):
-            return [], f"its {comp} in {src[comp]} is not one .gguf file"
-    if len(by.get("profile", [])) > 1:
-        return [], f"{src['profile']} has more than one expert profile"
-    return files, None
-
-
-def nvfp4_experts_gib(files) -> float:
-    return sum(f[4] for f in files if f[0] == "pack" and f[3].split("/")[-1] == "experts.bin") / 2**30
-
-
-def nvfp4_offer(family: str, gpu, hip: bool, cuda_tk: int = 13) -> str | None:
-    """Why the family is not offered on this PC (its files are not published yet, no NVIDIA RTX 20 or newer card, the
-    CUDA 12 engine chosen), or None.  VRAM and RAM below the requirements are risks the user may take (nvfp4_install)."""
-    why = nvfp4_files(family)[1]
-    if why:
-        return f"not published yet - {why}"
-    if hip or not gpu or not str(gpu.get("arch", "")).isdigit():
-        return "it runs on NVIDIA cards only (the fork's NVFP4 path is CUDA)"
-    if int(gpu["arch"]) < NVFP4_MIN_ARCH:
-        return f"it needs an RTX 20 card or newer (compute capability 7.5+; {gpu_name(gpu)} is {cc(gpu)})"
-    if int(cuda_tk) == 12:
-        return ("it runs on the CUDA 13 engine only, and this setup uses CUDA 12 (--cuda 12, or an older card among the "
-                "chosen ones): leave out --cuda 12, or choose RTX 20 or newer cards only")
-    return None
-
-
-def nvfp4_short(gpu, ram) -> str | None:
-    """What the PC lacks for the NVFP4 models (a recommendation only), or None."""
-    if gpu["vram_gb"] < NVFP4_MIN_VRAM_GB:
-        return f"needs a card with 12 GB of VRAM or more, this one has {gpu['vram_gb']:.0f}"
-    if ram < NVFP4_MIN_RAM_GB:
-        return f"needs 64 GB of RAM or more, this PC has {ram:.0f}"
-    return None
-
-
-def engine_low_ram(ram: float) -> bool:
-    """Does the engine start the NVFP4 models in its low-RAM mode by itself on this PC (no --low-ram flag): below
-    NVFP4_ALL_RAM_GB GiB installed, as generate.cpp decides (platform::low_ram_auto)."""
-    return 0 < ram < NVFP4_ALL_RAM_GB
-
-
-def nvfp4_verdict(family: str, gpu, hip: bool, ram: float, cuda_tk: int = 13) -> str:
-    """--check's line for an NVFP4 family."""
-    why = nvfp4_offer(family, gpu, hip, cuda_tk)
-    if why:
-        return f"not offered: {why}"
-    gib = nvfp4_experts_gib(nvfp4_files(family)[0])
-    short = nvfp4_short(gpu, ram)
-    if short:
-        return f"does not fit: it {short}"
-    if engine_low_ram(ram):
-        return (f"fits in the engine's low-RAM mode (below {NVFP4_ALL_RAM_GB} GiB: of its {gib:.0f} GiB of experts "
-                "the ones outside VRAM stay in RAM as far as it holds them, the rest are read from the SSD)")
-    return f"fits (all {gib:.0f} GiB of experts in RAM)"
-
-
-def repo_dir(repo: str) -> str:
-    return repo.replace("/", "--")
-
-
-def nvfp4_verified(p: Path, sha: str) -> bool:
-    """A file downloaded whole and checked: its finish mark holds its SHA-256 (verify_sha256)."""
-    m = p.with_name(p.name + ".done")
-    try:
-        return p.is_file() and f"sha256 {sha}" in m.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-
-
-def nvfp4_local(files, models_dir: Path, roots: list) -> dict:
-    """(repo, path) -> where the file is or goes: <models>/<owner>--<repo>/<path>, the repository's own layout, so a
-    component two families share is one copy.  A component already whole in another data folder is used there."""
-    cands = list(dict.fromkeys([Path(models_dir), *[Path(r) / "models" for r in roots]]))
-    where = {}
-    for comp in NVFP4_COMPONENTS:
-        group = [f for f in files if f[0] == comp]
-        base = next((c for c in cands if group and all(nvfp4_verified(c / repo_dir(f[1]) / f[3], f[5]) for f in group)),
-                    Path(models_dir))
-        for f in group:
-            where[(f[1], f[3])] = base / repo_dir(f[1]) / f[3]
-    return where
-
-
-def nvfp4_paths(files, where: dict) -> dict:
-    """What the engine is given: the pack and draft head folders, the three GGUFs and the expert profile."""
-    out = {"profile": ROOT / "data" / "expert-profile.bin"}
-    for comp, repo, _rev, path, _size, _sha in files:
-        p = where[(repo, path)]
-        if comp == "pack" and p.name == "index.txt" or comp == "mtp" and p.name == "experts.bin":
-            out[comp] = p.parent
-        elif comp in ("dense", "ple", "embd", "profile"):
-            out[comp] = p
-    return out
-
-
-def nvfp4_same(sha: str, cands: list) -> Path | None:
-    """The same file (by SHA-256) already downloaded and checked for another NVFP4 model, to link instead of fetching."""
-    for repo, table in NVFP4_REPOS.items():
-        for comp in NVFP4_COMPONENTS:
-            for path, (_size, s) in (table.get(comp) or {}).items():
-                if s == sha:
-                    for c in cands:
-                        p = Path(c) / repo_dir(repo) / path
-                        if nvfp4_verified(p, sha):
-                            return p
-    return None
-
-
-def nvfp4_stale(dst: Path, sha: str) -> None:
-    """What an earlier download left for another version of the file (the table pins a new SHA-256 now) goes: a finish
-    mark without this SHA-256 with its file (else download() takes it for done and the hash check deletes it, a run
-    lost), and a .part begun for another SHA-256 (<name>.part.sha256 names the one it was begun for)."""
-    m, part, want = (dst.with_name(dst.name + x) for x in (".done", ".part", ".part.sha256"))
-    try:
-        checked = re.search(r"sha256 ([0-9a-f]{64})", m.read_text(encoding="utf-8", errors="replace")) \
-            if m.exists() else None
-    except OSError:
-        checked = None
-    if checked and checked.group(1) != sha:            # checked as another version (a mark without a SHA-256: a file
-        dst.unlink(missing_ok=True)                    # downloaded whole, its check stopped - hashed again, kept)
-        m.unlink(missing_ok=True)
-    try:
-        began = want.read_text(encoding="utf-8").strip() if want.exists() else None
-    except OSError:
-        began = None
-    if part.exists() and began is not None and began != sha:
-        part.unlink(missing_ok=True)
-
-
-def nvfp4_fetch(files, where: dict, cands: list) -> None:
-    """Every file: already here and checked, linked from another model that has the same file (by SHA-256), or
-    downloaded (resumable) from its pinned revision - never another - and checked against its size and SHA-256."""
-    for _comp, repo, rev, path, size, sha in files:
-        dst = where[(repo, path)]
-        if nvfp4_verified(dst, sha):
-            ok(f"{path} already downloaded")
-            continue
-        nvfp4_stale(dst, sha)
-        src = nvfp4_same(sha, cands) if size >= 64 << 20 and not dst.exists() else None
-        if src is not None and src != dst:
-            try:
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                os.link(src, dst)
-                mark(dst, f"sha256 {sha}")
-                for x in (".part", ".part.sha256"):    # a download of it begun earlier: not needed any more
-                    dst.with_name(dst.name + x).unlink(missing_ok=True)
-                ok(f"{path}: the same file as {src} (linked, not downloaded again)")
-                continue
-            except OSError:
-                pass                                   # another drive: downloaded
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.with_name(dst.name + ".part.sha256").write_text(sha, encoding="utf-8")
-        download(f"{hf_endpoint()}/{repo}/resolve/{rev}/{path}", dst, f"{repo.split('/')[-1]}: {path}",
-                 unpinned_ok=False)
-        verify_sha256(dst, size, sha)
-        dst.with_name(dst.name + ".part.sha256").unlink(missing_ok=True)
-
-
-def nvfp4_args(paths: dict, ctx: int, kv: str, vision: str, scaling=None, rope_scale=None, extra=()) -> list:
-    """The engine's arguments, the tray's working set: the dense GGUF as --native and --native-dense-gguf (--native
-    alone would take the PLE file for its second shard), the FP8 n-gram table, the BF16 embedding, the fine-tune's
-    own draft head.  Images: --vision; the encoder on the CPU needs no VRAM reserve."""
-    args = ["--pack", str(paths["pack"]), "--native", str(paths["dense"]), "--native-dense-gguf", str(paths["dense"]),
-            "--ple-gguf", str(paths["ple"]), "--embd-gguf", str(paths["embd"]),
-            "--expert-profile", str(paths["profile"]), "--expert-cache", "auto", "--prefill", "auto",
-            "--spec", "6", "--spec-min-p", "0.7", "--mtp", str(paths["mtp"]), "--max-context", str(ctx)]
-    if ctx > 8192:
-        args += ["--kv", kv]
-    if scaling is not None:
-        args += ["--rope-scaling", scaling, "--rope-scale", f"{rope_scale:g}"]
-    args += list(extra)
-    if vision != "none":
-        args += ["--vision"] + (["--vram-reserve-mib", str(VISION["gpu"]["reserve_mib"])] if vision == "gpu" else [])
-    return args
-
-
-def nvfp4_engine_plan(a) -> str:
-    """--dry-run: where the engine would come from."""
-    eng = engine_dir(13)
-    try:
-        meta = json.loads((eng / "BUILD.json").read_text(encoding="utf-8")) if (eng / EXE).exists() else {}
-    except (OSError, ValueError):
-        meta = {}
-    if a.build:
-        return f"compiled from this source into {eng} (--build; the build tools are installed first when missing)"
-    if meta.get("source") == "local":
-        return f"the one compiled here ({eng}), compiled again when this source changed"
-    if fork_engine(meta) and version_tuple(meta.get("version")) >= MIN_ENGINE:
-        return f"this fork's ready-made engine, already in {eng} ({meta.get('version')})"
-    if not fork_release(a.prebuilt):
-        return f"--prebuilt {a.prebuilt} when it is this fork's engine, else compiled from this source"
-    if PREBUILT_ASSET not in FORK_ASSETS:
-        return f"compiled from this source ({FORK_REPO} publishes a ready-made engine for Windows only)"
-    return (f"{PREBUILT_ASSET} from {FORK_REPO}'s release v{release_version()} (else its latest), checked against "
-            "GitHub's SHA-256" + (f", replacing the installed {meta.get('version')}" if meta else "") +
-            "; compiled from this source when none is published")
-
-
-def nvfp4_engine(a, gpu, vision: str, llama) -> tuple:
-    """(engine folder, images setting): this fork's ready-made engine, else one compiled from this source.  An engine
-    without the fork's mark (upstream's, from an explicit --prebuilt) cannot run NVFP4 and is compiled over."""
-    eng = None if a.build else get_prebuilt(a.prebuilt, gpu, vision)
-    if eng is not None:
-        meta = json.loads((eng / "BUILD.json").read_text(encoding="utf-8"))
-        if not fork_engine(meta):
-            warn(f"the ready-made engine {meta.get('version')} is not this fork's, so it cannot run the NVFP4 models: "
-                 "compiling this fork's from source")
-            eng = None
-        elif meta.get("source") != "local":
-            if not bundled_cuda(eng):
-                pip_cuda_libs(13)
-            if vision != "none" and not (eng / VEXE).exists():
-                warn("the ready-made engine has no image encoder: compiling it")
-                eng = None
-            else:
-                vision = prebuilt_vision(meta, gpu, vision)
-    if eng is None:
-        eng = build_engine(gpu, vision, a.yes, llama, toolkit=13)
-    return eng, vision
-
-
-def free_gb_peek(path) -> float:
-    """free_gb without creating the folder (--dry-run)."""
-    p = Path(path)
-    while not p.exists() and p.parent != p:
-        p = p.parent
-    return shutil.disk_usage(p).free / 1e9
-
-
-def data_folder_peek(requested: str | None) -> tuple:
-    """data_folder's answer without moving or recording anything (--dry-run): the data folder, and every other folder
-    data_folder looks in that holds model files, where it is now (a real run first moves the ones on the data
-    folder's drive into it; the plan finds their files either way)."""
-    settings = load_settings()
-    dest = Path(requested).expanduser().resolve() if requested else Path(settings["data_dir"]) \
-        if settings.get("data_dir") else ROOT.parent / "Strata-data"
-    sources = [ROOT, *other_installs(settings)]
-    if settings.get("data_dir") and Path(settings["data_dir"]) != dest:
-        sources.append(Path(settings["data_dir"]))
-    sources += [f / "Strata-data" for f in list(sources) if (f / "Strata-data") != dest]
-    seen, elsewhere = {os.path.normcase(str(dest))}, []
-    for folder in sources:
-        key = os.path.normcase(str(folder))
-        if key not in seen and has_data(folder):
-            elsewhere.append(folder)
-        seen.add(key)
-    return dest, elsewhere
-
-
-def nvfp4_install(a, family: str, gpu: dict, multi: list, cuda_tk: int, ram: float, roots: list, adopted,
-                  port: int) -> int:
-    """Steps 2-7 for this fork's NVFP4 models: their files come ready-made from Hugging Face, pinned and checked by
-    SHA-256 (NVFP4_REPOS); nothing is converted here.  The engine is this fork's, never upstream's.  One GPU: the
-    engine's low-RAM mode and its growing K/V run on one.  --dry-run prints the plan and stops before step 3."""
-    fam = NVFP4_FAMILIES[family]
-    files, why = nvfp4_files(family)
-    if why:
-        fail(f"{fam['title']} is not offered yet: {why}",
-             "choose another model (--family qwen, swift, coder or unsloth), or update Strata once they are")
-    ok(f"model: {fam['title']}")
-    say(f"  Its license: {fam['license']}")
-    if a.model not in (None, NVFP4_MODEL):
-        fail(f"{fam['title']} has one size: leave out --model {a.model}")
-    if multi:
-        warn(f"{fam['title']} runs on one GPU here (the engine's low-RAM mode and its growing K/V are one-GPU): "
-             f"{gpu_name(gpu)}")
-    explicit = bool(a.family)
-    if gpu["vram_gb"] < NVFP4_MIN_VRAM_GB:
-        confirm_risk(f"{gpu_name(gpu)} has {gpu['vram_gb']:.1f} GB of VRAM; {fam['title']} needs 12 GB or more: the "
-                     "dense weights, the KV cache and the draft head leave no room for the expert cache on a smaller "
-                     "card, and it may not start", explicit, a.yes, f"{fam['title']} needs a card with 12 GB of VRAM",
-                     f"choose a GGUF model (--family qwen), or --family {family} --yes to install it anyway")
-        warn(f"installing {fam['title']} on a {gpu['vram_gb']:.0f} GB card, as you chose")
-    gib = nvfp4_experts_gib(files)
-    if ram < NVFP4_MIN_RAM_GB:
-        confirm_risk(f"RAM: {ram:.0f} GB - {fam['title']} needs 64 GB or more: of its {gib:.0f} GiB of experts most "
-                     "are read from the SSD while it answers (very slow), and it may run out of RAM", explicit, a.yes,
-                     f"{fam['title']} needs 64 GB of RAM or more; this PC has {ram:.0f} GB",
-                     f"choose a smaller GGUF model (--family coder), or --family {family} --yes to install it anyway")
-        warn(f"installing {fam['title']} with {ram:.0f} GB of RAM, as you chose")
-    extra = {"on": ["--low-ram"], "resident": ["--low-ram"], "off": ["--no-low-ram"],
-             "mmap": ["--mmap-experts"]}.get(a.low_ram, [])
-    if a.resident_budget_gib is not None:
-        extra = [x for x in extra if x != "--low-ram"] + ["--ram-budget", f"{a.resident_budget_gib:g}"]
-    if a.low_ram == "off" or (not engine_low_ram(ram) and not extra):
-        ok(f"RAM: {ram:.1f} GiB - all {gib:.0f} GiB of experts are loaded into RAM"
-           + (" (--low-ram off)" if a.low_ram == "off" else f" (the engine's low-RAM mode is for below "
-                                                             f"{NVFP4_ALL_RAM_GB} GiB)"))
-        if a.low_ram == "off" and engine_low_ram(ram):
-            warn(f"--low-ram off with {ram:.0f} GB of RAM: every expert pinned in RAM may not fit, and the start can fail")
-    else:
-        ok(f"RAM: {ram:.1f} GiB - the engine's low-RAM mode" + (f" ({' '.join(extra)})" if extra else
-                                                                f" (on by itself below {NVFP4_ALL_RAM_GB} GiB)")
-           + f": the experts the GPU does not hold, hottest first, stay in RAM (up to the free RAM less 6 GiB), the "
-             f"rest of the {gib:.0f} GiB are read from experts.bin on the SSD when needed")
-    if a.gguf_dir:
-        warn("--gguf-dir is for the GGUF models: not used")
-    if (a.experimental_speed_projection or "off").strip().lower() not in ("off", "no", "n", "0", ""):
-        warn("the experimental speed projection is made for the original Qwen3.8-Flash-Next: left off")
-    if a.kv_streaming == "on":
-        warn("--kv-streaming: this engine grows the K/V in VRAM as the context fills instead: not used")
-    vram = gpu["vram_gb"]
-    rec_ctx = next(c for v, c in NVFP4_CONTEXTS if vram >= v)
-    if a.context:
-        ctx = a.context
-    else:
-        say()
-        say("  Context length = how much text the model can see at once (your chat, files, tool output).")
-        say("  Its KV cache grows in VRAM as a conversation gets longer; a longer limit leaves fewer experts cached:")
-        for i, c in enumerate(CONTEXTS, 1):
-            say(f"  {i}) {c // 1024}K tokens" + ("   (recommended for your GPU)" if c == rec_ctx else "")
-                + ("   (experimental: setup adds rope scaling)" if c > 262144 else ""))
-        ctx = CONTEXTS[int(ask("Context?", [str(i) for i in range(1, len(CONTEXTS) + 1)],
-                               str(CONTEXTS.index(rec_ctx) + 1), a.yes)) - 1]
-    if vram < 14 and ctx > 65536:
-        warn(f"{ctx // 1024}K on a {vram:.0f} GB card: measured, 262144 does not start on 12 GB (no VRAM is left for "
-             f"the expert cache); {rec_ctx // 1024}K is the recommended size. Kept as you chose")
-    scaling = a.rope_scaling
-    if ctx > 262144 and scaling is None and not a.yes:
-        say()
-        say(f"  A {ctx // 1024}K context runs the model past its trained 262,144 positions: yarn (recommended) or linear.")
-        scaling = ask("RoPE extension method?", ["yarn", "linear"], "yarn", a.yes)
-    try:
-        scaling, rope_scale = resolve_rope(ctx, scaling, a.rope_scale)
-    except ValueError as e:
-        fail(str(e))
-    if scaling is not None:
-        ok(f"rope scaling: {scaling}, factor {rope_scale:g}")
-    ok(f"context: {ctx} tokens")
-    kv = "fp16" if ctx <= 8192 else (a.kv or "int8")
-    if ctx > 8192 and not a.kv and not a.yes:
-        say()
-        say("  KV cache precision (the model's memory of the conversation):")
-        say("  1) 8-bit   (recommended: what every published number was measured with)")
-        say("  2) 4-bit   half the memory, but measurably less precise on long documents")
-        kv = ["int8", "q4_0"][int(ask("KV cache?", ["1", "2"], "1", a.yes)) - 1]
-    if ctx > 8192:
-        ok(f"KV cache: {'8-bit' if kv == 'int8' else kv}")
-    if a.vision:
-        vision = {"yes": "cpu", "no": "none"}.get(a.vision, a.vision)   # yes: the encoder on the CPU, as the tray
-    else:
-        say()
-        say("  Images: the model can also read pictures (screenshots, photos, scanned pages). This adds a 0.9 GB")
-        say("  download (ISTA-DASLab's image encoder); it runs on the CPU (2-6 s a picture), so the GPU keeps its")
-        say("  VRAM for the experts.")
-        vision = "cpu" if ask("Do you want images?", ["y", "n"], "n", a.yes) == "y" else "none"
-    ok("images: " + {"none": "off", "gpu": "on (encoder on the GPU)", "cpu": "on (encoder on the CPU)"}[vision])
-    tag = fam["tag"] + NVFP4_MODEL
-    cfg_path = ROOT / f"strata-{tag.lower()}.json"
-    models_dir = Path(a.models_dir)
-    cands = list(dict.fromkeys([models_dir, *[Path(r) / "models" for r in roots]]))
-    where = nvfp4_local(files, models_dir, roots)
-    paths = nvfp4_paths(files, where)
-    mmproj = models_dir / MMPROJ
-    if not mmproj.exists():
-        mmproj = find_in(roots, f"models/{MMPROJ}") or mmproj
-    missing = [f for f in files if not nvfp4_verified(where[(f[1], f[3])], f[5])]
-    part = lambda p: p.with_name(p.name + ".part").stat().st_size if p.with_name(p.name + ".part").is_file() else 0   # noqa: E731
-
-    def linked(f) -> bool:                             # nvfp4_fetch links it from another model's copy: no space
-        dst = where[(f[1], f[3])]
-        src = nvfp4_same(f[5], cands) if f[4] >= 64 << 20 else None
-        if src is None or src == dst:
-            return False
-        p = dst.parent
-        while not p.exists() and p.parent != p:
-            p = p.parent
-        return same_drive(src, p)
-    need = sum(max(f[4] - part(where[(f[1], f[3])]), 0) for f in missing if not linked(f)) / 1e9 + \
-        (1 if vision != "none" and not mmproj.exists() else 0) + 1
-    extra += ["--vram-reserve-mib", str(a.vram_reserve_mib)] if a.vram_reserve_mib is not None else []
-    if a.dry_run:
-        say()
-        say("Plan (--dry-run: nothing is downloaded, installed or written):")
-        for comp in NVFP4_COMPONENTS:
-            group = [f for f in files if f[0] == comp]
-            if not group:
-                say(f"  {comp:8s} data/expert-profile.bin (shipped)")
-                continue
-            have = sum(1 for f in group if f not in missing)
-            link = sum(1 for f in group if f in missing and linked(f))
-            say(f"  {comp:8s} {len(group)} file(s), {sum(f[4] for f in group) / 1e9:.1f} GB from {group[0][1]} at "
-                f"{group[0][2][:12]}: {paths[comp]}" + (f" ({have} already here)" if have else "")
-                + (f" ({link} linked from another model's copy)" if link else ""))
-        if vision != "none":
-            say(f"  images   {MMPROJ} from ISTA-DASLab: {mmproj}" + (" (already here)" if mmproj.exists() else ""))
-        if model_source() == "modelscope":
-            say("  (ModelScope has no copy of these repositories: they come from Hugging Face)")
-        say(f"  disk     ~{need:.0f} GB more in {models_dir} (free: {free_gb_peek(models_dir):.0f} GB)")
-        say(f"  engine   {nvfp4_engine_plan(a)}")
-        say(f"  config   {cfg_path.name}, start script run-{tag.lower()}.{'bat' if WIN else 'sh'}; the engine's arguments:")
-        line = []
-        for x in nvfp4_args(paths, ctx, kv, vision, scaling, rope_scale, extra):
-            if x.startswith("--") and line:
-                say("           " + " ".join(line))    # a flag with its value per line
-                line = []
-            line.append(x)
-        say("           " + " ".join(line))
-        if PAGE_FILE_SHORT:
-            say(f"  [!]  {PAGE_FILE_SHORT}")
-        return 0
-    if free_gb(models_dir) < need:
-        fail(f"not enough free disk space in {models_dir}: need ~{need:.0f} GB", "use --models-dir on a bigger drive")
-
-    # ---- 3. python packages
-    step(3, "Python packages")
-    pip_install(requirement_lines() if REQUIREMENTS.exists() else PY_PACKAGES,
-                "numpy, jinja2, regex, pyyaml, tqdm, requests, cmake, ninja, pillow, psutil")
-
-    # ---- 4. the engine: this fork's
-    step(4, "the Strata engine (this fork's: it runs NVFP4)")
-    llama = get_llama_cpp()
-    eng, vision = nvfp4_engine(a, gpu, vision, llama)
-    meta = json.loads((eng / "BUILD.json").read_text(encoding="utf-8"))
-    lib_dirs = meta.get("lib_dirs") or meta.get("cuda_dirs") or cuda_lib_dirs(13)
-    ok(f"engine: {eng / EXE} ({meta.get('version')}, " + ("compiled here)" if meta.get("source") == "local" else
-                                                         f"{FORK_REPO}'s release)"))
-
-    # ---- 5. the model files
-    step(5, f"downloading {fam['title']}")
-    repos = sorted({f[1] for f in files})
-    if model_source() == "modelscope":
-        warn(f"ModelScope has no copy of {', '.join(repos)}: these files come from Hugging Face ({hf_endpoint()}; "
-             "HF_ENDPOINT=https://hf-mirror.com for a mirror). The image encoder still comes from ModelScope")
-    elif hf_endpoint() != HF_DEFAULT:
-        say(f"  Downloading from {hf_endpoint()} (HF_ENDPOINT)")
-    if missing:
-        say(f"  The files go in {models_dir} (each repository in its own folder); a stopped download resumes")
-    nvfp4_fetch(files, where, cands)
-    ok("model files present, each checked against its SHA-256")
-    if vision != "none":
-        download(FAMILIES["qwen"]["mmproj_hf"] + MMPROJ, mmproj, "vision encoder")
-        ok(f"vision encoder: {mmproj}")
-
-    # ---- 6. the draft head's token subset (nothing to prepare: the files are ready-made)
-    step(6, "the MTP draft layer")
-    draft_vocab = a.draft_vocab or saved_draft_vocab(cfg_path)
-    refresh_draft_vocab(paths["mtp"], draft_vocab or "cjk")
-    ok(f"MTP draft layer: {paths['mtp']} (the fine-tune's own draft head)")
-
-    # ---- 7. the start script
-    step(7, "writing the start script")
-    args = nvfp4_args(paths, ctx, kv, vision, scaling, rope_scale, extra)
-    w = compute_mode_warning(gpu["index"], gpu_compute_mode(gpu["index"]))
-    if w:
-        warn(w)                                        # #1445: a warning only, never a refusal
-    cfg = {"exe": str(eng / EXE), "args": args, "cwd": str(ROOT), "tokenizer": str(paths["pack"] / "tokenizer"),
-           "model_name": f"{fam['name']}-{NVFP4_MODEL.lower()}", "log": str(ROOT / f"strata-{tag.lower()}.log"),
-           "lib_dirs": lib_dirs, "port": port, "gpu": gpu["index"], "gpus_asked": True}   # one card, not asked again
-    for k in ("host", "api_key"):
-        if getattr(a, k):
-            cfg[k] = getattr(a, k)
-    if draft_vocab:
-        cfg["draft_vocab"] = draft_vocab
-    if a.browser is not None:
-        cfg["open_browser"] = a.browser
-    if a.parallel is not None:
-        cfg["parallel"] = max(1, a.parallel)
-        if a.parallel >= 2:
-            warn(f"--parallel {a.parallel}: the batch slots turn the growing K/V off (the whole context is allocated "
-                 "at start) and each slot takes VRAM from the expert cache")
-    if vision != "none":
-        old = cfg_path if cfg_path.is_file() else adopted
-        try:
-            was = json.loads(old.read_text(encoding="utf-8-sig")).get("vision") if old is not None else None
-        except (OSError, ValueError):
-            was = None
-        vt = a.vision_tokens or (was.get("max_tokens") if isinstance(was, dict) else None) or NVFP4_VISION_TOKENS
-        cfg["vision"] = {"exe": str(eng / VEXE), "mmproj": str(mmproj), "model": str(paths["dense"]),
-                         "gpu": vision == "gpu", "max_tokens": int(vt)}
-        if vision == "cpu":
-            cfg["vision"]["threads"] = max(1, (os.cpu_count() or 8) // 2)
-    cal = setup_calibration(cfg, False)                # tuned earlier (START-HERE --calibrate): kept by a re-run
-    if cal is not None:
-        sys.path.insert(0, str(ROOT / "tools"))
-        import calibrate as CAL
-        cfg["args"] = CAL.apply(cfg["args"], cal.get("settings") or {})
-        ok("the settings tuned for this PC earlier are used" + (f" ({cal['date']})" if cal.get("date") else ""))
-    write_setup_config(cfg_path, cfg, adopted if adopted is not None and adopted.name == cfg_path.name else None)
-    script = write_run_script(tag, cfg_path, port, cfg.get("open_browser") is not False)
-    ok(f"start script: {script.name}")
-    say()
-    say("All set.")
-    say(f"  API (OpenAI):     http://127.0.0.1:{port}/v1   (any API key; model name: anything)")
-    say(f"  API (Anthropic):  http://127.0.0.1:{port}/v1/messages")
-    say(f"  Next time:        just run {'START-HERE.bat' if WIN else './setup.sh'} (or {script.name}) - it starts right away")
-    say("  The model is an abliterated fine-tune: it does not refuse. What it is used for is on whoever runs it.")
-    if PAGE_FILE_SHORT:                                # step 1's framed warning, repeated
-        say(f"  [!]  {PAGE_FILE_SHORT}")
-    if a.no_start:
-        return 0
-    return start(cfg_path, port)
-
-
 # ------------------------------------------------------------------------------------------------ main
 def sycl_setup(argv) -> int:
     """--backend sycl: the Intel Arc engine (the SYCL port in sycl/, PR #423), experimental. There is no ready-made
@@ -5704,12 +4788,7 @@ def sycl_setup(argv) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--family", choices=[*NVFP4_FAMILIES, *FAMILIES],
-                    help="huihui-nvfp4 (this fork's default) or orca-nvfp4 = the NVFP4 models; qwen = Qwen3.8-Flash-Next, "
-                         "swift = Swift 1.5, coder, unsloth = the GGUF models")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="the NVFP4 models: show what setup would download, install and write, then stop (nothing is "
-                         "downloaded, installed or changed)")
+    ap.add_argument("--family", choices=list(FAMILIES), help="qwen = Qwen3.8-Flash-Next, swift = Swift 1.5")
     ap.add_argument("--model", choices=list(MODELS))
     ap.add_argument("--context", type=int)
     ap.add_argument("--rope-scaling", choices=["none", "linear", "yarn"],
@@ -5812,11 +4891,6 @@ def main() -> int:
                          "sycl = Intel Arc, EXPERIMENTAL: Linux, built from source (docs/INTEL_ARC.md)")
     ap.add_argument("--skip-build", action="store_true", help=argparse.SUPPRESS)
     a = ap.parse_args()
-    if a.dry_run and (a.update or a.rollback_engine or a.calibrate):
-        ap.error("--dry-run shows a new install's plan; it cannot be combined with --update, --rollback-engine or "
-                 "--calibrate (they act on the installed engine and models)")
-    asked_no_start = a.no_start
-    a.no_start = a.no_start or a.dry_run               # a plan only: never starts an installed model
     if a.source:
         os.environ["STRATA_SOURCE"] = a.source
     if a.inspect:                                      # headers only: nothing is installed
@@ -5837,8 +4911,7 @@ def main() -> int:
         else:
             ap.error(f"--gpu takes a GPU number as nvidia-smi numbers them, e.g. --gpu 1 (or --gpus 0,2), not {a.gpu!r}")
     say("Strata - Qwen3.8-Flash-Next on a normal PC (a GPU + system RAM + CPU)")
-    data, elsewhere = (data_folder_peek if a.dry_run else data_folder)(a.data_dir)   # the model files: in the data
-    # folder, found from any copy (--dry-run: where it is, nothing moved)
+    data, elsewhere = data_folder(a.data_dir)          # the model files: in the data folder, found from any copy
     roots = [data, *elsewhere]
     if a.models_dir is None:
         a.models_dir = str(data / "models")
@@ -5850,7 +4923,7 @@ def main() -> int:
     have = installed_configs()
     if a.update:                                       # #475: UPDATE.bat / update.sh - never starts the model
         return update_install(have, a)
-    explicit = a.setup or a.model or a.family or a.check or asked_no_start   # --dry-run: planned as the run would go
+    explicit = a.setup or a.model or a.family or a.check or a.no_start
     adopted = None                                     # #629: the earlier install this copy is set up like
     if not have and not explicit:                      # a new copy of Strata (an update unzipped elsewhere): set it
         prev = previous_config(elsewhere, load_settings())   # up like the last one, from the files already here
@@ -6070,10 +5143,6 @@ def main() -> int:
     if a.check:
         say()
         any_fits = False
-        for f in NVFP4_FAMILIES:                       # this fork's NVFP4 models
-            verdict = nvfp4_verdict(f, gpu, hip, ram, cuda_tk)
-            any_fits = any_fits or verdict.startswith("fits")
-            say(f"  {f:12s} {verdict}")
         for m, d in MODELS.items():
             verdict = "fits" if ram >= d["ram_gb"] else "tight" if ram >= d["ram_gb"] - 8 else "does not fit"
             if d.get("budget"):
@@ -6093,49 +5162,23 @@ def main() -> int:
             # reports: --model NAME --yes still installs one anyway.
             say(f"\nThis PC cannot run Strata yet: no model size fits {ram:.0f} GB of RAM (the smallest needs about "
                 f"{need} GB). --model NAME --yes installs one anyway, slowly.")
-            if PAGE_FILE_SHORT:
-                say(f"  [!]  {PAGE_FILE_SHORT}")
             return 1
         say("\nThis PC can run Strata. Run it again without --check to install.")
-        if PAGE_FILE_SHORT:
-            say(f"  [!]  {PAGE_FILE_SHORT}")
         return 0
 
     # ---- 2. the questions
     step(2, "your choices")
     fams = list(FAMILIES)
-    nv_why = {f: nvfp4_offer(f, gpu, hip, cuda_tk) for f in NVFP4_FAMILIES}   # this fork's NVFP4 models (None: offered)
     if a.family:
         family = a.family
     else:
-        nv = [f for f in NVFP4_FAMILIES if nv_why[f] is None]
-        strix = strix_halo_recommends(gpu, ram) and STRIX_HALO_FAMILY in fams
-        try:                                           # a re-run (--setup): the installed model's family stays the default
-            inst = choices_from_config(have[0])["family"] if have and not a.model else None
-        except (OSError, ValueError, KeyError, TypeError):
-            inst = None
-        # the NVFP4 default where the PC meets its requirements; a --model (a GGUF size) keeps the GGUF default
-        rec_fam = inst if inst in nv + fams else STRIX_HALO_FAMILY if strix else NVFP4_DEFAULT \
-            if NVFP4_DEFAULT in nv and not a.model and nvfp4_short(gpu, ram) is None else fams[0]
-        fams = nv + fams
+        rec_fam = STRIX_HALO_FAMILY if strix_halo_recommends(gpu, ram) and STRIX_HALO_FAMILY in fams else fams[0]
         for i, f in enumerate(fams, 1):
-            d = NVFP4_FAMILIES.get(f) or FAMILIES[f]
-            short = nvfp4_short(gpu, ram) if f in NVFP4_FAMILIES else None
+            d = FAMILIES[f]
             say(f"  {i}) {d['title']:20s} {d['by']} - {d['about']}" + ("   [experimental]" if d.get("experimental") else "")
-                + (f"   (recommended for Strix Halo: {STRIX_HALO_MODEL})" if f == rec_fam and strix else "")
-                + (f"   <- {short}" if short else ""))
-        for f, why in nv_why.items():
-            if why:
-                say(f"     ({NVFP4_FAMILIES[f]['title']}: not offered, {why})")
+                + (f"   (recommended for Strix Halo: {STRIX_HALO_MODEL})" if f == rec_fam and rec_fam != fams[0] else ""))
         family = fams[int(ask("Which model?", [str(i) for i in range(1, len(fams) + 1)],
                               str(fams.index(rec_fam) + 1), a.yes)) - 1]
-    if family in NVFP4_FAMILIES:
-        if nv_why[family]:
-            fail(f"{NVFP4_FAMILIES[family]['title']} is not offered: {nv_why[family]}",
-                 "choose another model: --family qwen, swift, coder or unsloth")
-        return nvfp4_install(a, family, gpu, multi, cuda_tk, ram, roots, adopted, port)
-    if a.dry_run:
-        fail("--dry-run shows the plan of this fork's NVFP4 models only", "--family huihui-nvfp4 or orca-nvfp4")
     fam = FAMILIES[family]
     ok(f"model: {fam['title']}")
     if fam.get("license"):
@@ -6403,8 +5446,7 @@ def main() -> int:
         eng = None if a.build or hip else get_prebuilt(a.prebuilt, gpu, vision, **({"toolkit": 12} if cuda_tk == 12
                                                                                     else {}))
     if eng is not None and not hip and json.loads((eng / "BUILD.json").read_text(encoding="utf-8")).get("source") != "local":
-        if not bundled_cuda(eng):                      # the fork's zip carries its own cuBLAS
-            pip_cuda_libs(cuda_tk)
+        pip_cuda_libs(cuda_tk)
         if vision != "none" and not (eng / VEXE).exists():
             warn("the ready-made engine has no image encoder: compiling it")
             eng = None
@@ -6417,7 +5459,7 @@ def main() -> int:
         lib_dirs = [str(d) for d in hip_lib_dirs(eng)]
     else:
         lib_dirs = meta.get("lib_dirs") or meta.get("cuda_dirs") or cuda_lib_dirs(cuda_tk)
-    engine_ver = version_tuple(meta.get("version"))
+    engine_ver = tuple(int(x) for x in str(meta.get("version", "0")).split(".")[:4] if x.isdigit())
     need_engine = MODELS[model].get("engine", UNSLOTH_ENGINE)
     if budget is not None and engine_ver < need_engine:      # checked before the 94-111 GB download
         fail(f"{model} needs engine {'.'.join(map(str, need_engine))} or newer; this one is {meta.get('version')}",
@@ -6528,7 +5570,7 @@ def main() -> int:
     # (a 4-shard file: the engine finds the PLE table's shard itself from shard 1, the measured setup)
     args = ["--pack", str(pack), "--native", str(shards[0]), *(["--ple-gguf", str(ple)] if len(shards) <= 2 else []),
             "--expert-profile", str(ROOT / "data" / fam.get("profile", "expert-profile.bin")), "--expert-cache", "auto",
-            "--prefill", "auto", "--spec", "6", "--spec-min-p", "0.7", "--mtp", str(rt),
+            "--prefill", "auto", "--spec", "4", "--spec-min-p", "0.5", "--mtp", str(rt),
             "--max-context", str(ctx)]
     if scaling is not None:     # the resolved config: explicit flags as given, or the automatic yarn+factor
         args += ["--rope-scaling", scaling, "--rope-scale", f"{rope_scale:g}"]
@@ -6749,8 +5791,6 @@ def main() -> int:
     if tuned is False:                                 # #447: a failed tuning is repeated here, not only above
         say("  Tuning:           FAILED (the reason is above): the default settings stay - "
             f"{'START-HERE.bat' if WIN else './setup.sh'} --calibrate tries again")
-    if PAGE_FILE_SHORT:                                # step 1's framed warning, repeated
-        say(f"  [!]  {PAGE_FILE_SHORT}")
     if a.no_start:
         return 0
     # offered only when someone answers (--yes asks nothing), default no; the benchmark starts its own server and stops it

@@ -67,7 +67,6 @@ bool fits(int, int64_t) { return false; }
 size_t matrix_bytes(int, int64_t, int64_t) { return 0; }
 size_t q8_bytes(int64_t, int64_t) { return 0; }
 void quantize(const float*, const int32_t*, void*, int, int64_t, int64_t, int64_t, void*, float*, const int32_t*, int) {}
-bool fp4_activations(int) { return false; }
 Context::Context() {}
 Context::~Context() {}
 void Context::run(const Product&, void*) {}
@@ -81,7 +80,6 @@ void down_row_scales(float*, const int32_t*, int, const float*, int64_t, void*) 
 bool swiglu_quant_ok(int) { return false; }
 void swiglu_quant(const float*, void*, int64_t, const int32_t*, int, const float* const*, int64_t, float*, void*) {}
 bool direct_ok(int) { return false; }
-bool token_rows_ok(int, int64_t) { return false; }
 void iota(int32_t*, int64_t, void*) {}
 }  // namespace strata::prefill::mmq
 #endif
@@ -136,15 +134,6 @@ inline bool group_gather_env() {
 inline bool in_place_env() {
     static const bool on = [] {
         const char* v = std::getenv("STRATA_PREFILL_IN_PLACE");
-        return v == nullptr || std::atoi(v) != 0;
-    }();
-    return on;
-}
-// STRATA_PREFILL_TOKEN_ROWS=0: an in-place layer's gate/up activations scattered to every expert row of their token
-// (k_used copies each) instead of quantized once per token and read through the row -> token table
-inline bool token_rows_env() {
-    static const bool on = [] {
-        const char* v = std::getenv("STRATA_PREFILL_TOKEN_ROWS");
         return v == nullptr || std::atoi(v) != 0;
     }();
     return on;
@@ -874,7 +863,7 @@ struct Prefill::Impl {
     float* H = nullptr;
     int32_t *ids_identity = nullptr, *bounds_dev = nullptr;
     uint8_t *grp_gu = nullptr, *grp_d = nullptr;
-    float *Xscale = nullptr, *Hscale = nullptr, *grp_tail = nullptr;   // NVFP4: activation scales, expert tails
+    float* grp_tail = nullptr;   // NVFP4 expert tails
     float* row_sd = nullptr;          // NVFP4 in MMQ: each Dm row's s_down, applied by the combine as it reads the row
     std::vector<int32_t> bounds_host;
     std::unique_ptr<mmq::Context> mmq_ctx;
@@ -1384,7 +1373,6 @@ bool Prefill::carve(size_t T, void* alloc) {
             m.Xq = c.take<uint8_t>(mb.xq, ok);
             m.H = c.take<float>(mb.h, ok);
             m.Hq = c.take<uint8_t>(mb.hq, ok);
-            m.Xscale = c.take<float>(T * K, ok); m.Hscale = c.take<float>(T * K, ok);
             m.grp_tail = c.take<float>(MMQ_GROUP * 4, ok);
             m.row_sd = c.take<float>(T * K, ok);
         }
@@ -1482,8 +1470,6 @@ bool Prefill::draft_kv(core::MtpDrafter& mtp, const float* R_rows, const int32_t
     const core::ModelGeometry& g = *m.g;
     const int64_t Nn = g.n_embd, HCN = g.hc * g.n_embd, KV = g.n_head_kv * g.head_dim;
     constexpr int kQ8_0 = 8;   // GGML_TYPE_Q8_0
-    // Opt-in until the BF16 batch path passes draft-KV/acceptance checks.
-    static const bool bf16_batch = [] { const char* v = std::getenv("STRATA_MTP_BATCH_BF16"); return v && v[0] == '1'; }();
     const float* w_ne = mtp.tensor_f32("pre_fc_norm_embedding.weight");
     const void* w_fe = mtp.tensor_q8("fc_embedding.weight");
     const float* w_nh = mtp.tensor_f32("pre_fc_norm_hidden.weight");
@@ -1493,13 +1479,6 @@ bool Prefill::draft_kv(core::MtpDrafter& mtp, const float* R_rows, const int32_t
     const uint16_t* w_up = mtp.tensor_bf16("attn_hyper_connection.input_mix_weight_up.weight");
     const void* w_k = mtp.tensor_q8("self_attn.k_proj.weight");
     const void* w_v = mtp.tensor_q8("self_attn.v_proj.weight");
-    const bool original_bf16 = bf16_batch && !w_fe && !w_fh && !w_k && !w_v;
-    if (original_bf16) {
-        w_fe = mtp.tensor_bf16("fc_embedding.weight");
-        w_fh = mtp.tensor_bf16("fc_hidden.weight");
-        w_k = mtp.tensor_bf16("self_attn.k_proj.weight");
-        w_v = mtp.tensor_bf16("self_attn.v_proj.weight");
-    }
     const float* w_kn = mtp.tensor_f32("self_attn.k_norm.weight");
     if (!w_ne || !w_fe || !w_nh || !w_fh || !w_hn || !w_dn || !w_up || !w_k || !w_v || !w_kn)
         return decline("a drafter tensor is missing (Q8_0 projections / norms)");
@@ -1516,7 +1495,7 @@ bool Prefill::draft_kv(core::MtpDrafter& mtp, const float* R_rows, const int32_t
     // E-9: the drafter's Q8_0 matrices through Q8_1 x Q8_0 MMQ - its own pass's integer dot products (mmvq), so
     // its K/V stay close to what the drafter computes itself; STRATA_MTP_BATCH_F16=1: FP16 GEMMs (the A/B)
     static const bool f16_only = [] { const char* v = std::getenv("STRATA_MTP_BATCH_F16"); return v && v[0] == '1'; }();
-    const bool q8 = !original_bf16 && !f16_only && mmq::built() && mmq::fits(kQ8_0, Nn) && mmq::fits(kQ8_0, KV);   // #420
+    const bool q8 = !f16_only && mmq::built() && mmq::fits(kQ8_0, Nn) && mmq::fits(kQ8_0, KV);   // #420
     const uint64_t per_row = 4 * (2 * Nn + 4 * HCN + LR + HC + Nn + 2 * KV + 1) + 2 * (Nn + 2 * HCN + LR + Nn) + 64 +
                              (q8 ? (uint64_t) mmq::q8_bytes(g.hc, Nn) + 4 * g.hc : 0);
     int64_t B = std::min<int64_t>(n - r0, (int64_t) (m.region_bytes / per_row) & ~(int64_t) 63);
@@ -1546,10 +1525,6 @@ bool Prefill::draft_kv(core::MtpDrafter& mtp, const float* R_rows, const int32_t
     int32_t* ident = q8 ? (int32_t*) carve((size_t) B * g.hc * 4) : nullptr;
     int32_t* bnd = q8 ? (int32_t*) carve(16) : nullptr;
     if ((uint64_t) (q - m.region) > m.region_bytes) return decline("the batch buffers do not fit the scratch region");
-    if (std::getenv("STRATA_PREFILL_TRACE"))
-        std::fprintf(stderr,"strata draft batch: weights=%s math=%s start=%lld rows=%lld batch=%lld\n",
-                     original_bf16?"bf16":"q8_0",original_bf16?"bf16x3":q8?"q8_mmq":"fp16",
-                     (long long)cell0,(long long)(n-r0),(long long)B);
     static const bool timing = std::getenv("STRATA_DRAFT_TIMING") != nullptr;   // debug: where this pass's time goes
     if (timing) cudaStreamSynchronize(m.cs);
     const auto ti0 = Clock::now();
@@ -1567,7 +1542,6 @@ bool Prefill::draft_kv(core::MtpDrafter& mtp, const float* R_rows, const int32_t
     // y[rows, n_out] = x[rows, k] . w^T for a Q8_0 matrix: MMQ from the FP32 rows (bounds slot 0: rows, 1: rows*hc)
     auto proj = [&](const float* x, const uint16_t* x16, const void* w, float* y, int64_t rows, int64_t n_out,
                     int64_t k, int slot) {
-        if (original_bf16) { m.gemm.bf16_f32(x, static_cast<const uint16_t*>(w), y, rows, n_out, k); return; }
         if (!q8) { m.gemm.native(x16, kQ8_0, w, y, rows, n_out, k); return; }
         mmq::quantize(x, nullptr, xq, kQ8_0, k, k, rows, m.cs);
         mmq::Product p;
@@ -1602,32 +1576,22 @@ bool Prefill::draft_kv(core::MtpDrafter& mtp, const float* R_rows, const int32_t
                                                   (uint64_t) (wemb->ne0 / wemb->group_elems), emb, m.cs);
         }
         rms_rows(emb, w_ne, nb, Nn, Nn, EPS, m.cs);
-        if (!q8 && !original_bf16) to_f16(emb, en16, nb * Nn, m.cs);
+        if (!q8) to_f16(emb, en16, nb * Nn, m.cs);
         proj(emb, en16, w_fe, e2, nb, Nn, Nn, 0);
         cudaMemcpyAsync(hn, R_rows + (size_t) b0 * HCN, (size_t) nb * HCN * 4, cudaMemcpyDeviceToDevice, m.cs);
         if (mtp.hnorm_per_stream())   // --mtp-hnorm stream: as the drafter's own pass (mtp.cpp)
             strata::kernels::native_qsa_rms_norm_grouped(hn, w_nh, hn, (int) Nn, (int) g.hc, (int) (nb * g.hc), EPS, m.cs);
         else
             rms_rows(hn, w_nh, nb, HCN, HCN, EPS, m.cs);
-        if (!q8 && !original_bf16) to_f16(hn, hn16, nb * HCN, m.cs);
+        if (!q8) to_f16(hn, hn16, nb * HCN, m.cs);
         proj(hn, hn16, w_fh, h2, nb * g.hc, Nn, Nn, 1);   // every stream through fc_hidden
         strata::kernels::add_streams_broadcast(h2, e2, Rm, Nn, (int) g.hc, (int) nb, m.cs);
         // the attention hyper-connection's read (its mixed input only: this pass writes nothing back)
-        if (original_bf16) {
-            // hn is no longer needed after add_streams_broadcast. Reuse it for
-            // FP32 HC-normalized rows, without allocating a second workspace.
-            gr_norm(Rm, w_hn, EPS, hn, xn16, nb, m.cs);
-            m.gemm.bf16_f32(hn, w_dn, lo, nb, LR, HCN);
-            strata::kernels::native_gr_down_silu(lo, int(nb * LR), int(g.hc), m.cs);
-            m.gemm.bf16_f32(lo, w_up, gated, nb, HCN, LR);
-            strata::kernels::native_gr_pre_gated_multi(hn, gated, mixed, int(Nn), int(g.hc), int(nb), true, m.cs);
-        } else {
-            gr_norm_rs(Rm, w_hn, EPS, grs, xn16, nb, m.cs);
-            m.gemm.bf16(xn16, w_dn, lo, nb, LR, HCN);
-            gr_silu(lo, lo16, nb, m.cs);
-            m.gemm.bf16(lo16, w_up, gated, nb, HCN, LR);
-            gr_mix_r(Rm, grs, w_hn, gated, mixed, nullptr, nb, m.cs, mixed_h);
-        }
+        gr_norm_rs(Rm, w_hn, EPS, grs, xn16, nb, m.cs);
+        m.gemm.bf16(xn16, w_dn, lo, nb, LR, HCN);
+        gr_silu(lo, lo16, nb, m.cs);
+        m.gemm.bf16(lo16, w_up, gated, nb, HCN, LR);
+        gr_mix_r(Rm, grs, w_hn, gated, mixed, nullptr, nb, m.cs, mixed_h);
         // K and V into the drafter's cache, as the prompt path's QSA layers append theirs
         proj(mixed, mixed_h, w_k, Kc, nb, KV, Nn, 0);
         proj(mixed, mixed_h, w_v, Vc, nb, KV, Nn, 0);
@@ -3135,7 +3099,6 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                             swiglu_quant_on() && mmq::swiglu_quant_ok(mmq_dt) &&
                                             mmq::direct_ok(mmq_gt) && mmq::direct_ok(mmq_dt) &&
                                             !core::peer_portable() && !(m.pp && m.pp->peer);
-                    const bool tok_rows_l = in_place_l && token_rows_env() && mmq::token_rows_ok(mmq_gt, N);
                     // --peer-device: MMQ only, whether or not the peer took the prompt path (set_peer can decline), as
                     // fused_ring() sized the ring and the buffers for it
                     const bool no_peer = !core::peer_portable();
@@ -3562,13 +3525,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                         const size_t mmq_db = use_mmq ? mmq::matrix_bytes(mmq_dt, N, 640) : 0;
                         pt.mark(kPfGather, cs);
                         if (use_mmq) {
-                            // step 2b: the layer's activations as q8_1 rows in expert order, straight from `mixed`;
-                            // where the layer's products read the experts in place and gate/up is w4a4x2, each token
-                            // once (MMQ reads row src[r] for its row r: Product::y_rows)
-                            if (tok_rows_l)
-                                mmq::quantize(m.mixed, nullptr, m.Xq, mmq_gt, N, N, T, m.cs, m.Xscale);
-                            else
-                                mmq::quantize(m.mixed, m.src_dev, m.Xq, mmq_gt, N, N, T * K, m.cs, m.Xscale, m.slot_dev, (int) K);
+                            // Quantize each token once and scatter its Q8_1 rows to the routed experts.
+                            mmq::quantize(m.mixed, m.src_dev, m.Xq, mmq_gt, N, N, T * K, m.cs, nullptr, m.slot_dev, (int) K);
                             // each group's rows: absolute bounds (gate/up reads the layer's rows), relative ones (down
                             // reads the group's own quantized H)
                             const size_t n = order.size(), ng = (n + MMQ_GROUP - 1) / MMQ_GROUP;
@@ -4030,9 +3988,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 gu.w = m.grp_gu; gu.type = mmq_gt; gu.w_rows = 1280; gu.w_cols = N; gu.expert_bytes = mmq_gub;
                                 gu.n = ngx; gu.xq = m.Xq; gu.bounds = m.bounds_dev + j0; gu.ids = m.ids_identity;
                                 gu.total_rows = T * K; gu.max_rows = maxr; gu.dst = m.GU; gu.ld_dst = 1280;
-                                gu.y_scale = mmq::fp4_activations(mmq_gt) ? m.Xscale : nullptr;
                                 gu.w_ptrs = in_place ? gu_at : nullptr;
-                                if (tok_rows_l) { gu.y_rows = m.src_dev; gu.y_count = T; }
                                 m.mmq_ctx->run(gu, m.cs);
                                 if (sq)
                                     mmq::swiglu_quant(m.GU + r0 * 1280, m.Hq, nr, m.bounds_dev + j0, ngx, tail_at, r0,
@@ -4043,13 +3999,12 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 else
                                     mmq::swiglu(m.GU + r0 * 1280, m.H + r0 * 640, nr, 640, !lay.native, m.cs);
                                 pt.mark(kPfGemmD, cs);
-                                if (!sq) mmq::quantize(m.H + r0 * 640, nullptr, m.Hq, mmq_dt, 640, 640, nr, m.cs, m.Hscale);
+                                if (!sq) mmq::quantize(m.H + r0 * 640, nullptr, m.Hq, mmq_dt, 640, 640, nr, m.cs);
                                 mmq::Product dn;
                                 dn.w = m.grp_d; dn.type = mmq_dt; dn.w_rows = N; dn.w_cols = 640; dn.expert_bytes = mmq_db;
                                 dn.n = ngx; dn.xq = m.Hq; dn.bounds = m.bounds_dev + n + 1 + g * (MMQ_GROUP + 1);
                                 dn.ids = m.ids_identity; dn.total_rows = nr; dn.max_rows = maxr; dn.dst = m.Dm + r0 * N;
                                 dn.ld_dst = N;
-                                dn.y_scale = mmq::fp4_activations(mmq_dt) ? m.Hscale : nullptr;
                                 dn.w_ptrs = in_place ? d_at : nullptr;
                                 m.mmq_ctx->run(dn, m.cs);
                                 if (scaled && !sq)   // s_down: applied by the combine

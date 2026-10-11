@@ -139,7 +139,6 @@ def main():
     ap.add_argument("--adaptive", action="store_true", help="retain adaptive settings and require real two-row batch promotions")
     ap.add_argument("--independent-kv", action="store_true", help="opt into per-session elastic KV mappings")
     ap.add_argument("--device-slot-copy", action="store_true", help="opt into direct device slot migration")
-    ap.add_argument("--batch-mtp", action="store_true", help="experimental native per-slot MTP; verify overlapping proposals and confidence limits")
     ap.add_argument("--limit", type=int, default=64)
     ap.add_argument("--growth-tokens", type=int, default=0, help="also test long-slot KV growth beside a short admission")
     ap.add_argument("--capacity-tokens", type=int, default=0, help="exact token count for a near-capacity two-long-slot check")
@@ -156,12 +155,6 @@ def main():
     setting("--batch", 2)
     setting("--max-context", a.context)
     setting("--vram-reserve-mib", 1536)
-    if a.batch_mtp:
-        setting("--mtp", "native")
-        setting("--spec", 3)
-        setting("--spec-min-p", 0.5)
-        if "--batch-mtp" not in args:
-            args.append("--batch-mtp")
     if not a.adaptive:
         setting("--adapt-every", 1000000)
         setting("--adapt-swaps", 0)
@@ -174,7 +167,7 @@ def main():
         return tok.encode(template.render([{"role": "user", "content": text}], enable_thinking=False), parse_special=True)
     prompts = [prompt("Explain TCP and QUIC in detail, including congestion control and multiplexing."),
                prompt("写一个 Python 二分查找函数，解释边界条件和时间复杂度。")]
-    result = {"config": cfg, "exe_sha256": hashlib.sha256(a.exe.read_bytes()).hexdigest(), "cases": []}
+    result = {"config": cfg, "exe_sha256": hashlib.sha256(a.exe.read_bytes()).hexdigest(), "cases": [], "passed": False}
     def save():
         (a.output / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf8")
     save()
@@ -185,7 +178,6 @@ def main():
                      if "route_tail_skip=" in line), None)
         if tail is not None:
             assert tail.group(1) == "0", "quality acceptance requires all routed experts (tail skip off)"
-        result["info"] = eng.info
         assert any("batch_slots=2" in line for line in eng.info), eng.info
         pairs = [
             ("greedy", ["temperature=0", "temperature=0"]),
@@ -249,7 +241,7 @@ def main():
             assert all(x["ids"] == y["ids"] for x, y in zip(cap_refs, cap["jobs"]))
             times0, times1 = [job["times"] for job in cap["jobs"]]
             assert times0[1] < times1[-1] and times1[1] < times0[-1], "long slots did not overlap"
-            print(f"two long slots: {len(long0)}, {len(long1)} tokens, identical", flush=True)
+            print(f"near-capacity two long slots: {len(long0)}, {len(long1)} tokens, identical", flush=True)
         if a.growth_tokens:
             paragraph = "The committee reviewed the budget, the schedule and open questions. A report follows next quarter. "
             body = paragraph * (a.growth_tokens // len(tok.encode(paragraph)) + 1)
@@ -276,37 +268,23 @@ def main():
             print(f"long-slot grow/reuse beside short admission: {len(long_ids)} tokens, identical", flush=True)
         if a.adaptive:
             log = eng.log_path.read_text(encoding="utf8")
-            pattern = (r"safetensors batch adaptive: round=\d+ promoted=(\d+) completed_total=\d+ active_rows=\d+ active_slots=2"
-                       if a.batch_mtp else r"safetensors batch adaptive: round=\d+ promoted=(\d+) completed_total=\d+ active_rows=2")
-            promotions = re.findall(pattern, log)
-            result["batch_adaptive"] = {"two_slot_rounds" if a.batch_mtp else "two_row_rounds": len(promotions), "promoted": sum(map(int, promotions))}
+            promotions = re.findall(r"safetensors batch adaptive: round=\d+ promoted=(\d+) completed_total=\d+ active_rows=2", log)
+            result["batch_adaptive"] = {"two_row_rounds": len(promotions), "promoted": sum(map(int, promotions))}
             save()
-            assert promotions and sum(map(int, promotions)) > 0, "no actual overlapping batch promotions"
-        if a.batch_mtp:
-            log = eng.log_path.read_text(encoding="utf8")
-            stats = [dict(zip(("slot", "accepted", "offered", "overlap_offered", "confidence_skips", "max_rows"), map(int, row)))
-                     for row in re.findall(r"safetensors batch MTP slot=(\d+) accepted=(\d+) offered=(\d+) overlap_offered=(\d+) confidence_skips=(\d+) max_rows=(\d+)", log)]
-            result["batch_mtp"] = stats
-            save()
-            for slot in (0, 1):
-                assert any(row["slot"] == slot and row["overlap_offered"] > 0 and row["accepted"] > 0 for row in stats), f"slot {slot}: no overlapping accepted MTP proposals"
-            assert any(row["confidence_skips"] > 0 for row in stats), "confidence threshold never reduced a window"
-            assert any(row["max_rows"] == 3 for row in stats), "three-row MTP windows never ran"
-        result["passed"] = not a.batch_mtp
-        save()
-        print("cancel/resume, followup, caps: passed", flush=True)
+            assert promotions and sum(map(int, promotions)) > 0, "no actual two-row batch promotions"
     finally:
         eng.close()
-        if a.batch_mtp:
-            log = eng.log_path.read_text(encoding="utf8")
-            for family in ("expert", "MTP"):
-                values = [int(value) for value in re.findall(r"post-residency " + family + r" source bytes=(\d+)", log)]
-                assert values and all(value == 0 for value in values), f"{family}: missing or nonzero source-read counters"
-            assert eng.proc.returncode == 0, f"private engine exited with {eng.proc.returncode}"
-            result["post_residency_source_bytes"] = {"expert": 0, "MTP": 0}
-            result["private_engine_exit_code"] = eng.proc.returncode
-            result["passed"] = True
-            save()
+    # A passing case list is insufficient if shutdown exposes resident source reads.
+    log = eng.log_path.read_text(encoding="utf8")
+    for family in ("expert", "MTP"):
+        values = [int(value) for value in re.findall(r"post-residency " + family + r" source bytes=(\d+)", log)]
+        assert values and all(value == 0 for value in values), f"{family}: missing or nonzero source-read counters"
+    assert eng.proc.returncode == 0, f"private engine exited with {eng.proc.returncode}"
+    result["post_residency_source_bytes"] = {"expert": 0, "MTP": 0}
+    result["private_engine_exit_code"] = eng.proc.returncode
+    result["passed"] = True
+    save()
+    print("cancel/resume, followup, caps and zero resident source reads: passed", flush=True)
 
 
 if __name__ == "__main__":

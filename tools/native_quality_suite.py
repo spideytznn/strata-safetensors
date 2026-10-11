@@ -7,7 +7,17 @@ sys.path[:0]=[str(ROOT),str(ROOT/'tools')]
 from serve.server import StrataEngine,child_env
 from serve.frontend import ChatTemplate
 from safetensors_tokenizer import SafetensorsTokenizer
-from native_path_matrix import CASES,compare
+# Provider/MTP reference comparisons retained for the desktop computation path.
+CASES = {'reference': {}, 'cpu50': {'pcie': 0.5}, 'cpu100': {'pcie': 0},
+         'adaptive': {'adapt': True}, 'mtp1': {'mtp': 1}, 'mtp2': {'mtp': 2}}
+
+def compare(x, y):
+ x=np.asarray(x,dtype='float64'); y=np.asarray(y,dtype='float64')
+ assert x.shape==y.shape==(248320,) and np.isfinite(x).all() and np.isfinite(y).all()
+ lp=x-x.max(); lp-=np.log(np.exp(lp).sum()); lq=y-y.max(); lq-=np.log(np.exp(lq).sum())
+ return {'max_abs':float(abs(x-y).max()), 'rms':float(np.sqrt(np.mean((x-y)**2))),
+         'kl_reference_candidate':float(np.exp(lp)@(lp-lq)), 'argmax_equal':bool(x.argmax()==y.argmax())}
+
 from native_telemetry import Telemetry
 from native_http_acceptance import validate_http
 
@@ -20,7 +30,7 @@ TEXTS=[('english','Explain how to implement a least recently used cache.',
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--config',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
- p.add_argument('--cases',default='reference,tc3');p.add_argument('--reference-output',type=Path)
+ p.add_argument('--cases',default='reference,mtp2');p.add_argument('--reference-output',type=Path)
  p.add_argument('--oracle-config',type=Path,help='read-only fidelity GGUF config for the fidelity case')
  p.add_argument('--teacher',action='store_true');p.add_argument('--lengths',default='');p.add_argument('--http',action='store_true')
  p.add_argument('--conversation-cache-mib',type=int,default=4096)
@@ -51,6 +61,8 @@ def main():
   setting('--expert-cache',a.expert_cache);setting('--adapt-every',0);setting('--adapt-swaps',0)
   setting('--pcie-frac',opts.get('pcie',1));setting('--prompt-cache',6)
   setting('--conversation-cache-mib',a.conversation_cache_mib);setting('--conversation-cache-slots',4)
+  while '--mtp' in args:
+   i=args.index('--mtp');del args[i:i+2]
   k=opts.get('mtp',0);setting('--spec',max(2,k+1));setting('--mtp-max-t',max(1,k+1));setting('--spec-min-p',0)
   if k:args+=['--mtp','native']
   if a.bare_model and case!='fidelity':

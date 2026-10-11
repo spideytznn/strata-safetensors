@@ -1,0 +1,54 @@
+{
+  "FinalConfiguration": "81 GiB residency budget; 1 GiB RAM headroom; partial pin registration cap 64 GiB; CPU prefill unchanged",
+  "RequestChecks": [
+    {
+      "case": "short-before",
+      "elapsed_s": 7.129,
+      "usage": {
+        "prompt_tokens": 510,
+        "completion_tokens": 32,
+        "total_tokens": 542,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_reason": "length",
+      "ok": true
+    },
+    {
+      "case": "long-1",
+      "elapsed_s": 14.21,
+      "usage": {
+        "prompt_tokens": 28449,
+        "completion_tokens": 32,
+        "total_tokens": 28481,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_reason": "length",
+      "ok": true
+    },
+    {
+      "case": "short-after-long",
+      "elapsed_s": 5.542,
+      "usage": {
+        "prompt_tokens": 979,
+        "completion_tokens": 32,
+        "total_tokens": 1011,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "finish_reason": "length",
+      "ok": true
+    }
+  ],
+  "ModelPathsUnchanged": true,
+  "Scope": "Only the Q6 desktop launcher MappedGiB default differs from before this repair",
+  "RejectedAttempts": [
+    "64 GiB resident budget: requests passed but rejected because of increased SSD reads",
+    "6 GiB RAM headroom with 81 GiB budget: pinned allocation failure",
+    "CPU prefill share disabled: cuBLAS failure"
+  ]
+}

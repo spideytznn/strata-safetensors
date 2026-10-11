@@ -1,14 +1,12 @@
 #pragma once
 
 #include "common.cuh"
-// Strata (src/prefill/mmq_vendor): llama.cpp's mmq.cuh at 3cf0325, unchanged except under STRATA_MMQ_Y2 - the
-// activations as two FP4 terms (x ~ q1 + q2, q2 the residual), both multiplied with each weight tile in one kernel -
-// and (agent G, round 2) three more, each the same sums as upstream:
+// Strata (src/prefill/mmq_vendor): llama.cpp's mmq.cuh at 3cf0325, used for NVFP4 W4A8 and Q8 pointer-table products - the
+// retained extensions keep the same sums as the gathered W4A8 path:
 //  - STRATA_MMQ_XPTR: each expert's weights read where they lie (a pointer per expert); in mmq-load-tiles.cuh the K
 //    blocks past a row's end (K 640 in 256-value iterations) load as zeros instead of being read, and a 128-value
 //    half that starts past the row's end is skipped;
 //  - STRATA_MMQ_YPIPE: the activation tile's halves double-buffered through cp.async;
-//  - STRATA_MMQ_YROWS: an MoE product's activation rows through a row table (each token quantized once).
 
 #include <climits>
 #include <cstdint>
@@ -885,30 +883,12 @@ static constexpr __device__ ggml_cuda_mmq_write_back_t ggml_cuda_mmq_get_write_b
 #define STRATA_YPIPE_ON 1
 #endif
 
-#ifdef STRATA_MMQ_YROWS
-// Strata: the activation rows through xp.yrows - the tile's rows and their row scales go to shared memory after the
-// ids (rows past the expert's end read row 0: their sums are never written)
-#define STRATA_YR_SMEM_INTS (2*J)
-// the plain loop's element l of a tile: tile row l / sz is activation row yrow[l / sz] (the w4a4x2 unit that takes a
-// row table runs the pipelined loop; this keeps the plain one correct too)
-#define STRATA_YIDX(l) (yrow ? (int64_t) yrow[(l) / sz] * sz + (l) % sz : (int64_t) (l))
-#define STRATA_YR_FILL(j, row0, row_end) \
-    if (xp.yrows) { \
-        const int yr_ = (row0) + (j) < (row_end) ? xp.yrows[(row0) + (j)] : 0; \
-        ids_dst_shared[J + (j)] = yr_; \
-        if (y_scale) ((float *) ids_dst_shared)[2*J + (j)] = y_scale[yr_]; \
-    }
-#define STRATA_YR_ROWS(v) (xp.yrows ? 0 : (v))
-#define STRATA_YR_SCALE(t) if (xp.yrows && y_scale) t = (const float *) ids_dst_shared + 2*J
-#define STRATA_YR_ARG , xp.yrows ? ids_dst_shared + J : nullptr
-#else
 #define STRATA_YR_SMEM_INTS 0
 #define STRATA_YIDX(l) (l)
 #define STRATA_YR_FILL(j, row0, row_end)
 #define STRATA_YR_ROWS(v) (v)
 #define STRATA_YR_SCALE(t)
 #define STRATA_YR_ARG
-#endif // STRATA_MMQ_YROWS
 
 template <ggml_type type, int J, bool fallback, bool fixup>
 static __device__ __forceinline__ void mul_mat_q_process_tile(
@@ -951,15 +931,11 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
     constexpr int sz = sizeof(block_q8_1_mmq) / sizeof(int);
 
 #ifdef STRATA_YPIPE_ON
-    // Strata: an iteration's activation halves (two; four with STRATA_MMQ_Y2: term 1's, then term 2's) go through two
+    // Strata: an iteration's activation halves (two) go through two
     // tiles by cp.async, each loading while vec_dot runs on the other - the next iteration's first half during this
     // one's last.  Only the weight tile's load (it decodes as it stores) waits.  The same vec_dot calls in the same
     // order as the plain loop below: the same sums.
-#ifdef STRATA_MMQ_Y2
-    constexpr int nph = 4;
-#else
     constexpr int nph = 2;
-#endif // STRATA_MMQ_Y2
     static_assert((J*MMQ_TILE_Y_K) % 4 == 0, "16-byte copies");
     // phase p's activation rows (term p / 2, half p % 2) of the iteration at kb0
     auto y_src = [&](const int kb, const int p) -> const int * {
@@ -1057,25 +1033,6 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
 
         __syncthreads();
         }
-#ifdef STRATA_MMQ_Y2
-        // the second activation term (the first one's residual) against the same weight tile, into the same sums
-#pragma unroll
-        for (int half = 0; half < 2; ++half) {
-            const int * by0 = y + y2_off + ncols_y * ((kb0 * qk / ne_block) * sz + half * sz);
-#pragma unroll
-            for (int l0 = 0; l0 < J * MMQ_TILE_Y_K; l0 += nwarps * warp_size) {
-                int l = l0 + threadIdx.y*warp_size + threadIdx.x;
-
-                tile_y[l] = by0[STRATA_YIDX(l)];
-            }
-
-            __syncthreads();
-
-            vec_dot(tile_x, tile_y, sum, half * MMQ_TILE_NE_K);
-
-            __syncthreads();
-        }
-#endif // STRATA_MMQ_Y2
     }
 #endif // STRATA_YPIPE_ON
 
@@ -1107,12 +1064,7 @@ static thread_local strata_mmq_xptr strata_mmq_xp_host = {};
 #endif // STRATA_MMQ_XPTR
 
 
-#ifdef STRATA_MMQ_Y2
-// the second FP4 term starts after the first: ncols_y rows x the padded K's 256-value blocks x a block's ints
-#define STRATA_Y2_OFF ((int64_t) ncols_y * (int64_t) ((((int64_t) blocks_per_ne00.z * ggml_cuda_type_traits<type>::qk + 511) / 512 * 512) / QK_FP4_MMQ) * (int64_t) (sizeof(block_q8_1_mmq) / sizeof(int)))
-#else
 #define STRATA_Y2_OFF ((int64_t) 0)
-#endif // STRATA_MMQ_Y2
 
 // The mul_mat_q kernel implements "stream-k" work partitioning as described in https://arxiv.org/abs/2301.03598
 
@@ -1567,11 +1519,7 @@ static size_t mmq_get_nbytes_shared(const ggml_cuda_mmq_config & config, const i
 #else
     const size_t ny = 1;
 #endif // STRATA_MMQ_YPIPE
-#ifdef STRATA_MMQ_YROWS
-    return 3*nbs_ids + nbs_x + ny*GGML_PAD(nbs_y, config.nthreads*sizeof(int));   // + the row table and its scales
-#else
     return nbs_ids + nbs_x + ny*GGML_PAD(nbs_y, config.nthreads*sizeof(int));
-#endif // STRATA_MMQ_YROWS
 }
 
 template <ggml_type type, int J, bool fallback>
