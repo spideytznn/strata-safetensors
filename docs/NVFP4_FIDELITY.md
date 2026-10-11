@@ -1,5 +1,7 @@
 # Optional float weights for the NVIDIA NVFP4 checkpoint
 
+
+Historical GGUF-fork record: conversion and fidelity-sidecar tools were removed in the 2026-10-12 desktop cleanup. Commands require the recorded historical Git revision; current runtime is documented in [SAFETENSORS_NATIVE](SAFETENSORS_NATIVE.md).
 This local branch adds a native BF16 projection path so an NVFP4 checkpoint does
 not need Q8_0 attention, shared-expert, embedding or output weights. Existing
 quantized models keep their existing paths. CUDA on an RTX 5090 is the tested

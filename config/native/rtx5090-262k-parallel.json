@@ -1,8 +1,8 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-two-slot.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-desktop-cleanup.exe",
   "args": [
     "--model",
-    "D:\\迅雷下载\\Qwen3.8-flash-next-nvfp4",
+    "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
     "--max-context",
     "262144",
     "--prefill",
@@ -42,7 +42,7 @@
   ],
   "cwd": "G:\\Strata\\Strata-Safetensors",
   "log": "logs/native-262k-parallel.log",
-  "tokenizer": "D:\\迅雷下载\\Qwen3.8-flash-next-nvfp4",
+  "tokenizer": "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
   "tokenizer_format": "safetensors",
   "chat_template": "G:\\Strata\\Strata-Safetensors\\config\\native\\froggeric-v22.5.jinja",
   "model_name": "Qwen3.8-Flash-Next-NVFP4-Native",
@@ -75,7 +75,11 @@
     "STRATA_NATIVE_WARM_WEIGHTS": "1",
     "STRATA_NATIVE_KV_INDEPENDENT": "1",
     "STRATA_NATIVE_SLOT_COPY": "1",
-    "STRATA_ROUTE_TAIL_SKIP": "0"
+    "STRATA_ROUTE_TAIL_SKIP": "0",
+    "STRATA_ADAPT_OVERLAP": "1",
+    "STRATA_ADAPT_OVERLAP_RESIDENT": "1",
+    "STRATA_ADAPT_NOWAIT": "0",
+    "STRATA_ADAPT_LAG": "1"
   },
   "allowed_hosts": [
     "*"
@@ -91,7 +95,7 @@
   "vision": {
     "exe": "G:\\Strata\\Strata-Official\\engine\\q6\\strata-vision.exe",
     "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
-    "model": "G:\\Strata\\Strata-data\\packs\\unsloth-ud-q4_k_xl\\vision-vocab.gguf",
+    "model": "G:\\Strata\\Strata-data\\vision\\qwen3.8-flash-next-vision-vocab.gguf",
     "gpu": true,
     "max_tokens": 1024,
     "threads": 16

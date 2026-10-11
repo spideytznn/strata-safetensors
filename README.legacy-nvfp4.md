@@ -2,6 +2,7 @@
 
 This document preserves the inherited NVFP4 fork instructions and measurements.
 It is not the native safetensors installation guide or the current hardware profile.
+Legacy conversion/requantization and portable-publishing scripts were removed during the 2026-10-12 desktop cleanup. Commands below require the historical Git revision.
 Return to [strata-safetensors](README.md) for the active project.
 
 

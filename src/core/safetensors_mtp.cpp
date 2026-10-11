@@ -1,9 +1,6 @@
 #include "strata/core/mtp.hpp"
 #include "strata/weights/dense.hpp"
 #include "strata/kernels/mtp_fp8.hpp"
-#ifdef STRATA_NATIVE_EXPERTS
-#include "strata/weights/mtp_q8.hpp"
-#endif
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -17,13 +14,6 @@ bool MtpDrafter::load_safetensors(weights::SafetensorsSource& source,std::string
     try {
         using namespace weights;
         if(q4_ || q4_head_) throw std::runtime_error("native MTP does not requantize to Q4");
-        const char* mode=std::getenv("STRATA_MTP_NATIVE_PROJECTIONS");
-        if(mode && std::string_view(mode)!="bf16" && std::string_view(mode)!="q8_0")
-            throw std::runtime_error("STRATA_MTP_NATIVE_PROJECTIONS takes bf16 or q8_0");
-        native_q8_projections_=mode && std::string_view(mode)=="q8_0";
-#ifndef STRATA_NATIVE_EXPERTS
-        if(native_q8_projections_) throw std::runtime_error("MTP Q8 projections require a native-experts build (ggml)");
-#endif
         auto check=[](cudaError_t s) { if(s!=cudaSuccess) throw std::runtime_error(cudaGetErrorString(s)); };
         // Validate names and dimensions before uploading: the inherited forward
         // uses fixed geometry, so a valid safetensors extent alone is insufficient.
@@ -64,13 +54,8 @@ bool MtpDrafter::load_safetensors(weights::SafetensorsSource& source,std::string
             const bool norm=t.physical_shape.size()==1;
             b.output=norm?DType::F32:DType::BF16;
             b.math=norm?DenseMath::AddOne:DenseMath::Identity;
-            bool q8=false;
-            uint64_t size=b.bytes();
-#ifdef STRATA_NATIVE_EXPERTS
-            q8=native_q8_projections_ && mtp_q8_projection(b.name);
-            if(q8) size=b.rows*mtp_q8_row_bytes(b.columns);
-#endif
-            tensors_.push_back({b.name,norm?"f32":q8?"q8_0":"bf16",int64_t(b.rows),int64_t(b.columns),bytes,size});
+            const uint64_t size=b.bytes();
+            tensors_.push_back({b.name,norm?"f32":"bf16",int64_t(b.rows),int64_t(b.columns),bytes,size});
             bytes=(bytes+size+255)&~255ull;
             bindings.push_back(b);
         }
@@ -82,11 +67,7 @@ bool MtpDrafter::load_safetensors(weights::SafetensorsSource& source,std::string
                     throw std::runtime_error("MTP dense upload extent mismatch");
                 check(cudaMemcpy(dense_+tensors_[i].off+off,data.data(),data.size(),cudaMemcpyHostToDevice));
             };
-#ifdef STRATA_NATIVE_EXPERTS
-            if(tensors_[i].kind=="q8_0") stream_mtp_q8(source,bindings[i],upload);
-            else
-#endif
-                stream_dense(source,bindings[i],upload);
+            stream_dense(source,bindings[i],upload);
         }
         const uint64_t total=512*kernels::kMtpFp8Expert;
         check(cudaMalloc(reinterpret_cast<void**>(&experts_),total)); vram_+=total;
@@ -111,7 +92,7 @@ bool MtpDrafter::load_safetensors(weights::SafetensorsSource& source,std::string
         }
         native_fp8_=true;
         std::fprintf(stderr,"safetensors MTP: 29 dense tensors, 512 original FP8 experts; %.1f MiB, %s\n",
-                     double(bytes+total)/1048576.0,native_q8_projections_?"10 Q8_0 projections (opt-in)":"no requantization");
+                     double(bytes+total)/1048576.0,"no requantization");
         return true;
     } catch(const std::exception& e) { err=e.what(); return false; }
 }

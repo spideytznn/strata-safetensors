@@ -1,7 +1,7 @@
 # strata-safetensors
 
-已合入上游 v0.1.42，`STRATA_ROUTE_TAIL_SKIP` **默认关闭**，保留所有路由专家的贡献。
-合并取舍与验证范围见[集成说明](docs/UPSTREAM_V0142.md)。
+已合入上游 v0.1.43，`STRATA_ROUTE_TAIL_SKIP` **默认关闭**，保留所有路由专家的贡献。
+合并取舍与验证范围见[集成说明](docs/UPSTREAM_V0143.md)。
 
 **在单张 GPU 和系统内存上，直接运行原始 NVIDIA NVFP4 safetensors 格式的 Qwen3.8-Flash-Next。**
 
@@ -12,13 +12,17 @@
 ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生成必须持久保存的专家包。
 
 当前实际验证的平台是 **Windows + RTX 5090 32 GB + Ryzen 9950X3D + 96 GB RAM**。
-主分支为 `main`，引擎程序和命令仍叫 `strata`。
+维护稳定线为 `main`，引擎程序和命令仍叫 `strata`。
 
 `main` 维护稳定版本：已验证单路或双路文本请求、热专家晋升、INT8 KV 和视觉，
-桌面配置不加载 MTP。后续类 vLLM 调度实验已回退，不宣称它们带来热态解码提速。
+稳定回退配置不加载 MTP；本地单路后来已重新启用，见下方快照。
+后续类 vLLM 调度实验已回退，不宣称它们带来热态解码提速。
 见[稳定版验收记录](bench/results/2026-10-11-two-slot-rollback/README.md)、
 [主分支验收要求](docs/STABLE_NATIVE.md)与
 [自动 CPU 回归检查](https://github.com/spideytznn/strata-safetensors/actions/workflows/native-stability.yml)。
+
+相对官方的差异、实验状态与本机入口统一见[功能清单](docs/FORK_FEATURES.md)。
+本次清理位于本地 `cleanup/desktop-native-20261012`，不表示已发布至远端 `main`。
 
 ## 当前能力
 
@@ -40,7 +44,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 
 - **减少搬运。** 整个专家内存区通过 CUDA 锁页并映射给 GPU，省去额外的主机 staging 复制。
   推理阶段按需读取 ngram 行；主动保存/恢复会话时另有会话文件读写。
-- **使用 CPU 和 GPU。** 桌面配置约 75% 冷专家在 CPU 计算，25% 在 GPU 计算；
+- **使用 CPU 和 GPU。** 双路桌面配置约 75% 冷专家在 CPU 计算，25% 在 GPU 计算；单路启动时自动选择比例。
   比例只针对缓存未命中的专家。CPU 行循环展开、GPU 同专家多 token 权重复用减少重复工作。
 - **保证 prefill 空间。** 先实际分配并写入工作区，再分配专家缓存，同时计算 MTP 等后续分配的预算。
   启动容量不足会报错，不再静默缩小工作区。
@@ -48,10 +52,9 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
   但具体缓存或驱动机制尚未确定。
 - **复用会话。** 同时保存 KV 和线性注意力状态，续聊时处理新增后缀，减少完整历史重算。
 
-真正的 **SM120 FP4 Tensor Core** 路径已经接入，可显式选择。
-当前桌面默认 decode 使用 NVFP4 权重和 FP32 激活；专家 prefill 使用 W4A8，
-dense 投影保留 BF16。此前 FP4 decode 未测出明确的端到端优势，FP4 prefill 会改变输出，
-因此未把 FP4 路径设为默认。保留权重编码不代表所有算术逐位相同，也不代表等同于未量化 BF16 模型。
+当前保留路径使用 NVFP4 权重和 FP32 decode 激活、W4A8 专家 prefill、原始 BF16 dense 权重。
+桌面没有使用的 FP4 MMA、Q8 MTP 投影等实验实现已移除，见[桌面维护范围](docs/DESKTOP_SCOPE.md)。
+保留权重编码不代表整条前向逐位等同未量化 BF16 模型。
 
 ## 有条件的实测结果
 
@@ -68,8 +71,9 @@ dense 投影保留 BF16。此前 FP4 decode 未测出明确的端到端优势，
 另一次英文、中文、代码长回答筛查测得 warm aggregate decode **91.93 → 100.82 tok/s**。
 每套配置只启动一台引擎，不能当成多轮稳定吞吐估计；该候选使用四枚草稿、0.7 草稿门槛及两枚强制草稿。
 
-**当前稳定桌面配置使用温度 0.7，完全不加载 MTP。**
-上述成绩对应历史 MTP 配置，不是当前纯主模型解码配置的成绩，也不是所有任务的速度承诺。
+**2026-10-12 本地配置文件：单路启用 native MTP / spec 3 / min-p 0.5，温度 1.0；
+双路完全不加载 MTP，温度 0.7。网页共享设置和请求参数可以覆盖采样默认值。**
+上述成绩对应历史 MTP 配置，不是当前配置的重新测速，也不是所有任务的速度承诺。
 回退后的最新验收检查正确性和实际热专家晋升，不构成新的吞吐提升证据。
 
 完整命令、全部样本和验收范围见
@@ -82,7 +86,7 @@ dense 投影保留 BF16。此前 FP4 decode 未测出明确的端到端优势，
 需要 Git、Python 3.12+、Visual Studio 2022 C++ Build Tools、CUDA 13、
 CMake 3.24+ 和 Ninja。原始模型下载到仓库外，使用配置生成器填入自己的路径。
 
-生成器保留参考 FP16 prefill 设置，不能直接复现全部桌面优化参数；采样参数需在生成配置的
+生成器选择 W4A8 专家 prefill，不能直接复现全部桌面优化参数；采样参数需在生成配置的
 `sampling` 字段中明确设置。视觉还需要另行配置编码器资源。
 专家内存区本身占 **63.282 GiB**，其他权重、会话、运行缓冲和操作系统还需要额外内存。
 96 GB 是已验证配置；尚未验证 64 GB 下的完整原生常驻方案。
@@ -100,13 +104,13 @@ OpenAI 客户端地址为 **http://127.0.0.1:8880/v1**。
 可用 `/health`、`/v1/models` 检查就绪状态和模型 ID。
 对外监听前需配置 `--api-key`。
 
-| 参数 | 当前桌面部署配置 |
+| 参数 | 2026-10-12 本地桌面配置文件 |
 |---|---|
 | 总上下文 / 专用 prefill | 262144 token / 4096 行 |
 | KV / 视觉 | INT8 按需增长 / 外部 GPU 编码器，每张图最多 1024 token |
-| 显存预留 | 单路 1024 MiB / 双路 1536 MiB；启动后仍检查最终显存余量 |
-| MTP | 关闭，不加载草稿权重；suffix drafting 同样关闭 |
-| 采样 | temperature **0.7**、top_p 0.95、top_k 20、min_p 0、presence_penalty 0、repetition_penalty 1 |
+| 显存预留 | 单路 700 MiB / 双路 1536 MiB；启动后仍检查最终显存余量 |
+| MTP | 单路 native / spec 3 / min-p 0.5；双路不加载草稿权重；suffix drafting 均关闭 |
+| 采样 | 文件温度：单路 **1.0**、双路 **0.7**；top_p 0.95、top_k 20、min_p 0、presence_penalty 0、repetition_penalty 1 |
 | 模板 | Froggeric v22.5，默认开启思考；请求未指定强度时默认 medium |
 | 服务 | 127.0.0.1:8880，HTTP Host 头不设白名单 |
 | 输出预算 | `fit_max_tokens: true`，把请求输出上限缩至剩余窗口，输入不截断 |
@@ -115,16 +119,16 @@ OpenAI 客户端地址为 **http://127.0.0.1:8880/v1**。
 其模板默认思考强度 **xhigh**。客户端显式参数及网页持久化设置可以覆盖服务默认值。
 输出预算适配不改变 ZCode 等客户端自己的压缩策略，客户端上下文也应设为 262144。
 
-[no-mtp 配置](config/native/rtx5090-262k-no-mtp.json)保留了较早的卸载 MTP 对照；
-`START-NATIVE-262K-STABLE.bat` 保留较早的 efficiency14 配置。
+只维护当前单路与双路两份桌面配置；旧对照配置和额外启动入口已移除。
 
 `START-NATIVE-262K-PARALLEL.bat` 选择可选的**两路文本并发**，仍为 262K 上下文、
 4096 行专用 prefill。图片请求独占引擎；并发配置完全不加载 MTP，所有请求直接由主模型解码。
 本机并发配置还启用了按会话长度独立伸缩的 KV 和显存内槽位迁移。
 内存开销、验收及首字/吞吐测量见[原生并发说明](docs/NATIVE_CONCURRENCY.md)。原桌面入口不变。
-仓库中的双路配置指向 `build-native-engine/strata-two-slot.exe`。
+当前本地配置指向 `build-native-engine/strata-desktop-cleanup.exe`。
 构建此程序名时，在英文 CMake 配置命令中加上
-`-DSTRATA_EXECUTABLE_NAME=strata-two-slot`；通用配置示例则使用 `strata.exe`。
+`-DSTRATA_EXECUTABLE_NAME=strata-desktop-cleanup`；通用配置示例则使用 `strata.exe`。
+本分支不再保留原生双路 MTP 扩展；官方 GGUF batch MTP 能力保留。
 Git clone 不包含本机预编译程序或视觉资源，其他机器需要自行构建并适配路径。
 
 ## 验收与边界

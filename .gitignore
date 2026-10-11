@@ -74,3 +74,6 @@ bench/results/2026-10-11-upstream-v0142/serial-mtp/**/session.bin
 config/native/rtx5090-262k-fast-v0142.shared-settings.json
 !bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/build/
 !bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/build/**
+
+# Local web sampling state, alongside the single-request sidecar.
+config/native/rtx5090-262k-parallel.shared-settings.json

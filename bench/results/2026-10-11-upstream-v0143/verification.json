@@ -1,0 +1,360 @@
+{
+  "recorded_at_utc": "2026-10-11T15:56:17.338338+00:00",
+  "upstream_commit": "7695859aa13afb248bdb4d36f9b2e95707db079d",
+  "base_commit": "36902c911f21adf1fc18c4364772108f907ae8f0",
+  "candidate_exe_sha256": "107cc652237172c0312275edb0d758bca90691293180a944b7b82b7322d4e465",
+  "hardware": "Windows, RTX 5090 32GB, Ryzen 9950X3D, 96GB RAM; CUDA 13.0, MSVC 14.44, SM120",
+  "python_serve": {
+    "run": 719,
+    "passed_with_skips": true,
+    "skipped": 12
+  },
+  "python_tools": {
+    "run": 173,
+    "passed": 171,
+    "pre_existing_failures": [
+      "tools.test_setup_fork_engine.Keep.test_a_card_the_release_has_no_code_for",
+      "tools.test_setup_nvfp4.PageFile.test_check_and_install_say_it_framed_and_again_at_the_end"
+    ]
+  },
+  "ctest": {
+    "cpu": 12,
+    "gpu_and_tail_policy": 8,
+    "all_passed": true
+  },
+  "nonfinite_kernel": {
+    "graph_replay_cases": 375,
+    "finite_after_poison_replays": 25,
+    "rows": [
+      1,
+      2,
+      3,
+      6,
+      8
+    ],
+    "widths": [
+      1,
+      255,
+      257,
+      4096,
+      248320
+    ],
+    "logits_unchanged": true
+  },
+  "single_before_after": [
+    {
+      "variant": "0",
+      "token_vectors_equal": 20,
+      "cancelled_prefix_equal": true,
+      "completed_states_equal": 20,
+      "states_sha256": "a2a6e6aa48d055326cde5f70a9de44fc7308bf3e9029a4571f0a4bf02c8baa9a",
+      "token_vector_sha256": {
+        "english": "1fd7df3d7c980626dccafc5ef784b53640bb4bd0911a8d62a50deca0e1b8035e",
+        "chinese": "d302a87ed5c2710fd0cfa0c854a4fd5cc7f5887ae2ea7f54b07c0eac70f398d1",
+        "code": "6bc83c97043828b3b8da20022b8e12d9f3cc649518f074824d5d01f896f10e04",
+        "math": "84fb4654a503833be55522bf062d4bf47d556275bafb929cc87a9ef504c8cf3e",
+        "eos": "be9f8c4e75a59be757057ee6cca23ddc8f7620584a73dd62125d322091f7e0f0",
+        "sampled": "5dbc0e22a54e18c195c2121d1d01e844315974e556db823a152695e8957aefe5",
+        "official-english": "014cd08062f2719d906b956a8d273cce15c047d74d0fc71fe6522d25f8958cc1",
+        "official-chinese": "d38a501d719c18c9fe2291cd071c1d7865b5cdcc014f6dc49d2bb5dd2d945145",
+        "official-code": "bcb24beabccc52fa407f066dff424af83cc8264fddded2e114e9f51a32e5a8b1",
+        "limit1": "69f45ac098555f7b179d1f3fe09a79266a0b88ef2f87f86d770a333cfa5d22d0",
+        "limit2": "04e9dc66e576e16bbfe2bd0290355357611872b6ef3ecdc0d586e776f5c48625",
+        "limit3": "6da80ebb1488d46d11c2f3420aff51ddbe6ec1867759ebb6757e6fc56f4b9aed",
+        "limit7": "86d103cf625e4e0b6a049e602d2f3a80e10a1d4832ffe95c7e95e4dd448ab715",
+        "limit9": "eda84eb644732d90d17eaf6887c400b31a4ac4d84a4632979935f9f2410fb1d7",
+        "A": "78d4df947598845e97bb299b0b73fab6ab9f2b788138f2d0b2ab8192167702ea",
+        "B": "78d4df947598845e97bb299b0b73fab6ab9f2b788138f2d0b2ab8192167702ea",
+        "A+": "bc56d877b209db1f0073d1082fcf96c4a07b121ba2f37bbbda831f767e82b24b",
+        "B-again": "78d4df947598845e97bb299b0b73fab6ab9f2b788138f2d0b2ab8192167702ea",
+        "A+-restored": "bc56d877b209db1f0073d1082fcf96c4a07b121ba2f37bbbda831f767e82b24b",
+        "after-cancel": "6699d8caaecdffd72db49e08e3bb6206e257179fdc4ff8c2fd9aea739f461a7e"
+      }
+    },
+    {
+      "variant": "2",
+      "token_vectors_equal": 20,
+      "cancelled_prefix_equal": true,
+      "completed_states_equal": 20,
+      "states_sha256": "a2a6e6aa48d055326cde5f70a9de44fc7308bf3e9029a4571f0a4bf02c8baa9a",
+      "token_vector_sha256": {
+        "english": "1fd7df3d7c980626dccafc5ef784b53640bb4bd0911a8d62a50deca0e1b8035e",
+        "chinese": "d302a87ed5c2710fd0cfa0c854a4fd5cc7f5887ae2ea7f54b07c0eac70f398d1",
+        "code": "6bc83c97043828b3b8da20022b8e12d9f3cc649518f074824d5d01f896f10e04",
+        "math": "84fb4654a503833be55522bf062d4bf47d556275bafb929cc87a9ef504c8cf3e",
+        "eos": "be9f8c4e75a59be757057ee6cca23ddc8f7620584a73dd62125d322091f7e0f0",
+        "sampled": "5dbc0e22a54e18c195c2121d1d01e844315974e556db823a152695e8957aefe5",
+        "official-english": "014cd08062f2719d906b956a8d273cce15c047d74d0fc71fe6522d25f8958cc1",
+        "official-chinese": "d38a501d719c18c9fe2291cd071c1d7865b5cdcc014f6dc49d2bb5dd2d945145",
+        "official-code": "bcb24beabccc52fa407f066dff424af83cc8264fddded2e114e9f51a32e5a8b1",
+        "limit1": "69f45ac098555f7b179d1f3fe09a79266a0b88ef2f87f86d770a333cfa5d22d0",
+        "limit2": "04e9dc66e576e16bbfe2bd0290355357611872b6ef3ecdc0d586e776f5c48625",
+        "limit3": "6da80ebb1488d46d11c2f3420aff51ddbe6ec1867759ebb6757e6fc56f4b9aed",
+        "limit7": "86d103cf625e4e0b6a049e602d2f3a80e10a1d4832ffe95c7e95e4dd448ab715",
+        "limit9": "eda84eb644732d90d17eaf6887c400b31a4ac4d84a4632979935f9f2410fb1d7",
+        "A": "78d4df947598845e97bb299b0b73fab6ab9f2b788138f2d0b2ab8192167702ea",
+        "B": "78d4df947598845e97bb299b0b73fab6ab9f2b788138f2d0b2ab8192167702ea",
+        "A+": "bc56d877b209db1f0073d1082fcf96c4a07b121ba2f37bbbda831f767e82b24b",
+        "B-again": "78d4df947598845e97bb299b0b73fab6ab9f2b788138f2d0b2ab8192167702ea",
+        "A+-restored": "bc56d877b209db1f0073d1082fcf96c4a07b121ba2f37bbbda831f767e82b24b",
+        "after-cancel": "6699d8caaecdffd72db49e08e3bb6206e257179fdc4ff8c2fd9aea739f461a7e"
+      }
+    }
+  ],
+  "dual_mtp": {
+    "case_names": [
+      "greedy",
+      "seeded",
+      "penalties",
+      "cancel_resume",
+      "followup",
+      "caps",
+      "eos",
+      "two_long_capacity",
+      "kv_growth_long_slot"
+    ],
+    "batch_adaptive": {
+      "two_slot_rounds": 83,
+      "promoted": 7496
+    },
+    "batch_mtp": [
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 87,
+        "overlap_offered": 87,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 74,
+        "offered": 94,
+        "overlap_offered": 82,
+        "confidence_skips": 5,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 78,
+        "offered": 92,
+        "overlap_offered": 92,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 65,
+        "offered": 99,
+        "overlap_offered": 75,
+        "confidence_skips": 8,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 92,
+        "overlap_offered": 92,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 70,
+        "offered": 88,
+        "overlap_offered": 74,
+        "confidence_skips": 6,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 8,
+        "offered": 12,
+        "overlap_offered": 12,
+        "confidence_skips": 0,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 87,
+        "overlap_offered": 12,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 0,
+        "offered": 0,
+        "overlap_offered": 0,
+        "confidence_skips": 0,
+        "max_rows": 1
+      },
+      {
+        "slot": 0,
+        "accepted": 0,
+        "offered": 2,
+        "overlap_offered": 2,
+        "confidence_skips": 0,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 0,
+        "offered": 2,
+        "overlap_offered": 2,
+        "confidence_skips": 0,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 135,
+        "offered": 195,
+        "overlap_offered": 195,
+        "confidence_skips": 11,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 129,
+        "offered": 196,
+        "overlap_offered": 186,
+        "confidence_skips": 16,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 11,
+        "offered": 22,
+        "overlap_offered": 22,
+        "confidence_skips": 8,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 87,
+        "overlap_offered": 39,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 87,
+        "overlap_offered": 0,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 87,
+        "overlap_offered": 87,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 74,
+        "offered": 94,
+        "overlap_offered": 82,
+        "confidence_skips": 5,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 87,
+        "overlap_offered": 0,
+        "confidence_skips": 1,
+        "max_rows": 3
+      }
+    ],
+    "source_bytes": {
+      "expert": 0,
+      "MTP": 0
+    },
+    "exit_code": 0
+  },
+  "http": {
+    "checks": {
+      "unrestricted_host": true,
+      "prometheus_metrics": true
+    },
+    "passed": true,
+    "nonfinite_injected_window": 1,
+    "retry_before_first_token": true,
+    "poisoned_cache_flushed": true,
+    "expert_and_mtp_source_bytes": 0
+  },
+  "desktop_parallel": {
+    "passed": true,
+    "case_names": [
+      "greedy",
+      "seeded",
+      "penalties",
+      "cancel_resume",
+      "followup",
+      "caps",
+      "eos"
+    ],
+    "batch_adaptive": {
+      "two_row_rounds": 98,
+      "promoted": 7856
+    },
+    "original_local_mtp_flags_retained": true,
+    "expert_and_mtp_source_bytes": 0
+  },
+  "profile_changes": {
+    "rtx5090-262k-fast-v0142.json": {
+      "before_sha256": "0098b35682fb76e3e4856296d181fd345b01684eede13aabb10bf85ff9755d26",
+      "after_sha256": "58e730263d0d38ead06b0eb2899bceb5495c4fbcb9855dac2aba06b141b59af1",
+      "changed_keys": [
+        "exe"
+      ]
+    },
+    "rtx5090-262k-fast.json": {
+      "before_sha256": "9554d6039838e35cf8244c2d42aa62766bee0377c2870f4402dd062243af7d05",
+      "after_sha256": "a58b6e3a3d32f7ab4e572ef63b52546b3c2bcdc9efd4fda077a218b2923df152",
+      "changed_keys": [
+        "exe"
+      ]
+    },
+    "rtx5090-262k-parallel.json": {
+      "before_sha256": "713f9e1727b4cdedb13e9838d031650f4cbebcb0ba3792e9e86a32cc1318e2b0",
+      "after_sha256": "3dc23a0e48b354c9e567c06794d97d2c88ef1d09947d9790fc218c0b84540a3d",
+      "changed_keys": [
+        "exe"
+      ]
+    },
+    "rtx5090-262k-parallel-mtp.json": {
+      "before_sha256": "8dacd5715579d9eb7f55787f92ec1260171357a54f1a280f26f870e8aed449cf",
+      "after_sha256": "31922946df044c0d49afc1b7f400fd092c4d90a31a01b7f1d504e24914d8c806",
+      "changed_keys": [
+        "exe"
+      ]
+    }
+  },
+  "previous_binaries_unchanged": {
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-efficiency11.exe": "cdd577702971f8dda839d81c2d987977de6e78e424728a4c6e05fd2c1ebebc0b",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-pcie-auto.exe": "313bf50e8de4040acbd7ceea33be6f466c7a04f1a527d7f23099f70adbc72d13",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-efficiency2.exe": "c3f83cd4d47c544f3561e0578052236d30fbc6a5a6ceb5ae3b4184eb72e7bfa3",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-diagnostics.exe": "d23959136245bc09a69acbfd161c287da78f093c05834ebb1cede241fa848659",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-efficiency14.exe": "794241315ca5fdd54c8b90c9a4fdca61bf1e465f41d7bbaf7475d5f03a6ce6d0",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-prefill.exe": "f30affdf953a92ec581ee1448d90a57e682192acd46443cb61b739e883020805",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-native-batch-mtp.exe": "cb7cf4ef10045150cde457558bd46d5a4fe292c3b6f051539a6e95c3e5403331",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-two-slot.exe": "3e1d34b276a00190adff0f32cd99b5ed2c611f5fddf5e741ec866f8362a69389",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-efficiency13.exe": "c65cd771180a5a00e21e1a727ae623ae1a39fdf335d51daee2856f0085417133"
+  },
+  "untested": [
+    "HIP build",
+    "SYCL build",
+    "Linux",
+    "multi-GPU",
+    "other GPU generations",
+    "Windows adaptive overlap performance",
+    "general model quality benchmarks"
+  ],
+  "performance_speedup_claimed": false
+}

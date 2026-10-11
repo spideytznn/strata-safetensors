@@ -1,0 +1,360 @@
+{
+  "status": "passed",
+  "created_at": "2026-10-11T19:24:44.777819+08:00",
+  "hardware": "RTX 5090 32GB / Ryzen 9950X3D / 96GB RAM; Windows, CUDA 13, SM120",
+  "engine_change": "opt-in native safetensors --batch-mtp with per-slot windows, confidence, penalty history and prefix commits",
+  "settings": {
+    "parallel": 2,
+    "context": 262144,
+    "prefill": 4096,
+    "kv": "int8",
+    "vision_loaded": true,
+    "pcie_frac": 0.25,
+    "spec": 3,
+    "spec_min_p": 0.5,
+    "spec_min_drafts_set": false,
+    "route_tail_skip": 0,
+    "coupled_draft_sampling": false
+  },
+  "cpu_regression": {
+    "passed": true,
+    "tests": 54
+  },
+  "comparison": {
+    "target-before": {
+      "output_tok_s": [
+        67.4210982212144,
+        69.55877091879984,
+        69.24400424011237
+      ],
+      "median_output_tok_s": 69.24400424011237,
+      "output_id_sha256": [
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ],
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ],
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ]
+      ],
+      "tokens_each_round": [
+        [
+          256,
+          256
+        ],
+        [
+          256,
+          256
+        ],
+        [
+          256,
+          256
+        ]
+      ],
+      "info": [
+        "INFO logit_bias=1 context=262144 kv=int8 kv_resident=0 expert_slots=4883 expert_cache_mib=12876 expert_slots_primary=4883 expert_cache_primary_mib=12876 spec=2 mtp_max=0 lookup=0 vram_free_mib=1772 cvec=0 arena_mib=64800 pool_workers=15 pcie_frac=0.25 pcie_auto=0 pcie_balance=0 spec_min_p=0.00 conversation_cache_mib=4096 conversation_cache_slots=4 conversation_cache_min_free_mib=2560 conversation_cache_min_tokens=0 tail_role_token=-1 vram_elastic=0 route_tail_skip=0 batch_slots=2 slot_cache=1 batch_groups=1 engine=0.1.42",
+        "INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=67948118016 expert_cuda_pinned_bytes=67948118016 expert_os_locked_bytes=0 prefill_chunk=4096 prefill_workspace=dedicated",
+        "INFO startup_ms=61164"
+      ],
+      "exe_sha256": "3e1d34b276a00190adff0f32cd99b5ed2c611f5fddf5e741ec866f8362a69389",
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      },
+      "private_engine_exit_code": 0
+    },
+    "enabled": {
+      "output_tok_s": [
+        75.07225924890727,
+        74.08515469226205,
+        72.43893387262962
+      ],
+      "median_output_tok_s": 74.08515469226205,
+      "output_id_sha256": [
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ],
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ],
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ]
+      ],
+      "tokens_each_round": [
+        [
+          256,
+          256
+        ],
+        [
+          256,
+          256
+        ],
+        [
+          256,
+          256
+        ]
+      ],
+      "info": [
+        "INFO logit_bias=1 context=262144 kv=int8 kv_resident=0 expert_slots=3825 expert_cache_mib=10086 expert_slots_primary=3825 expert_cache_primary_mib=10086 spec=3 mtp_max=0 lookup=0 vram_free_mib=1732 cvec=0 arena_mib=64800 pool_workers=15 pcie_frac=0.25 pcie_auto=0 pcie_balance=0 spec_min_p=0.50 conversation_cache_mib=4096 conversation_cache_slots=4 conversation_cache_min_free_mib=2560 conversation_cache_min_tokens=0 tail_role_token=-1 vram_elastic=0 route_tail_skip=0 batch_slots=2 slot_cache=1 batch_groups=1 engine=0.1.42",
+        "INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=67948118016 expert_cuda_pinned_bytes=67948118016 expert_os_locked_bytes=0 prefill_chunk=4096 prefill_workspace=dedicated",
+        "INFO native_batch_mtp=1 mtp_enabled=1 mtp_slot_drafters=2",
+        "INFO startup_ms=62313"
+      ],
+      "exe_sha256": "cb7cf4ef10045150cde457558bd46d5a4fe292c3b6f051539a6e95c3e5403331",
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      },
+      "private_engine_exit_code": 0
+    },
+    "target-after": {
+      "output_tok_s": [
+        65.35778344183164,
+        67.86763573520427,
+        67.95927418380224
+      ],
+      "median_output_tok_s": 67.86763573520427,
+      "output_id_sha256": [
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ],
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ],
+        [
+          "9e4dcfb9c1151641196a5e36716fc7bcbf3fd88b23db20677f3e28123d6a81eb",
+          "5a28a1c0457f458d1d2306531331b0d25ca67360ca799ab3399e6861aa5448de"
+        ]
+      ],
+      "tokens_each_round": [
+        [
+          256,
+          256
+        ],
+        [
+          256,
+          256
+        ],
+        [
+          256,
+          256
+        ]
+      ],
+      "info": [
+        "INFO logit_bias=1 context=262144 kv=int8 kv_resident=0 expert_slots=4883 expert_cache_mib=12876 expert_slots_primary=4883 expert_cache_primary_mib=12876 spec=2 mtp_max=0 lookup=0 vram_free_mib=1760 cvec=0 arena_mib=64800 pool_workers=15 pcie_frac=0.25 pcie_auto=0 pcie_balance=0 spec_min_p=0.00 conversation_cache_mib=4096 conversation_cache_slots=4 conversation_cache_min_free_mib=2560 conversation_cache_min_tokens=0 tail_role_token=-1 vram_elastic=0 route_tail_skip=0 batch_slots=2 slot_cache=1 batch_groups=1 engine=0.1.42",
+        "INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=67948118016 expert_cuda_pinned_bytes=67948118016 expert_os_locked_bytes=0 prefill_chunk=4096 prefill_workspace=dedicated",
+        "INFO startup_ms=61011"
+      ],
+      "exe_sha256": "3e1d34b276a00190adff0f32cd99b5ed2c611f5fddf5e741ec866f8362a69389",
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      },
+      "private_engine_exit_code": 0
+    }
+  },
+  "gain_pct_vs_before": 6.991436305968635,
+  "gain_pct_vs_after": 9.16124289538589,
+  "acceptance": {
+    "cases": [
+      "greedy",
+      "seeded",
+      "penalties",
+      "cancel_resume",
+      "followup",
+      "caps",
+      "eos",
+      "two_long_capacity"
+    ],
+    "exe_sha256": "cb7cf4ef10045150cde457558bd46d5a4fe292c3b6f051539a6e95c3e5403331",
+    "adaptive": {
+      "two_slot_rounds": 66,
+      "promoted": 6041
+    },
+    "slot_mtp_stats": [
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 87,
+        "overlap_offered": 87,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 74,
+        "offered": 94,
+        "overlap_offered": 82,
+        "confidence_skips": 5,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 78,
+        "offered": 92,
+        "overlap_offered": 92,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 65,
+        "offered": 99,
+        "overlap_offered": 75,
+        "confidence_skips": 8,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 92,
+        "overlap_offered": 92,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 70,
+        "offered": 88,
+        "overlap_offered": 74,
+        "confidence_skips": 6,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 8,
+        "offered": 12,
+        "overlap_offered": 12,
+        "confidence_skips": 0,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 80,
+        "offered": 87,
+        "overlap_offered": 12,
+        "confidence_skips": 1,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 0,
+        "offered": 0,
+        "overlap_offered": 0,
+        "confidence_skips": 0,
+        "max_rows": 1
+      },
+      {
+        "slot": 0,
+        "accepted": 0,
+        "offered": 2,
+        "overlap_offered": 2,
+        "confidence_skips": 0,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 0,
+        "offered": 2,
+        "overlap_offered": 2,
+        "confidence_skips": 0,
+        "max_rows": 3
+      },
+      {
+        "slot": 0,
+        "accepted": 135,
+        "offered": 195,
+        "overlap_offered": 195,
+        "confidence_skips": 11,
+        "max_rows": 3
+      },
+      {
+        "slot": 1,
+        "accepted": 129,
+        "offered": 196,
+        "overlap_offered": 186,
+        "confidence_skips": 16,
+        "max_rows": 3
+      }
+    ],
+    "long_prompt_tokens": [
+      40000,
+      40007
+    ],
+    "long_output_tokens_each": 256,
+    "long_output_id_sha256": [
+      "8ffe05f5b6cd84ef5537be346eda4e1aa3c9b396fc1d11893974eddf23bd84b0",
+      "176be14741390e9f473931ddbdccfa4a69627b331650ff11c40e33c66fd95064"
+    ],
+    "long_slot_parity": true,
+    "overlapping": true,
+    "post_residency_source_bytes": {
+      "expert": 0,
+      "MTP": 0
+    },
+    "private_engine_exit_code": 0
+  },
+  "confidence_one": {
+    "slot_stats": [
+      {
+        "slot": 0,
+        "accepted": 0,
+        "offered": 0,
+        "overlap_offered": 0,
+        "confidence_skips": 31,
+        "max_rows": 1
+      },
+      {
+        "slot": 1,
+        "accepted": 0,
+        "offered": 0,
+        "overlap_offered": 0,
+        "confidence_skips": 31,
+        "max_rows": 1
+      }
+    ],
+    "target_output_unchanged": true
+  },
+  "limitations": [
+    "Finite parity checks, not a general quality evaluation",
+    "Speed measured with greedy sampling and two synthetic tutorial prompts",
+    "Full 262144-token context not exercised",
+    "HIP/SYCL and coupled draft sampling not validated",
+    "MTP currently disables independent target KV and device slot copies"
+  ],
+  "raw_artifacts": {
+    "target-before": {
+      "results": "bench\\results\\local-native-batch-mtp-20261011-target-before\\results.json",
+      "results_sha256": "fc7f48ac42dae0dcf53bfbb8e1ff6a7a54f8342019660ede414279d2ad0c79e9",
+      "engine_log_sha256": "22bce489342e55493e4db9f604af8e31ea7361211560543b6d44219af5e751a8"
+    },
+    "enabled": {
+      "results": "bench\\results\\local-native-batch-mtp-20261011-enabled\\results.json",
+      "results_sha256": "1291dd3c07681a99a1c3d05ffbe91a94befe102bc352293640cbf09302ccd2e6",
+      "engine_log_sha256": "3e563f446f3b2e5913a4d5b93e3a675fb5b69e3be46dec715a53f853ca435265"
+    },
+    "target-after": {
+      "results": "bench\\results\\local-native-batch-mtp-20261011-target-after\\results.json",
+      "results_sha256": "92244a560eccab68f3c9516fd803ab603d0b8b0a49e1cf89624340de57977dad",
+      "engine_log_sha256": "86b2989c40f334539864169f5f6db1c8311f3c3ab2f3fd28c431fbc762b87c96"
+    },
+    "final-ring": {
+      "results": "bench\\results\\local-native-batch-mtp-20261011-final-ring\\results.json",
+      "results_sha256": "88b307f08d95b431bc6d2f6a8a66182c8ec679c87e461f7d50149d64d21af359",
+      "engine_log_sha256": "1d475627a22500a3608c4c00d7624be6eed30e15a1641c980897dddedeb76f71"
+    }
+  },
+  "port_8880_started": false,
+  "stable_main_changed": false
+}

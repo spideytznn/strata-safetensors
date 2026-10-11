@@ -167,7 +167,7 @@ def main():
         return tok.encode(template.render([{"role": "user", "content": text}], enable_thinking=False), parse_special=True)
     prompts = [prompt("Explain TCP and QUIC in detail, including congestion control and multiplexing."),
                prompt("写一个 Python 二分查找函数，解释边界条件和时间复杂度。")]
-    result = {"config": cfg, "exe_sha256": hashlib.sha256(a.exe.read_bytes()).hexdigest(), "cases": []}
+    result = {"config": cfg, "exe_sha256": hashlib.sha256(a.exe.read_bytes()).hexdigest(), "cases": [], "passed": False}
     def save():
         (a.output / "results.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf8")
     save()
@@ -178,7 +178,6 @@ def main():
                      if "route_tail_skip=" in line), None)
         if tail is not None:
             assert tail.group(1) == "0", "quality acceptance requires all routed experts (tail skip off)"
-        result["info"] = eng.info
         assert any("batch_slots=2" in line for line in eng.info), eng.info
         pairs = [
             ("greedy", ["temperature=0", "temperature=0"]),
@@ -273,11 +272,19 @@ def main():
             result["batch_adaptive"] = {"two_row_rounds": len(promotions), "promoted": sum(map(int, promotions))}
             save()
             assert promotions and sum(map(int, promotions)) > 0, "no actual two-row batch promotions"
-        result["passed"] = True
-        save()
-        print("cancel/resume, followup, caps: passed", flush=True)
     finally:
         eng.close()
+    # A passing case list is insufficient if shutdown exposes resident source reads.
+    log = eng.log_path.read_text(encoding="utf8")
+    for family in ("expert", "MTP"):
+        values = [int(value) for value in re.findall(r"post-residency " + family + r" source bytes=(\d+)", log)]
+        assert values and all(value == 0 for value in values), f"{family}: missing or nonzero source-read counters"
+    assert eng.proc.returncode == 0, f"private engine exited with {eng.proc.returncode}"
+    result["post_residency_source_bytes"] = {"expert": 0, "MTP": 0}
+    result["private_engine_exit_code"] = eng.proc.returncode
+    result["passed"] = True
+    save()
+    print("cancel/resume, followup, caps and zero resident source reads: passed", flush=True)
 
 
 if __name__ == "__main__":

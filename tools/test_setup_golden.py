@@ -86,7 +86,7 @@ def install(ram, found, argv, answers=None, extra=(), avx512=False, configs=()):
                 return next((v for k, v in answers.items() if k in prompt), "")
             return answers
 
-        def fake_download(url, dst, what=None, unpinned_ok=True):
+        def fake_download(url, dst, what=None):
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_bytes(b"")
             setup.mark(dst)
@@ -102,7 +102,7 @@ def install(ram, found, argv, answers=None, extra=(), avx512=False, configs=()):
             mock.patch.object(setup, "ram_gb", lambda: ram),
             mock.patch.object(setup, "cpu_info", lambda: ("Test CPU", True, avx512)),
             mock.patch.object(setup, "cpu_cores", lambda: None),   # #642: not a hybrid CPU
-            mock.patch.object(setup, "page_files", lambda: (128000, "C: 64000 MB, D: 64000 MB")),   # no warning
+            mock.patch.object(setup, "page_file_gb", lambda: 16.0),
             mock.patch.object(setup, "is_wsl", lambda: False),
             mock.patch.object(setup, "rotational_disk", lambda p: None),   # #605: the test PC's own disk
             mock.patch.object(setup, "free_gb", lambda p: 900.0),

@@ -12,7 +12,7 @@ namespace strata::prefill::mmq {
 
 /// This build has the MMQ path (the ggml sources were available to the build).
 bool built();
-/// MMQ covers this ggml type (the i-quants and Q2_0 the packs use, Q8_0, NVFP4 unless fp16, and with
+/// MMQ covers this ggml type (the i-quants and Q2_0 the packs use, Q8_0, NVFP4 W4A8, and with
 /// STRATA_MMQ_KQUANTS the K-quants Q4_K / Q5_K / Q5_1 / Q6_K: Unsloth's UD-Q4_K_XL experts (CUDA), and the dense GGUF
 /// projections of the mixed-quant packs through Gemm::native's STRATA_DENSE_MMQ path (HIP); IQ1_M is not covered).
 bool supported(int ggml_type);
@@ -20,13 +20,6 @@ bool supported(int ggml_type);
 /// `w_rows` rows that fits the card's shared memory - the same test its tile choice makes, which aborts the process
 /// ("J_best=0") when nothing fits.  false (said once per type) keeps that product on the non-MMQ path.
 bool fits(int ggml_type, int64_t w_rows);
-/// NVFP4 prompt precision, STRATA_PREFILL_NVFP4: w4a8 (default) - int8 tensor cores, Q8_1 activations, what decode
-/// runs at; w4a4 - Blackwell's FP4 x FP4 MMA, activations rounded to NVFP4 (faster, first-token KL up to 0.03 vs
-/// fp16); fp16 - the dequantize + FP16 GEMM path (the reference); w4a4x2 - the products with K >= 2048 (gate/up)
-/// on the FP4 MMA with each activation row as two FP4 terms (x ~ q1 + q2, the residual's own NVFP4: W4A8's precision),
-/// the others (down, K 640) as w4a8 (mmq_nvfp4_a44.cu).
-enum class Nvfp4Mode { W4A8, W4A4, FP16, W4A4X2 };
-Nvfp4Mode nvfp4_mode();
 /// Bytes of one expert's gate+up ([2*n_ff, n_embd]) or down ([n_embd, n_ff]) weights in `ggml_type`.
 size_t matrix_bytes(int ggml_type, int64_t rows, int64_t cols);
 /// Bytes of `rows` activation rows of `cols` values quantized for MMQ (the row padded to 512 values).
@@ -38,12 +31,6 @@ size_t q8_bytes(int64_t rows, int64_t cols);
 /// (STRATA_QUANT_GATHER=1: per row, as before).
 void quantize(const float* x, const int32_t* ids, void* xq, int ggml_type, int64_t cols, int64_t ld, int64_t rows,
               void* stream, float* yscale = nullptr, const int32_t* slot = nullptr, int k_used = 0);
-/// NVFP4 on Blackwell in w4a4 mode: the MMQ kernel multiplies FP4 x FP4, so its activations are NVFP4 too, with
-/// one float scale per row that `quantize` writes to `yscale` and the product reads as Product::y_scale.  Decided
-/// by the mode and a device probe of the same compile.  In w4a4x2 mode true as well (the gate/up input's terms share
-/// one row scale); `quantize` and `Context::run` pick per product by its K: a product with K < 2048 takes q8_1 and
-/// w4a8 (its y_scale ignored).
-bool fp4_activations(int ggml_type);
 /// NVFP4 expert tails: GU rows [row0, row0 + nrows) of a group of `n` experts (absolute `bounds`, n + 1 of them,
 /// on the device) scaled by their expert's {s_gate, s_up, s_down, 0} (`tails`, 4 floats each, on the device): the
 /// gate half by s_gate, the up half by s_up.
@@ -69,21 +56,13 @@ struct Product {
     int64_t total_rows = 0, max_rows = 0;
     float* dst = nullptr;
     int64_t ld_dst = 0;
-    const float* y_scale = nullptr;     ///< NVFP4 w4a4: the per-row activation scales (fp4_activations)
+    const float* y_scale = nullptr;     ///< Optional MMQ output scaling (upstream interface).
     /// n device pointers (host array, n <= kGatherGroupMax): expert e's [w_rows, w_cols] matrix where it lies, instead of
     /// w + e * expert_bytes.  Only where direct_ok.  The K blocks past a row's end are not read (the same sums).
     const void* const* w_ptrs = nullptr;
-    /// With w_ptrs, a w4a4x2 product (gate/up) only: xq holds y_count activation rows (each token once, quantize
-    /// without ids) and MMQ row r reads row y_rows[r] (device; the prompt path's row -> token table) - the same bytes
-    /// as the rows a scattering quantize writes, without writing each token k_used times.
-    const int32_t* y_rows = nullptr;
-    int64_t y_count = 0;
 };
-/// A Product of this type can take w_ptrs (read its experts in place): Q8_0, NVFP4 in w4a4x2 or w4a8.
+/// A Product of this type can take w_ptrs: Q8_0 and NVFP4 W4A8.
 bool direct_ok(int ggml_type);
-/// ...and y_rows, at this K: NVFP4 in w4a4x2 with K >= 2048 (gate/up).
-bool token_rows_ok(int ggml_type, int64_t w_cols);
-
 /// The launch context (llama.cpp's MMQ keeps a small scratch pool for its stream-k fixup).  One per prompt path.
 class Context {
 public:

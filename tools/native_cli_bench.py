@@ -16,7 +16,7 @@ from native_telemetry import process_cpu_seconds
 
 def main():
     p = argparse.ArgumentParser(__doc__)
-    p.add_argument('--config', default='config/native/rtx5090-262k-mtp2.json')
+    p.add_argument('--config', default='config/native/rtx5090-262k-fast-v0142.json')
     p.add_argument('--exe', required=True)
     p.add_argument('--fixture', default='bench/results/2026-10-10-safetensors-runtime/p5-three-rounds/requests.json')
     p.add_argument('--case', default='long8192chunk-cold')

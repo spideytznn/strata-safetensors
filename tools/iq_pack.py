@@ -56,12 +56,6 @@ sys.path.insert(0, str(HERE))
 import gguf_reader as G  # noqa: E402
 
 FLOAT = {"BF16", "F32", "F16"}
-def fidelity_native(name):
-    return name in ("output.weight", "token_embd.weight") or name.endswith((
-        ".attn_qkv.weight", ".attn_gate.weight", ".ssm_out.weight", ".attn_q.weight",
-        ".attn_k.weight", ".attn_v.weight", ".attn_output.weight", ".ffn_gate_shexp.weight",
-        ".ffn_up_shexp.weight", ".ffn_down_shexp.weight"))
-
 ROUTERS = ("ffn_gate_inp.weight", "ffn_gate_inp_shexp.weight")
 NOT_IN_PACK = {"per_layer_token_embd.weight"}      # the 28.8 GB PLE table: read from its GGUF by the engine
 
@@ -207,7 +201,6 @@ def check_split(files) -> None:
 ROLES = ("gate", "up", "down")
 N_EXPERT = 512
 ALIGN = 64
-NVFP4_TAIL = 16          # {s_gate, s_up, s_down, 0} after an NVFP4 expert blob
 
 
 def read_index(path: pathlib.Path):
@@ -278,7 +271,7 @@ def convert(name: str, type_name: str, raw: np.ndarray, compat_bf16: bool):
     return "2", data, len(data), rec
 
 
-def index_standalone(src, out, model: Model, compat_bf16: bool = False, fidelity: bool = False) -> int:
+def index_standalone(src, out, model: Model, compat_bf16: bool = False) -> int:
     """Every non-expert tensor of the model: the floats the engine reads from the pack into dense.bin in the form it
     reads them (FORM; converted when stored otherwise, see above), quantized ones served natively from the GGUF."""
     todo, problems = [], []
@@ -291,7 +284,7 @@ def index_standalone(src, out, model: Model, compat_bf16: bool = False, fidelity
         # quantized: served from the GGUF unless the engine reads it from the pack (FORM), which takes
         # --compat-bf16 to dequantize - except the native PLE key encodings
         form = form_of(name)
-        native = (fidelity and fidelity_native(name)) or t.type_name not in FLOAT and (form is None or (
+        native = t.type_name not in FLOAT and (form is None or (
             name == "blk.1.ple_key.weight" and t.type_name in NATIVE_PLE_KEY))
         if t.type_name not in FLOAT and not native and not compat_bf16:
             problems.append(f"{name} is {t.type_name}, but the engine requires {form}; use --compat-bf16")
@@ -458,25 +451,11 @@ def expert_layout(model: Model, src: pathlib.Path):
         if per[0] != per[1] or ts[0].type_name != ts[1].type_name:
             return "layer %d: gate and up differ in type" % l
         blob = per[0] + per[1] + per[2]
-        nvfp4 = ts[0].type_name == "NVFP4" or ts[2].type_name == "NVFP4"
-        if nvfp4:
-            # NVFP4 (ModelOpt) carries one F32 weight_scale_2 per expert and projection, which the block format has
-            # no room for. Each blob gets a 16-byte tail {s_gate, s_up, s_down, 0} so every consumer that already
-            # moves whole blobs (the arena, the device cache, the prefill staging, a second GPU) moves the scales
-            # with the weights; the gate/up kernels read it. See tools/nvfp4_convert.py.
-            # a mixed expert (e.g. NVFP4 gate/up + Q8_0 down) has the tail too, with 1.0 for the other projection
-            if any(t.type_name == "NVFP4" and "blk.%d.ffn_%s_exps.scale" % (l, r) not in T for t, r in zip(ts, ROLES)):
-                return "layer %d: NVFP4 experts without their .scale tensors" % l
-            blob += NVFP4_TAIL
         layout.append((l, ts[0].type_id, ts[2].type_id, offset, blob, ts))
         ws = [model.where[n] for n in names]
         files = ["" if w[3] == src else w[3].name for w in ws]
         column = files[0] if len(set(files)) == 1 else ",".join(files)
         n_split += len(set(files)) != 1
-        if nvfp4:   # no GGUF offsets: experts.bin is the only source that carries the scale tails
-            lines.append("%d %d %d %d %d" % (l, ts[0].type_id, ts[2].type_id, offset, blob))
-            offset += blob * n_expert
-            continue
         line = "%d %d %d %d %d %d %d %d" % (l, ts[0].type_id, ts[2].type_id, offset, blob,
                                             *[w[0].data_start + w[1].offset for w in ws])
         lines.append(line + ("" if not column else " " + column))
@@ -522,11 +501,7 @@ def main() -> int:
                          "(rounds weights; leaves experts and the PLE table unchanged)")
     ap.add_argument("--experts-bin", action="store_true",
                     help="also write experts.bin (the engine otherwise reads the experts from the GGUF itself)")
-    ap.add_argument("--fidelity", action="store_true", help="exact BF16 native projections; requires the adapted engine and dense sidecar")
     a = ap.parse_args()
-    if a.fidelity:
-        if a.base or a.compat_bf16: ap.error("--fidelity cannot use --base or --compat-bf16")
-        FORM["ple_conv1d.weight"] = "BF16"
     if a.compat_bf16 and a.base:
         ap.error("--compat-bf16 cannot reuse --base dense weights")
     # HF snapshot files are symlinks to hash-named blobs. Keep the shard filename for discovery: .absolute(), not
@@ -547,35 +522,14 @@ def main() -> int:
         print(got)
         return 1
     layout, text, n_expert, offset = got
-    if any(t.type_name == "NVFP4" for *_, ts in layout for t in ts):
-        a.experts_bin = True   # the GGUF holds the weights without the scale tails: the engine must read experts.bin
     path = out / "experts.bin"
     sidecar = out / "experts.bin.src.json"
     want = experts_source(model, text, offset)
     reuse = path.exists() and path.stat().st_size == offset and read_json(sidecar) == want
 
-    def nvfp4_tails(l, ts):
-        """(n_expert, NVFP4_TAIL) bytes {s_gate, s_up, s_down, 0} of a layer with an NVFP4 projection; a projection in
-        another format gets exactly 1.0 (the engine multiplies by the tail unconditionally). None for a bad scale."""
-        s = [np.frombuffer(model.bytes("blk.%d.ffn_%s_exps.scale" % (l, r)).tobytes(), dtype=np.float32)
-             if t.type_name == "NVFP4" else np.ones(n_expert, dtype=np.float32) for t, r in zip(ts, ROLES)]
-        tail = np.zeros((n_expert, NVFP4_TAIL // 4), dtype=np.float32)
-        tail[:, 0], tail[:, 1], tail[:, 2] = s[0], s[1], s[2]
-        if not np.isfinite(tail).all() or (tail[:, :3] <= 0).any():
-            print("layer %d: a non-finite or non-positive NVFP4 scale" % l)
-            return None
-        return tail.view(np.uint8)
-
-    def layer_blobs(l, blob, ts):
-        """(n_expert, blob): gate | up | down [| the NVFP4 scale tail] per expert; None for a bad NVFP4 scale."""
-        parts = [model.bytes(t.name).reshape(n_expert, -1) for t in ts]
-        if any(t.type_name == "NVFP4" for t in ts):
-            tail = nvfp4_tails(l, ts)
-            if tail is None:
-                return None
-            parts.append(tail)
-        chunk = np.concatenate(parts, axis=1)
-        assert chunk.shape == (n_expert, blob)
+    def layer_blobs(blob, ts):
+        chunk = np.concatenate([model.bytes(t.name).reshape(n_expert, -1) for t in ts], axis=1)
+        assert chunk.shape == (n_expert, blob)             # (n_expert, blob): gate | up | down per expert
         return chunk
 
     if reuse:
@@ -587,9 +541,6 @@ def main() -> int:
                 for e in (0, n_expert - 1):
                     f.seek(off + e * blob)
                     want_blob = b"".join(model.bytes(t.name).reshape(n_expert, -1)[e].tobytes() for t in ts)
-                    if any(t.type_name == "NVFP4" for t in ts):
-                        tail = nvfp4_tails(l, ts)
-                        want_blob += tail[e].tobytes() if tail is not None else b""
                     if f.read(blob) != want_blob:
                         reuse = False
         if not reuse:
@@ -608,7 +559,7 @@ def main() -> int:
         (out / "native_experts.txt").unlink(missing_ok=True)
         rc = index_from_base(a, src, base, out, g, {t.name: t for t in g.tensors}, mm)
     else:
-        rc = index_standalone(src, out, model, a.compat_bf16, a.fidelity)
+        rc = index_standalone(src, out, model, a.compat_bf16)
     if rc:
         return rc
     if not (out / "tokenizer" / "vocab.json").exists() or not (out / "tokenizer" / "chat_template.jinja").exists():
@@ -635,10 +586,7 @@ def main() -> int:
     part = out / "experts.bin.tmp"
     with open(part, "wb") as fo:
         for l, gt, dt, off, blob, ts in layout:
-            chunk = layer_blobs(l, blob, ts)
-            if chunk is None:
-                return 1
-            fo.write(chunk.tobytes())
+            fo.write(layer_blobs(blob, ts).tobytes())
             if l % 8 == 0:
                 print("  layer %2d  %-8s/%-7s blob %8d  at %.2f GiB" % (l, ts[0].type_name, ts[2].type_name, blob,
                                                                         off / 2**30), flush=True)

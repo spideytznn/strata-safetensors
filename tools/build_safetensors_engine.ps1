@@ -24,7 +24,7 @@ foreach ($line in $environment) {
 }
 $env:PATH = "$cuda\bin;$env:PATH"
 $ErrorActionPreference = 'Continue' # PowerShell 5 treats native stderr warnings as ErrorRecords
-& "$bin\cmake.exe" -S $repo -B $build -G Ninja '-DCMAKE_BUILD_TYPE=Release' "-DCMAKE_MAKE_PROGRAM=$bin\ninja.exe" '-DSTRATA_ENABLE_CUDA=ON' '-DCMAKE_CUDA_ARCHITECTURES=120' "-DCMAKE_CUDA_COMPILER=$cuda\bin\nvcc.exe" '-DSTRATA_GGML_DIR=G:/Strata/Strata/third_party/llama.cpp' '-DSTRATA_NVFP4_TC=ON' '-DSTRATA_BUILD_TESTS=OFF' '-DSTRATA_BUILD_CONVERSATION_TESTS=ON' '-DCMAKE_CXX_FLAGS=/utf-8 /EHsc' "-DSTRATA_EXECUTABLE_NAME=$OutputName"
+& "$bin\cmake.exe" -S $repo -B $build -G Ninja '-DCMAKE_BUILD_TYPE=Release' "-DCMAKE_MAKE_PROGRAM=$bin\ninja.exe" '-DSTRATA_ENABLE_CUDA=ON' '-DCMAKE_CUDA_ARCHITECTURES=120' "-DCMAKE_CUDA_COMPILER=$cuda\bin\nvcc.exe" '-DSTRATA_GGML_DIR=G:/Strata/Strata/third_party/llama.cpp' '-DSTRATA_BUILD_TESTS=OFF' '-DSTRATA_BUILD_CONVERSATION_TESTS=ON' '-DCMAKE_CXX_FLAGS=/utf-8 /EHsc' "-DSTRATA_EXECUTABLE_NAME=$OutputName"
 if ($LASTEXITCODE -ne 0) { throw 'configure failed' }
 & "$bin\cmake.exe" --build $build --target $Targets --parallel $Jobs
 if ($LASTEXITCODE -ne 0) { throw 'build failed' }

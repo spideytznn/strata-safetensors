@@ -1,0 +1,59 @@
+{
+  "exe": "G:\\Strata\\Strata\\engine\\fusion-v041\\strata.exe",
+  "args": [
+    "--pack",
+    "G:\\Strata\\Strata-data\\packs\\unsloth-ud-q6_k_xl",
+    "--native",
+    "G:\\moemodels\\Qwen3.8-flash-next-gguf\\Qwen3.8-Flash-Next-UD-Q6_K_XL-00001-of-00006.gguf",
+    "--ple-gguf",
+    "G:\\Strata\\Strata-data\\ngram\\fp8\\ple-fp8.gguf",
+    "--resident-budget-gib",
+    "81",
+    "--expert-profile",
+    "G:\\Strata\\Strata\\data\\expert-profile.bin",
+    "--expert-cache",
+    "auto",
+    "--prefill",
+    "auto",
+    "--spec",
+    "4",
+    "--max-context",
+    "262144",
+    "--kv",
+    "int8",
+    "--vram-reserve-mib",
+    "1536",
+    "--conversation-cache-mib",
+    "0",
+    "--vision",
+    "--kv-resident",
+    "32768",
+    "--conversation-cache-min-free-mib",
+    "1024"
+  ],
+  "cwd": "G:\\Strata\\Strata",
+  "tokenizer": "G:\\Strata\\Strata-data\\packs\\unsloth-ud-q6_k_xl\\tokenizer",
+  "model_name": "qwen3.8-flash-next-ud-q6_k_xl-fusion-no-mtp",
+  "fit_max_tokens": true,
+  "log": "G:\\Strata\\Strata\\strata-fusion-q6kl-no-mtp.log",
+  "lib_dirs": [
+    "G:\\Strata\\Strata\\.venv\\Lib\\site-packages\\nvidia\\cu13\\bin\\x86_64"
+  ],
+  "host": "127.0.0.1",
+  "port": 8880,
+  "vision": {
+    "exe": "G:\\Strata\\Strata-Official\\engine\\q6\\strata-vision.exe",
+    "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+    "model": "G:\\Strata\\Strata-data\\packs\\unsloth-ud-q6_k_xl\\vision-vocab.gguf",
+    "gpu": true,
+    "max_tokens": 1024,
+    "threads": 16
+  },
+  "allowed_hosts": [
+    "*"
+  ],
+  "cors_origins": [
+    "*"
+  ],
+  "parallel": 1
+}

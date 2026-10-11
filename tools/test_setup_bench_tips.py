@@ -33,15 +33,10 @@ class BenchTips(unittest.TestCase):
         self.assertEqual(tips(BASE, win=True), [])                      # auto: nothing to warn about
 
     def test_prefill_auto_32768_follows_the_ram(self):
-        # this fork's plain auto already reaches 32768-token chunks: no tip to set auto:32768, at any RAM
-        for ram in (32, 64, 91.9, 92.0, 95.6, 128):
-            with self.subTest(ram):
-                self.assertEqual([t for t in tips(ram=ram) if "auto:32768" in t], [])
+        self.assertTrue(any("auto:32768" in t and t.startswith("tip") for t in tips(ram=128)))
+        self.assertEqual([t for t in tips(ram=64) if "auto:32768" in t], [])
         big = ["--prefill", "auto:32768"]
-        w = [t for t in tips(big, ram=32) if t.startswith("warning") and "auto:32768" in t]
-        self.assertEqual(len(w), 1)
-        self.assertIn("auto:8192", w[0])
-        self.assertNotIn("than --prefill auto", w[0])                 # the same chunk as auto in this fork
+        self.assertTrue(any(t.startswith("warning") and "auto:32768" in t for t in tips(big, ram=32)))
         self.assertEqual([t for t in tips(big, ram=96) if "auto:32768" in t], [])
 
     def test_resident_headroom_on_small_ram(self):

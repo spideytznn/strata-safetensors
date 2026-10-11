@@ -1,9 +1,9 @@
 // src/prefill/mmq_nvfp4_parity.cpp - the prompt path's NVFP4 expert products (MMQ) against an exact reference.
 //
-//     STRATA_PREFILL_NVFP4=w4a8|w4a4 mmq_nvfp4_parity pack/experts.bin [rows ...]
-//     STRATA_PREFILL_NVFP4=w4a8|w4a4 mmq_nvfp4_parity pack/experts.bin --group
-//     STRATA_PREFILL_NVFP4=w4a8|w4a4 mmq_nvfp4_parity pack/experts.bin --layers [expert]
-//     STRATA_PREFILL_NVFP4=w4a8|w4a4 mmq_nvfp4_parity pack/experts.bin --real moe_input.bin layer
+//     STRATA_PREFILL_NVFP4=w4a8 mmq_nvfp4_parity pack/experts.bin [rows ...]
+//     STRATA_PREFILL_NVFP4=w4a8 mmq_nvfp4_parity pack/experts.bin --group
+//     STRATA_PREFILL_NVFP4=w4a8 mmq_nvfp4_parity pack/experts.bin --layers [expert]
+//     STRATA_PREFILL_NVFP4=w4a8 mmq_nvfp4_parity pack/experts.bin --real moe_input.bin layer
 //
 // --group: the prompt path's launch shape - 20 experts of layer 0 with 0..60 rows each, one activation array in
 // expert order, gate/up in two launches (experts 0-15, then 16-19 through the same absolute bounds, 16 in), and the
@@ -16,7 +16,7 @@
 // One real expert (layer 0, expert 0): gate/up [1280, 2560] and down [2560, 640], as the prompt path gathers them.
 // Activations are random rows; the reference dequantizes the weights with ggml's own NVFP4 decode and sums in double.
 // Reported per product: relative Frobenius error and the worst element relative to the row's largest output.
-// 8-bit activations land near 0.5%; FP4 activations near 10% - the difference between the two modes.
+// Reports W4A8 activation-quantization error against the decoded FP64 reference.
 #include "strata/prefill/moe_mmq.hpp"
 
 #include "ggml.h"
@@ -72,7 +72,7 @@ int product(const uint8_t* w_host, int64_t rows, int64_t cols, int T, const char
             ref[(size_t) t * rows + r] = s;
         }
 
-    uint8_t* dw = nullptr; float* dx = nullptr; void* dq = nullptr; float* dys = nullptr; float* dd = nullptr;
+    uint8_t* dw = nullptr; float* dx = nullptr; void* dq = nullptr; float* dd = nullptr;
     int32_t* dids = nullptr; int32_t* dbounds = nullptr;
     ck(cudaMalloc(&dw, wbytes + 4096), "w");
     ck(cudaMemset(dw, 0, wbytes + 4096), "w");
@@ -80,24 +80,22 @@ int product(const uint8_t* w_host, int64_t rows, int64_t cols, int T, const char
     ck(cudaMalloc(&dx, x.size() * sizeof(float)), "x");
     ck(cudaMemcpy(dx, x.data(), x.size() * sizeof(float), cudaMemcpyHostToDevice), "x");
     ck(cudaMalloc(&dq, mmq::q8_bytes(T, cols)), "xq");
-    ck(cudaMalloc(&dys, T * sizeof(float)), "yscale");
     ck(cudaMalloc(&dd, (size_t) T * rows * sizeof(float)), "dst");
     ck(cudaMalloc(&dids, T * sizeof(int32_t)), "ids");
     ck(cudaMalloc(&dbounds, 2 * sizeof(int32_t)), "bounds");
     const int32_t bounds[2] = {0, T};
     ck(cudaMemcpy(dbounds, bounds, sizeof bounds, cudaMemcpyHostToDevice), "bounds");
     mmq::iota(dids, T, nullptr);
-    mmq::quantize(dx, nullptr, dq, GGML_TYPE_NVFP4, cols, cols, T, nullptr, dys);
+    mmq::quantize(dx, nullptr, dq, GGML_TYPE_NVFP4, cols, cols, T, nullptr);
     mmq::Context ctx;
     mmq::Product p;
     p.w = dw; p.type = GGML_TYPE_NVFP4; p.w_rows = rows; p.w_cols = cols; p.expert_bytes = wbytes; p.n = 1;
     p.xq = dq; p.bounds = dbounds; p.ids = dids; p.total_rows = T; p.max_rows = T; p.dst = dd; p.ld_dst = rows;
-    p.y_scale = mmq::fp4_activations(GGML_TYPE_NVFP4) ? dys : nullptr;
     ctx.run(p, nullptr);
     ck(cudaDeviceSynchronize(), "run");
     std::vector<float> got((size_t) T * rows);
     ck(cudaMemcpy(got.data(), dd, got.size() * sizeof(float), cudaMemcpyDeviceToHost), "dst");
-    cudaFree(dw); cudaFree(dx); cudaFree(dq); cudaFree(dys); cudaFree(dd); cudaFree(dids); cudaFree(dbounds);
+    cudaFree(dw); cudaFree(dx); cudaFree(dq); cudaFree(dd); cudaFree(dids); cudaFree(dbounds);
 
     double num = 0, den = 0, worst = 0;
     for (int t = 0; t < T; ++t) {
@@ -129,7 +127,7 @@ int product(const uint8_t* w_host, int64_t rows, int64_t cols, int T, const char
         return rel > 0.2 ? 1 : 0;
     }
     std::printf("%-8s T %4d  [%lld x %lld]  rel. error %.4f%%  worst %.4f%% of the row max%s\n", what, T,
-                (long long) rows, (long long) cols, 100 * rel, 100 * worst, rel > 0.05 ? "  <-- FP4-level or wrong" : "");
+                (long long) rows, (long long) cols, 100 * rel, 100 * worst, rel > 0.05 ? "  <-- large error" : "");
     return rel > 0.2 ? 1 : 0;
 }
 
@@ -179,7 +177,7 @@ int group(const char* path) {
     std::vector<int32_t> relB(5);
     for (int i = 0; i <= 4; ++i) relB[i] = bounds[16 + i] - rB;
 
-    uint8_t *dG, *dD; float *dx, *dh, *dgu, *ddn, *dys, *dhs; void *dxq, *dhq; int32_t *dids, *dbounds, *drel;
+    uint8_t *dG, *dD; float *dx, *dh, *dgu, *ddn; void *dxq, *dhq; int32_t *dids, *dbounds, *drel;
     ck(cudaMalloc(&dG, G.size()), "G"); ck(cudaMemcpy(dG, G.data(), G.size(), cudaMemcpyHostToDevice), "G");
     ck(cudaMalloc(&dD, D.size()), "D"); ck(cudaMemcpy(dD, D.data(), D.size(), cudaMemcpyHostToDevice), "D");
     ck(cudaMalloc(&dx, x.size() * 4), "x"); ck(cudaMemcpy(dx, x.data(), x.size() * 4, cudaMemcpyHostToDevice), "x");
@@ -187,27 +185,24 @@ int group(const char* path) {
     ck(cudaMalloc(&dgu, (size_t) T * 2 * FF * 4), "gu"); ck(cudaMemset(dgu, 0, (size_t) T * 2 * FF * 4), "gu");
     ck(cudaMalloc(&ddn, (size_t) std::max(nB, 1) * N * 4), "dn");
     ck(cudaMalloc(&dxq, mmq::q8_bytes(T, N)), "xq"); ck(cudaMalloc(&dhq, mmq::q8_bytes(std::max(nB, 1), FF)), "hq");
-    ck(cudaMalloc(&dys, T * 4), "ys"); ck(cudaMalloc(&dhs, std::max(nB, 1) * 4), "hs");
     ck(cudaMalloc(&dids, T * 4), "ids"); ck(cudaMalloc(&dbounds, (E + 1) * 4), "b"); ck(cudaMalloc(&drel, 5 * 4), "rel");
     ck(cudaMemcpy(dbounds, bounds.data(), (E + 1) * 4, cudaMemcpyHostToDevice), "b");
     ck(cudaMemcpy(drel, relB.data(), 5 * 4, cudaMemcpyHostToDevice), "rel");
     mmq::iota(dids, T, nullptr);
-    const bool fp4 = mmq::fp4_activations(GGML_TYPE_NVFP4);
-    mmq::quantize(dx, nullptr, dxq, GGML_TYPE_NVFP4, N, N, T, nullptr, dys);
+    mmq::quantize(dx, nullptr, dxq, GGML_TYPE_NVFP4, N, N, T, nullptr);
     mmq::Context ctx;
     for (int grp = 0; grp < 2; ++grp) {
         mmq::Product p;
         p.w = dG + (grp ? 16 * gub : 0); p.type = GGML_TYPE_NVFP4; p.w_rows = 2 * FF; p.w_cols = N; p.expert_bytes = gub;
         p.n = grp ? 4 : 16; p.xq = dxq; p.bounds = dbounds + (grp ? 16 : 0); p.ids = dids; p.total_rows = T;
-        p.max_rows = grp ? maxB : maxA; p.dst = dgu; p.ld_dst = 2 * FF; p.y_scale = fp4 ? dys : nullptr;
+        p.max_rows = grp ? maxB : maxA; p.dst = dgu; p.ld_dst = 2 * FF;
         ctx.run(p, nullptr);
     }
-    mmq::quantize(dh, nullptr, dhq, GGML_TYPE_NVFP4, FF, FF, nB, nullptr, dhs);
+    mmq::quantize(dh, nullptr, dhq, GGML_TYPE_NVFP4, FF, FF, nB, nullptr);
     {
         mmq::Product p;
         p.w = dD + 16 * db; p.type = GGML_TYPE_NVFP4; p.w_rows = N; p.w_cols = FF; p.expert_bytes = db; p.n = 4;
         p.xq = dhq; p.bounds = drel; p.ids = dids; p.total_rows = nB; p.max_rows = maxB; p.dst = ddn; p.ld_dst = N;
-        p.y_scale = fp4 ? dhs : nullptr;
         ctx.run(p, nullptr);
     }
     ck(cudaDeviceSynchronize(), "run");
@@ -215,7 +210,7 @@ int group(const char* path) {
     ck(cudaMemcpy(gu.data(), dgu, gu.size() * 4, cudaMemcpyDeviceToHost), "gu");
     ck(cudaMemcpy(dn.data(), ddn, dn.size() * 4, cudaMemcpyDeviceToHost), "dn");
     cudaFree(dG); cudaFree(dD); cudaFree(dx); cudaFree(dh); cudaFree(dgu); cudaFree(ddn); cudaFree(dxq); cudaFree(dhq);
-    cudaFree(dys); cudaFree(dhs); cudaFree(dids); cudaFree(dbounds); cudaFree(drel);
+    cudaFree(dids); cudaFree(dbounds); cudaFree(drel);
 
     Err ea, eb, ed;
     std::vector<float> wf((size_t) 2 * FF * N), wd((size_t) N * FF);
@@ -334,8 +329,7 @@ int main(int argc, char** argv) {
     if (argc >= 3 && std::string(argv[2]) == "--group") return group(argv[1]);
     if (argc >= 5 && std::string(argv[2]) == "--real") return real(argv[1], argv[3], std::atoi(argv[4]));
     if (argc >= 3 && std::string(argv[2]) == "--layers") return layers(argv[1], argc >= 4 ? std::atoi(argv[3]) : 7);
-    const char* mode = std::getenv("STRATA_PREFILL_NVFP4");
-    std::printf("mode %s, FP4 activations: %s\n", mode ? mode : "default", mmq::fp4_activations(GGML_TYPE_NVFP4) ? "yes" : "no");
+    std::printf("mode w4a8\n");
     std::vector<int> Ts;
     for (int i = 2; i < argc; ++i) Ts.push_back(std::atoi(argv[i]));
     if (Ts.empty()) Ts = {1, 7, 37, 128, 300};

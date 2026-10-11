@@ -6,9 +6,6 @@
 // included unchanged.
 #include "strata/kernels/iq_kernels.hpp"
 #include <stdexcept>
-#ifdef STRATA_NVFP4_TC
-#include "strata/kernels/nvfp4_tensor.hpp"
-#endif
 #include "strata/kernels/dp4a.hpp"
 #include "strata/kernels/q8_1_finite.hpp"
 #include "s26_tsum.cuh"
@@ -2896,10 +2893,6 @@ NativeExpertLayout native_expert_layout(int gu_type, int d_type, int64_t n_embd,
 }
 
 size_t native_expert_scratch_bytes(int64_t cap, int64_t n_ff) {
-#ifdef STRATA_NVFP4_TC
-    const char* tc=std::getenv("STRATA_NVFP4_TC");
-    if(tc && std::atoi(tc)>0) return size_t(cap)*(size_t(n_ff)*20+4096)+1024;
-#endif
     const size_t f = (size_t) cap * (size_t) n_ff * sizeof(float);
     return 3 * ((f + 255) & ~(size_t) 255) + (((size_t) cap * (size_t) (n_ff / 32) * sizeof(block_q8_1) + 255) & ~(size_t) 255);
 }
@@ -3513,7 +3506,11 @@ int exp_mode() {
         cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
         cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev);
         const char* sm70 = std::getenv("STRATA_SM70_TABLE");   // PR 1401: Volta's mode 8 is opt-in until confirmed on a V100
-        per_dev[dev] = 1 + (major == 7 && minor == 0 && sm70 != nullptr && std::atoi(sm70) != 0 ? 8 : kExpModeDefault);
+        // Pascal GP100 (sm_60): mode 8 too, on by default (Tesla P100: bitwise equal on the model's layers, the down
+        // projection 116 -> 94 us and IQ3_S gate/up 360 -> 229 us in a 28-group VRAM call); STRATA_SM60_TABLE=0 keeps the CUDA layout
+        const char* sm60 = std::getenv("STRATA_SM60_TABLE");
+        const bool p100 = major == 6 && minor == 0 && (sm60 == nullptr || std::atoi(sm60) != 0);
+        per_dev[dev] = 1 + ((major == 7 && minor == 0 && sm70 != nullptr && std::atoi(sm70) != 0) || p100 ? 8 : kExpModeDefault);
     }
     return per_dev[dev] - 1;
 #endif
@@ -3674,14 +3671,6 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     float* up = (float*) ((uint8_t*) scratch + fa);
     float* h = (float*) ((uint8_t*) scratch + 2 * fa);
     block_q8_1* hq = (block_q8_1*) ((uint8_t*) scratch + 3 * fa);
-#ifdef STRATA_NVFP4_TC
-    static const int tensor_terms=[] { const char* v=std::getenv("STRATA_NVFP4_TC"); return v ? std::atoi(v) : 0; }();
-    if(tensor_terms && L.gu_type==40 && L.d_type==40) {
-        if(tensor_terms<1 || tensor_terms>3) throw std::invalid_argument("STRATA_NVFP4_TC must be 1, 2 or 3");
-        nvfp4_tensor_grouped(L,grp_ptr,grp_start,n_groups,ent_dst,ent_tok,grid_groups>0?grid_groups:cap_groups,cap_entries,x_f32,scratch,out,stream,tensor_terms);
-        return;
-    }
-#endif
     static const bool fidelity_f32 = [] { const char* v=std::getenv("STRATA_NVFP4_F32"); return v && v[0]=='1'; }();
     if (fidelity_f32 && L.gu_type==40 && L.d_type==40) {
         if (!x_f32 || !L.tail_off) throw std::invalid_argument("STRATA_NVFP4_F32 requires original FP32 activations and scale tails");

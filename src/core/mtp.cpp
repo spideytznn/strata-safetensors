@@ -5,7 +5,6 @@
 #include "strata/core/on_device.hpp"
 
 #include "strata/core/native_head.hpp"
-#include "strata/core/native_draft_vocab.hpp"
 #include "strata/core/peer_experts.hpp"
 #include "strata/platform/memory.hpp"
 #include "strata/kernels/bf16_gemv.hpp"
@@ -176,8 +175,8 @@ const void* MtpDrafter::q8(const char* name) const {
 }
 const void* MtpDrafter::wq(const char* name, int& type) const {
     if (native_fp8_) {
-        type = native_q8_projections_ ? 8 : 30;
-        return native_q8_projections_ ? q8(name) : bf16(name);
+        type = 30;
+        return bf16(name);
     }
     if (dense4_ != nullptr)
         for (const auto& e : q4_off_)
@@ -266,7 +265,6 @@ bool MtpDrafter::load(const std::string& rt_dir, const ModelGeometry& g, Session
         experts_ = shared->experts_;
         tensors_ = shared->tensors_;
         native_fp8_ = shared->native_fp8_;
-        native_q8_projections_ = shared->native_q8_projections_;
         owns_weights_ = false;
         owns_draft_head_ = false;
     }
@@ -329,7 +327,7 @@ bool MtpDrafter::load(const std::string& rt_dir, const ModelGeometry& g, Session
     const char* required[] = {"fc_embedding.weight", "fc_hidden.weight", "self_attn.q_proj.weight", "self_attn.k_proj.weight",
                               "self_attn.v_proj.weight", "self_attn.o_proj.weight", "mlp.shared_expert.gate_proj.weight",
                               "mlp.shared_expert.up_proj.weight", "mlp.shared_expert.down_proj.weight"};
-    for (const char* n : required) if (native_fp8_ && !native_q8_projections_ ? !bf16(n) : !q8(n)) { err = std::string("mtp: missing projection ") + n; return false; }
+    for (const char* n : required) if (native_fp8_ ? !bf16(n) : !q8(n)) { err = std::string("mtp: missing projection ") + n; return false; }
 
     // ---- the layer's own K/V (dense attention: no indexer state is read)
     const strata::kernels::QsaShapes s = shapes_of(g);
@@ -630,9 +628,8 @@ bool MtpDrafter::bind(const WeightTable& wt, const NativeHead* head, const float
     if (!wo) { err = "mtp: output.weight is missing"; return false; }
     n_vocab_ = wo->ne1;
     if (head == nullptr || !head->loaded()) { err = "mtp: the draft layer needs the native head (--native)"; return false; }
-    const bool native_subset = native_fp8_ && !dvocab_path_.empty();
-    if (native_subset && full_head_env()) {
-        err = "mtp: explicit native draft vocabulary conflicts with STRATA_MTP_FULL_HEAD=1";
+    if (native_fp8_ && !dvocab_path_.empty()) {
+        err = "mtp: native safetensors uses the complete original draft head; --mtp-draft-vocab is unsupported";
         return false;
     }
     if (head_logits_ == nullptr &&
@@ -653,21 +650,10 @@ bool MtpDrafter::bind(const WeightTable& wt, const NativeHead* head, const float
         owns_draft_head_ = false;
     }
     // the draft head's token subset, when tools/draft_vocab.py wrote one
-    // Native safetensors keeps the complete checkpoint head unless the operator explicitly selects a subset.
-    // An unrelated draft_vocab.bin beside the checkpoint must never silently change the native default.
-    if (dhead_ == nullptr && shared == nullptr && (!native_fp8_ || native_subset) && !full_head_env()) {
+    if (!native_fp8_ && dhead_ == nullptr && shared == nullptr && !full_head_env()) {
         std::vector<uint8_t> raw;
-        const bool read = read_file(vocab_file(), raw, native_subset ? (uint64_t) n_vocab_ * 4 : ~uint64_t{0});
-        if (native_subset && (!read || raw.size() < 4 || raw.size() % 4 != 0)) {
-            err = "mtp: native draft vocabulary must be a readable nonempty int32 token-ID list, at most the full vocabulary";
-            return false;
-        }
-        if (read && raw.size() >= 4 && raw.size() % 4 == 0) {
+        if (read_file(vocab_file(), raw) && raw.size() >= 4 && raw.size() % 4 == 0) {
             n_dvocab_ = (int64_t) (raw.size() / 4);
-            if (native_subset) {
-                std::vector<int32_t> ids;
-                if (!decode_native_draft_vocab(raw, n_vocab_, ids, err)) return false;
-            }
             const int64_t row_bytes = (int64_t) head->row_bytes();   // a vocabulary row of the native head
             if (cudaMalloc((void**) &dvocab_, raw.size()) != cudaSuccess ||
                 cudaMalloc((void**) &dhead_, (size_t) (n_dvocab_ * row_bytes)) != cudaSuccess) {
@@ -675,29 +661,14 @@ bool MtpDrafter::bind(const WeightTable& wt, const NativeHead* head, const float
                 draft_head_hint(n_dvocab_, row_bytes);
                 return false;
             }
-            const cudaError_t vocab_copy = cudaMemcpy(dvocab_, raw.data(), raw.size(), cudaMemcpyHostToDevice);
-            if (native_subset && vocab_copy != cudaSuccess) {
-                err = std::string("mtp: native draft vocabulary upload: ") + cudaGetErrorString(vocab_copy);
-                return false;
-            }
+            cudaMemcpy(dvocab_, raw.data(), raw.size(), cudaMemcpyHostToDevice);
             dvocab_host_.resize((size_t) n_dvocab_);
             std::memcpy(dvocab_host_.data(), raw.data(), raw.size());
             strata::kernels::gather_rows((const uint8_t*) head->weights(), row_bytes, dvocab_, n_dvocab_, dhead_, nullptr);
-            if (native_subset) {
-                const cudaError_t gather_launch = cudaGetLastError();
-                const cudaError_t gather_sync = cudaDeviceSynchronize();
-                if (gather_launch != cudaSuccess || gather_sync != cudaSuccess) {
-                    err = std::string("mtp: native BF16 draft head gather: ") +
-                          cudaGetErrorString(gather_launch != cudaSuccess ? gather_launch : gather_sync);
-                    return false;
-                }
-            } else cudaDeviceSynchronize();
+            cudaDeviceSynchronize();
             vram_ += (uint64_t) (n_dvocab_ * row_bytes) + raw.size();
             std::fprintf(stderr, "strata mtp: draft head over %lld tokens (%.1f MiB)\n", (long long) n_dvocab_,
                          (double) (n_dvocab_ * row_bytes) / 1048576.0);
-            if (native_subset)
-                std::fprintf(stderr, "safetensors: explicit draft head subset: %s; unchanged BF16 rows, "
-                                     "main verification uses all %lld tokens\n", vocab_file().c_str(), (long long) n_vocab_);
             dhead_type_ = head->type();
             if (q4_head_ && !make_q4_head(err)) return false;
             if (dhead_type_ == 14 && strata::kernels::native_q6_k_packed_enabled())   // STRATA_Q6_PACKED=1

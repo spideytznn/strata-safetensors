@@ -16,8 +16,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'tools')]
-from native_quality_suite import TEXTS
-from native_path_matrix import compare
+from native_quality_suite import TEXTS, compare
 from safetensors_tokenizer import SafetensorsTokenizer
 from serve.frontend import ChatTemplate
 from serve.server import StrataEngine, Vision, child_env, vision_env

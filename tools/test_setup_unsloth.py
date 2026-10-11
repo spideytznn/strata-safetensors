@@ -171,7 +171,6 @@ class Base(unittest.TestCase):
         patches = [
             mock.patch.object(setup, "ROOT", self.t),
             mock.patch.object(setup, "GPU_PICK", None),
-            mock.patch.object(setup, "NVFP4_REPOS", {}),   # the GGUF menus (this fork's NVFP4 families not offered)
             mock.patch.object(setup, "data_folder", lambda d: (self.t / "data", [])),
             mock.patch.object(setup, "installed_configs", lambda: []),
             mock.patch.object(setup, "gpus", lambda: found),
@@ -179,7 +178,7 @@ class Base(unittest.TestCase):
             mock.patch.object(setup, "ram_gb", lambda: ram),
             mock.patch.object(setup, "cpu_info", lambda: ("Test CPU", True, True)),
             mock.patch.object(setup, "cpu_cores", lambda: None),   # #642: not a hybrid CPU
-            mock.patch.object(setup, "page_files", lambda: (128000, "C: 64000 MB, D: 64000 MB")),   # no warning
+            mock.patch.object(setup, "page_file_gb", lambda: 16.0),
             mock.patch.object(setup, "free_gb", lambda p: free),
             mock.patch.object(setup, "rotational_disk", lambda p: None),   # #605: not the test PC's disk
             mock.patch.object(setup, "is_wsl", lambda: False),            # #974: the tests are not run inside WSL
