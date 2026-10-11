@@ -4,8 +4,8 @@
 
 [中文说明](README.zh-CN.md) · [Runtime details](docs/SAFETENSORS_NATIVE.md) · [Measurements](bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/README.md) · [Upstream Strata](https://github.com/Niko1221/Strata)
 
-Upstream v0.1.42 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
-See [integration and validation scope](docs/UPSTREAM_V0142.md).
+Upstream v0.1.43 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
+See [integration and validation scope](docs/UPSTREAM_V0143.md).
 
 strata-safetensors adapts Strata's forward pass, expert scheduler and session cache
 to the original Hugging Face checkpoint. It keeps the checkpoint's expert codes
@@ -163,6 +163,8 @@ avoids those fixed paths.
 | Template | Froggeric v22.5; thinking on, effort defaults to medium when not specified |
 | Endpoint | `127.0.0.1:8880`; HTTP Host headers unrestricted |
 | Output budget | `fit_max_tokens: true` fits the requested output cap to remaining context; input is not truncated |
+
+**Is it fast on your PC?** Run `BENCH.bat` (`./bench.sh`): about 5-10 minutes, it measures chat, 4K/16K prompts and an agent-style session with your own settings and writes a report to share ([how](docs/COMMUNITY_BENCHMARKS.md#run-the-benchmark)).
 
 The temperature is a user-selected trial. [Qwen's official thinking preset](https://huggingface.co/Qwen/Qwen3.8-Flash-Next#best-practices) uses
 **1.0 / 0.95 / 20 / 0 / 0 / 1**, and its template defaults to xhigh.

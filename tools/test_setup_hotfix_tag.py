@@ -24,8 +24,9 @@ class HotfixTag(unittest.TestCase):
         ver = tuple(int(x) for x in "0.1.40.3".split("."))   # a hotfix version has four numbers; MIN_ENGINE may have three
         self.assertEqual(len(ver), 4)
         self.assertLess(ver, setup.UPSTREAM_MIN_ENGINE)                 # an installed hotfix of the older release is replaced
-        self.assertGreaterEqual((0, 1, 42, 1), setup.UPSTREAM_MIN_ENGINE)   # a later hotfix of the minimum release is accepted
-        self.assertLess((0, 1, 41, 1), setup.UPSTREAM_MIN_ENGINE)    # an engine from before 0.1.42 (the unreleased 0.1.41.1 numbering) is replaced
+        self.assertGreaterEqual((0, 1, 43, 1), setup.UPSTREAM_MIN_ENGINE)   # a later hotfix of the minimum release is accepted
+        self.assertLess((0, 1, 42, 1), setup.UPSTREAM_MIN_ENGINE)    # 0.1.42.1 is replaced
+        self.assertLess((0, 1, 42), setup.UPSTREAM_MIN_ENGINE)       # an engine from before 0.1.43 is replaced
         self.assertEqual(setup.version_tuple("0.1.40.2"), (0, 1, 40, 2))
         self.assertLess((0, 1, 40), setup.MIN_ENGINE)       # an installed 0.1.40 engine is replaced
         self.assertEqual(setup.version_tuple(setup.version_text(setup.MIN_ENGINE)), setup.MIN_ENGINE)

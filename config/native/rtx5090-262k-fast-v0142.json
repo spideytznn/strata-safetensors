@@ -1,5 +1,5 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-pcie-auto.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-upstream143.exe",
   "args": [
     "--model",
     "D:\\迅雷下载\\Qwen3.8-flash-next-nvfp4",

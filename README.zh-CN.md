@@ -1,7 +1,7 @@
 # strata-safetensors
 
-已合入上游 v0.1.42，`STRATA_ROUTE_TAIL_SKIP` **默认关闭**，保留所有路由专家的贡献。
-合并取舍与验证范围见[集成说明](docs/UPSTREAM_V0142.md)。
+已合入上游 v0.1.43，`STRATA_ROUTE_TAIL_SKIP` **默认关闭**，保留所有路由专家的贡献。
+合并取舍与验证范围见[集成说明](docs/UPSTREAM_V0143.md)。
 
 **在单张 GPU 和系统内存上，直接运行原始 NVIDIA NVFP4 safetensors 格式的 Qwen3.8-Flash-Next。**
 

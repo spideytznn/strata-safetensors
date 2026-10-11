@@ -11,9 +11,11 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -237,6 +239,59 @@ int main() {
         cudaFree(d_dst);
     }
 
+    // The non-finite guard must cover variable-width native MTP windows, leave
+    // logits untouched, and clear flags when a captured graph is replayed.
+    {
+        constexpr int blocks = strata::kernels::kNonfiniteBlocks;
+        int cases = 0;
+        for (int rows : {1, 2, 3, 6, 8}) {
+            for (int width : {1, 255, 257, 4096, 248320}) {
+                std::vector<float> input((size_t) rows * width, 0.25f), got(input.size());
+                float* logits = nullptr;
+                uint32_t *flags = nullptr, *mapped = nullptr;
+                ck(cudaMalloc(&logits, input.size() * sizeof(float)), "nonfinite logits");
+                ck(cudaHostAlloc((void**) &flags, (rows * blocks + 1) * sizeof(uint32_t), cudaHostAllocMapped), "nonfinite flags");
+                ck(cudaHostGetDevicePointer((void**) &mapped, flags, 0), "nonfinite mapped");
+                cudaGraph_t graph = nullptr;
+                cudaGraphExec_t exec = nullptr;
+                ck(cudaStreamBeginCapture(s, cudaStreamCaptureModeThreadLocal), "nonfinite capture");
+                strata::kernels::logits_nonfinite_rows(logits, rows, width, mapped, s);
+                ck(cudaStreamEndCapture(s, &graph), "nonfinite end capture");
+                ck(cudaGraphInstantiate(&exec, graph, nullptr, nullptr, 0), "nonfinite instantiate");
+                for (int bad_row = -1; bad_row < rows; ++bad_row) {
+                    for (float bad : {std::numeric_limits<float>::quiet_NaN(),
+                                      std::numeric_limits<float>::infinity(),
+                                      -std::numeric_limits<float>::infinity()}) {
+                        std::fill(input.begin(), input.end(), 0.25f);
+                        if (bad_row >= 0) input[(size_t) bad_row * width + width - 1] = bad;
+                        std::fill(flags, flags + rows * blocks + 1, 0xA5A5A5A5u);
+                        ck(cudaMemcpy(logits, input.data(), input.size() * sizeof(float), cudaMemcpyHostToDevice), "nonfinite upload");
+                        ck(cudaGraphLaunch(exec, s), "nonfinite replay");
+                        ck(cudaStreamSynchronize(s), "nonfinite wait");
+                        ck(cudaMemcpy(got.data(), logits, input.size() * sizeof(float), cudaMemcpyDeviceToHost), "nonfinite readback");
+                        bool ok = std::memcmp(got.data(), input.data(), input.size() * sizeof(float)) == 0;
+                        const int last_block = (width - 1) / ((width + blocks - 1) / blocks);
+                        for (int r = 0; r < rows; ++r)
+                            for (int b = 0; b < blocks; ++b)
+                                ok &= flags[r * blocks + b] == uint32_t(r == bad_row && b == last_block);
+                        ok &= flags[rows * blocks] == 0xA5A5A5A5u;
+                        if (!ok) { std::printf("nonfinite: wrong flags/bytes at rows=%d width=%d bad_row=%d\n", rows, width, bad_row); ++failures; }
+                        ++cases;
+                    }
+                }
+                // A finite replay after poisoned rows must overwrite every flag.
+                ck(cudaMemset(logits, 0, input.size() * sizeof(float)), "nonfinite clear logits");
+                ck(cudaGraphLaunch(exec, s), "nonfinite finite replay");
+                ck(cudaStreamSynchronize(s), "nonfinite finite wait");
+                for (int i = 0; i < rows * blocks; ++i) if (flags[i] != 0) ++failures;
+                cudaGraphExecDestroy(exec);
+                cudaGraphDestroy(graph);
+                cudaFreeHost(flags);
+                cudaFree(logits);
+            }
+        }
+        std::printf("logits_nonfinite_rows: %d graph replay cases\n", cases);
+    }
     cudaStreamDestroy(s);
     cudaFreeHost(host);
     std::printf(failures == 0 ? "mapped_copy_parity: PASS\n" : "mapped_copy_parity: %d FAILURES\n", failures);
