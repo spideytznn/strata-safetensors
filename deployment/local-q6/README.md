@@ -4,6 +4,9 @@
 这是外部 Fusion v0.1.43.1 GGUF 部署的三个文件快照，不是新的 safetensors 桌面入口，
 也不包含引擎、模型、pack、ngram 或视觉资源。
 
+视觉程序现与 GGUF 主程序放在一起：`engine/fusion-v01431/strata-vision.exe`，
+不再依赖 `Strata-Official`。原二进制与迁移副本 SHA256 一致，启动器检查通过。
+
 已升级引擎及服务端，保留原专家预算、锁页参数、模型路径与关闭 MTP 的配置。
 显式关闭路由尾部跳过并启用驻留交换重叠。下文故障修复与 `verification.json`
 来自 2026-10-12；本次升级验收、输出差异和回退位置见

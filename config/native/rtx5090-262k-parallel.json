@@ -98,7 +98,7 @@
     "repetition_penalty": 1.0
   },
   "vision": {
-    "exe": "G:\\Strata\\Strata-Official\\engine\\q6\\strata-vision.exe",
+    "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-vision.exe",
     "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
     "model": "G:\\Strata\\Strata-data\\vision\\qwen3.8-flash-next-vision-vocab.gguf",
     "gpu": true,

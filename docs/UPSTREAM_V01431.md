@@ -74,15 +74,23 @@ a general quality evaluation. HIP, SYCL, Linux and multi-GPU builds were not ava
 - `G:\Strata\Strata-Safetensors`: maintained native source, runtime and two desktop configurations.
 - `G:\Strata\Strata-data`: shared Q6 pack, FP8 ngram and vision resources. Model weights remain
   in `G:\moemodels`.
-- `G:\Strata\Strata-Official`: upstream reference checkout updated to the release; its existing
-  `engine\q6\strata-vision.exe` remains referenced by all three desktop configurations.
-  That encoder is reused unchanged; this release changes its callers, not its source.
-- `G:\Strata\Strata-Safetensors-Upstream`: Git worktree for the earlier upstream contribution,
-  not a desktop runtime. Keep only for that development work; remove through Git worktree tools when requested.
+- Vision relocation after the upgrade: native configurations now use
+  `G:\Strata\Strata-Safetensors\build-native-engine\strata-vision.exe`;
+  GGUF uses `G:\Strata\Strata\engine\fusion-v01431\strata-vision.exe`.
+  Both copies match SHA256 `9b1b8c9729c7f24a0cdc1078d7d2c01d5a639594a313ec7921d012d3b8d076ef`.
+  Loader checks pass in both deployment environments; Q6 launcher file checks pass.
+  `Strata-Official` is no longer a runtime dependency. Its requested deletion was rejected by
+  automatic execution policy (`blocked by policy`), so the unused directory remains as of this check.
+- `G:\Strata\Strata-Safetensors-Upstream` was removed with `git worktree remove` at the user's request.
+  Its commit remains reachable through local branch `contribute/safetensors-reader`.
 - `G:\Strata\NVFP4-Converter`: historical conversion tools, not referenced by current desktop paths.
 
-No directory or model is deleted. Several older clones/builds inside `Strata\work` are historical;
+The release upgrade itself deleted no directory or model; the later worktree removal is described above.
+Several older clones/builds inside `Strata\work` are historical;
 the active Fusion source, build dependency paths and rollback material must be excluded from any future cleanup.
 Rollback material: native `build-native-engine/upstream1431-backup-20261013`, existing native binaries,
 GGUF `backups/before-v01431-20261013.zip`, old `engine/fusion-v041/strata.exe`,
 and each repository's pre-upgrade commit/backup branch. Web settings sidecars are preserved.
+Vision relocation backups and old reference-checkout deployment helpers are in
+`build-native-engine/vision-relocation-backup-20261013`.
+The previous rollback configurations refer to the old vision path; use one of the relocated copies when restoring them.

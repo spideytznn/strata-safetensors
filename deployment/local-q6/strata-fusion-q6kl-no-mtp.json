@@ -42,7 +42,7 @@
   "host": "127.0.0.1",
   "port": 8880,
   "vision": {
-    "exe": "G:\\Strata\\Strata-Official\\engine\\q6\\strata-vision.exe",
+    "exe": "G:\\Strata\\Strata\\engine\\fusion-v01431\\strata-vision.exe",
     "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
     "model": "G:\\Strata\\Strata-data\\packs\\unsloth-ud-q6_k_xl\\vision-vocab.gguf",
     "gpu": true,
