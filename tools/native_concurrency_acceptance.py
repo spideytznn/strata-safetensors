@@ -4,6 +4,7 @@ Loads one private engine, never changes the desktop config, always terminates it
 This is a finite regression suite, not a general quality benchmark or long-context retrieval test.
 """
 import argparse
+from collections import Counter
 import hashlib
 import json
 from pathlib import Path
@@ -185,6 +186,11 @@ def main():
             ("penalties", ["temperature=0 penalty_last_n=128 penalty_repeat=1.12 penalty_present=0.3",
                            "temperature=0.7 top_p=0.95 top_k=20 seed=6101 penalty_last_n=256 penalty_freq=0.2"]),
         ]
+        native_batch_mtp = any('native_batch_mtp=1' in line for line in eng.info)
+        if native_batch_mtp:
+            # A target-only slot next to a proposing slot exercises variable row counts and request-local gates.
+            pairs += [("mixed_confidence", ["temperature=0 spec_min_p=1", "temperature=0 spec_min_p=0"]),
+                      ("strict_confidence", ["temperature=0 spec_min_p=1", "temperature=0 spec_min_p=1"])]
         for name, keys in pairs:
             refs = [eng.solo(ids, a.limit, key) for ids, key in zip(prompts, keys)]
             batch = eng.batch([(ids, a.limit, key) for ids, key in zip(prompts, keys)])
@@ -266,12 +272,22 @@ def main():
                                     "solo": long_ref, "batch": grown, "followup": next_batch,
                                     "replaced": replaced, "restored": restored})
             print(f"long-slot grow/reuse beside short admission: {len(long_ids)} tokens, identical", flush=True)
+        if native_batch_mtp:
+            log = eng.log_path.read_text(encoding="utf8")
+            layouts = re.findall(r"captured the batch window over slots ([0-9,]+)", log)
+            widths = {tuple(sorted(Counter(layout.split(',')).values())) for layout in layouts}
+            assert {(1, 1), (1, 2), (2, 2)} <= widths, f'Missing native confidence-gated batch layouts: {widths}'
+            result['native_batch_row_layouts'] = sorted(map(list, widths))
+            save()
         if a.adaptive:
             log = eng.log_path.read_text(encoding="utf8")
-            promotions = re.findall(r"safetensors batch adaptive: round=\d+ promoted=(\d+) completed_total=\d+ active_rows=2", log)
-            result["batch_adaptive"] = {"two_row_rounds": len(promotions), "promoted": sum(map(int, promotions))}
+            rows = re.findall(r"safetensors batch adaptive: round=\d+ promoted=(\d+) completed_total=\d+ active_rows=(\d+)(?: active_slots=(\d+))?", log)
+            # Four MTP rows can be two slots; two MTP rows can also be only ONE slot.
+            promotions = [n for n, count, slots in rows
+                          if (int(slots) >= 2 if slots else int(count) >= (3 if native_batch_mtp else 2))]
+            result["batch_adaptive"] = {"multi_slot_rounds": len(promotions), "promoted": sum(map(int, promotions))}
             save()
-            assert promotions and sum(map(int, promotions)) > 0, "no actual two-row batch promotions"
+            assert promotions and sum(map(int, promotions)) > 0, "no actual multi-slot batch promotions"
     finally:
         eng.close()
     # A passing case list is insufficient if shutdown exposes resident source reads.

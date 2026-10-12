@@ -53,14 +53,20 @@ and retained; draft attention currently follows Strata's dense/window path rathe
 than using those weights for sparse selection.
 
 The desktop single-request entry uses `--spec 3 --spec-min-p 0.5`: one target row
-and up to two draft rows, shortened at low confidence. The parallel entry fully
-unloads MTP. Native `--batch-mtp` and native reduced draft-head subsets are refused;
-upstream GGUF batch MTP and vocabulary options remain unchanged.
+and up to two draft rows, shortened at low confidence. The parallel entry selects
+`--batch-mtp`, which supports one native proposal
+per slot, shared draft weights and private KV/graphs, including image histories.
+See [native concurrency](NATIVE_CONCURRENCY.md). Native reduced draft-head subsets
+remain refused; upstream GGUF batch MTP and vocabulary options remain unchanged.
 
 Native requests reuse KV, GDN and PLE state, parked conversations and disk
 snapshots. Two text slots support adaptive hot-expert promotion and independent
-KV growth/device slot copying when MTP is absent. Images run exclusively;
-additional requests queue. Batch slots do not provide disk slot save/restore.
+KV growth/device slot copying with target-only or native batch MTP. A native single-GPU batch
+engine with vision and either of those modes advertises `native_vision_slots=1`: each slot keeps
+an independent image position table and matches image identities when reusing
+its live state or checkpoints. The server retains exclusive image generation
+for older engines and configurations without that capability. Batch slots do
+not provide disk slot save/restore.
 See [native concurrency](NATIVE_CONCURRENCY.md).
 
 ## Serving and launch settings

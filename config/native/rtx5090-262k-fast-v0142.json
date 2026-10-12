@@ -29,7 +29,7 @@
     "--adapt-swaps",
     "96",
     "--conversation-cache-mib",
-    "4096",
+    "8192",
     "--conversation-cache-slots",
     "4",
     "--prompt-cache",

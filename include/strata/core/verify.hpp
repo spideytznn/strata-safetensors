@@ -185,6 +185,9 @@ public:
     // Greedy only, no drafts (MTP) in a batch window.  `init_slots` once after `init` (S <= max_t); a layer
     // split's stages each get their own sessions, and run_slots/commit_slots continue into the next stage.
     bool init_slots(const std::vector<SessionState*>& slots, std::string& err);
+    /// Optional per-slot image position tables. Addresses stay fixed after registration, before any batch capture;
+    /// only their contents change on admission. The solo prompt reader keeps its original separate table.
+    bool init_slot_mrope(const std::vector<const int32_t*>& tables, std::string& err);
     int n_slots() const { return (int) slots_.size(); }
     /// One batch window over slots [0, S): tokens[s] at positions pos[s]; out[s] = the greedy pick after it.
     bool run_slots(int S, const int32_t* tokens, const int64_t* pos, PoolMultiFn pool, void* user, int32_t* out,
@@ -339,6 +342,7 @@ private:
     bool capture(int T, std::string& err);
     // batch windows (see init_slots)
     std::vector<SessionState*> slots_;
+    std::vector<const int32_t*> slot_mrope_;
     bool batch_rec_ = false;               ///< record_window is capturing a batch window
     int row_base_ = 0;                     ///< ... its hand-off rows start here (a pipeline group's own rows)
     int brow_[8] = {};                     ///< ... and row t is slot brow_[t]

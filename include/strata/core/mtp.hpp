@@ -120,6 +120,8 @@ public:
     /// window's commit (`tail`) and the window's pick at its last accepted row (`next`, the next window's row 0).
     void set_draft_history(const int32_t* tail, int64_t n_tail, int32_t next);
     void set_ple_session(SessionState* s) { ple_ss_ = s; }
+    /// Before the first capture: borrow a stable slot position table; nullptr keeps the solo table.
+    void set_mrope_table(const int32_t* table) { mrope_table_ = table; }
     bool coupled() const { return coupled_active_; }
     /// PROBABILISTIC DRAFT ACCEPTANCE (core/spec_prob.hpp, STRATA_SPEC_PROB=1): this request's drafts are SAMPLED from
     /// q and each draft j's distribution is in spec_q() + j * kSpecQStride (ids, -1 terminated; then float bits),
@@ -171,6 +173,7 @@ public:
 private:
     bool load_safetensors(weights::SafetensorsSource&, std::string& err);
     bool native_fp8_ = false;
+    const int32_t* mrope_table_ = nullptr;
     float* fp8_hidden_ = nullptr;
     bool record_forward(int T, int step_row0, cudaStream_t cs, std::string& err);
     /// The layer's front for T rows at step rows [row0, +T): the embedding, the fc projections, the attention

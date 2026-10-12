@@ -4,7 +4,9 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
-from serve.server import StrataEngine
+from pathlib import Path
+from serve.frontend import ChatTemplate
+from serve.server import ByteTokenizer, Service, StrataEngine
 
 
 class NativeVisionGateTests(unittest.TestCase):
@@ -92,6 +94,73 @@ class NativeVisionGateTests(unittest.TestCase):
         self.until(lambda: "image" in self.started)
         self.releases["image"].set()
         image.result(timeout=3)
+
+    def test_isolated_image_tables_allow_two_image_histories(self):
+        self.engine.info["native_vision_slots"] = 1
+        a = self.run_request("a", image=True)
+        b = self.run_request("b", image=True)
+        self.until(lambda: len(self.started) == 2)
+        self.assertCountEqual(self.started, ["a", "b"])
+        self.assertFalse(self.engine.vision_writer)
+        self.assertEqual(self.engine.vision_waiting, 0)
+        self.releases["a"].set()
+        self.releases["b"].set()
+        a.result(timeout=3)
+        b.result(timeout=3)
+
+    def test_isolated_image_tables_allow_image_and_text(self):
+        self.engine.info["native_vision_slots"] = 1
+        image = self.run_request("image", image=True)
+        self.until(lambda: "image" in self.started)
+        text = self.run_request("a")
+        self.until(lambda: "a" in self.started)
+        self.releases["image"].set()
+        self.releases["a"].set()
+        image.result(timeout=3)
+        text.result(timeout=3)
+
+    def test_request_progress_does_not_cross_threads(self):
+        a, b = {}, {}
+        ready = threading.Barrier(2)
+        def record(status, total):
+            self.engine.bind_request_status(status)
+            ready.wait(timeout=3)
+            self.engine._request_progress("reading", prompt_progress=(total - 1, total))
+            self.engine.bind_request_status(None)
+            self.engine._request_progress("queued")  # a finished generator cannot alter its old request
+        fa = self.pool.submit(record, a, 141600)
+        fb = self.pool.submit(record, b, 154172)
+        fa.result(timeout=3)
+        fb.result(timeout=3)
+        self.assertEqual(a["prompt_progress"], (141599, 141600))
+        self.assertEqual(b["prompt_progress"], (154171, 154172))
+        self.assertEqual(a["engine_phase"], "reading")
+        self.assertEqual(b["engine_phase"], "reading")
+
+    def test_monitor_does_not_attach_other_requests_finished_prefill(self):
+        engine = self.engine
+        engine.progress = (141599, 141600)  # request A is decoding after finishing this read
+        engine.prefill_tok_s_mean = 3300
+        engine.slot_held = [[], []]
+        engine.slot_live = [None, None]
+        engine.waiting = engine.admitting = 0
+        engine.max_context = 262144
+        svc = Service(engine, ByteTokenizer(), ChatTemplate(Path(__file__).parent / "chat_template.jinja"))
+        svc.loaded = lambda: True
+        a = dict(busy=True, first_token=time.time(), prompt_tokens=141600, generated=25,
+                 started=time.time(), phase="answering")
+        b = dict(busy=True, first_token=None, prompt_tokens=154172, generated=0,
+                 started=time.time(), engine_phase="queued", phase="waiting for the engine")
+        svc.live_reqs = {1: (a, []), 2: (b, [])}
+        view = svc.metrics()["live"]
+        self.assertEqual(view["state"], "queued")
+        self.assertEqual(view["prompt_tokens"], 154172)
+        self.assertIsNone(view["prompt_read"])
+        self.assertIsNone(view["prompt_total"])
+        self.assertIsNone(view["prefill_tok_s_mean"])
+        b.update(engine_phase="reading", prompt_progress=(4096, 154172), prefill_tok_s_mean=3000)
+        view = svc.metrics()["live"]
+        self.assertEqual((view["prompt_read"], view["prompt_total"]), (4096, 154172))
 
     def test_closed_generator_releases_permit(self):
         gen = self.engine.generate("a", 32, {}, threading.Event())

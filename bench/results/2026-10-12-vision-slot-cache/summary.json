@@ -1,0 +1,1395 @@
+{
+  "time": "2026-10-12T18:40:53.338670+08:00",
+  "status": "pass",
+  "hardware": "RTX 5090 32 GB, Ryzen 9950X3D, 96 GB RAM, Windows, CUDA 13 SM120",
+  "candidate_sha256": "037f8c4896eeafac28c750dda009456a41d3ff097635ad21cbaad6cfb448347a",
+  "tests": {
+    "server": {
+      "run": 69,
+      "skipped": 1,
+      "status": "pass"
+    },
+    "cuda_ctest": {
+      "run": 5,
+      "status": "pass"
+    },
+    "conversation_cache_checks": 4219
+  },
+  "private_stdin": [
+    {
+      "directory": "bench\\results\\local-vision-cache-acceptance-20261012-r2",
+      "report_sha256": "13e51035bf488b8c1eee54343f58f70e84f8a522436c793148cdd0b0041811af",
+      "status": "pass",
+      "args": [
+        "--model",
+        "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
+        "--max-context",
+        "16384",
+        "--prefill",
+        "512",
+        "--spec",
+        "2",
+        "--expert-cache",
+        "auto",
+        "--vram-reserve-mib",
+        "1536",
+        "--suffix-draft",
+        "0",
+        "--pcie-frac",
+        "0.25",
+        "--pcie-mode",
+        "kernel",
+        "--kv",
+        "int8",
+        "--no-prefill-borrow",
+        "--adapt-every",
+        "4",
+        "--adapt-swaps",
+        "96",
+        "--conversation-cache-mib",
+        "8192",
+        "--conversation-cache-slots",
+        "4",
+        "--prompt-cache",
+        "6",
+        "--stats",
+        "--check-logits",
+        "--expert-profile",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\local-vision-cache-acceptance-20261012-r2\\expert-profile.bin",
+        "--pool-tasks",
+        "40",
+        "--vision",
+        "--batch",
+        "2"
+      ],
+      "info": {
+        "version": "0.1.43",
+        "logit_bias": 1,
+        "context": 16384,
+        "kv": "int8",
+        "kv_resident": 0,
+        "expert_slots": 6508,
+        "expert_cache_mib": 17161,
+        "expert_slots_primary": 6508,
+        "expert_cache_primary_mib": 17161,
+        "spec": 2,
+        "mtp_max": 0,
+        "lookup": 0,
+        "vram_free_mib": 1689,
+        "cvec": 0,
+        "arena_mib": 64800,
+        "pool_workers": 15,
+        "pcie_frac": "0.25",
+        "pcie_auto": 0,
+        "pcie_balance": 0,
+        "spec_min_p": "0.00",
+        "conversation_cache_mib": 8192,
+        "conversation_cache_slots": 4,
+        "conversation_cache_min_free_mib": 2560,
+        "conversation_cache_min_tokens": 0,
+        "tail_role_token": -1,
+        "vram_elastic": 0,
+        "route_tail_skip": 0,
+        "batch_slots": 2,
+        "slot_cache": 1,
+        "batch_groups": 1,
+        "engine": "0.1.43",
+        "weight_source": "safetensors",
+        "native_adapter": 1,
+        "expert_ram_bytes": 67948118016,
+        "expert_cuda_pinned_bytes": 67948118016,
+        "expert_os_locked_bytes": 0,
+        "prefill_chunk": 512,
+        "prefill_workspace": "dedicated",
+        "native_vision_slots": 1,
+        "startup_ms": 59822
+      },
+      "requests": [
+        {
+          "name": "greedy-solo-red",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-solo-blue",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "9be5903e5c991bfba452b584512c9f217771b988be0bb62dfa64398d54bbe5af",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-image-image-0",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-image-image-1",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "9be5903e5c991bfba452b584512c9f217771b988be0bb62dfa64398d54bbe5af",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-historical-image-continuation-0",
+          "input_tokens": 214,
+          "image_tokens": 49,
+          "reused": 189,
+          "output_tokens": 96,
+          "output_sha256": "86d5b5c7ade4e6a9f99f10d2a62b685fcaf52950077b0e8ba20a153cf565c41e",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-historical-image-continuation-1",
+          "input_tokens": 214,
+          "image_tokens": 49,
+          "reused": 189,
+          "output_tokens": 96,
+          "output_sha256": "6343b38d08bd463f57f0195c7361f1b5725d9bf80750bd2c86156e99baf137ff",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-solo-red",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "26d8e7c08d5a51142af2c3b9d0a7be7eb9fb309c4d1bd7884da730549fc69ee4",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-solo-blue",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "9f2b1f2083c1b2b4dd51180ec6f3207d436b9753dab6647b0deaa886d1336a35",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-image-image-0",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "26d8e7c08d5a51142af2c3b9d0a7be7eb9fb309c4d1bd7884da730549fc69ee4",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-image-image-1",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "9f2b1f2083c1b2b4dd51180ec6f3207d436b9753dab6647b0deaa886d1336a35",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-historical-image-continuation-0",
+          "input_tokens": 214,
+          "image_tokens": 49,
+          "reused": 189,
+          "output_tokens": 96,
+          "output_sha256": "64190e3b0655d3f37dce15ade953211caaed4a85c00c42828833351f60bc6d4b",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-historical-image-continuation-1",
+          "input_tokens": 214,
+          "image_tokens": 49,
+          "reused": 189,
+          "output_tokens": 96,
+          "output_sha256": "9a756ec000f1a1368a195ab9d7ca6e53323aff39625539b205d70b235c72b9e2",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "solo-text",
+          "input_tokens": 31,
+          "image_tokens": 0,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "707f894931a8f11c4d4c980428a81f04801d1aba174004de8447b05e901b48a5",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-text-1",
+          "input_tokens": 31,
+          "image_tokens": 0,
+          "reused": 24,
+          "output_tokens": 96,
+          "output_sha256": "707f894931a8f11c4d4c980428a81f04801d1aba174004de8447b05e901b48a5",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-text-0",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "replacement-base-red",
+          "input_tokens": 100,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "8aa6186de205fdb191bd820fdac0eb0d24f535cb4079ce345cf9b38d0b9416ac",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "replacement-blue",
+          "input_tokens": 100,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "8d45744f8ebbcefc022db2ff333cdacde00e23c154138aac3cb09a563a16c587",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "replacement-blue-repeat",
+          "input_tokens": 100,
+          "image_tokens": 49,
+          "reused": 93,
+          "output_tokens": 96,
+          "output_sha256": "8d45744f8ebbcefc022db2ff333cdacde00e23c154138aac3cb09a563a16c587",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-cancel-0",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 12,
+          "output_sha256": "193e20af99800e39e4c17f2179b00dac2253910e660bc330e9017541557e8840",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-cancel-1",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "9be5903e5c991bfba452b584512c9f217771b988be0bb62dfa64398d54bbe5af",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-after-cancel",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-after-cancel-repeat",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        }
+      ],
+      "pairs": [
+        {
+          "name": "greedy-image-image",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "greedy-historical-image-continuation",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "seeded-image-image",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "seeded-historical-image-continuation",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "image-text",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "image-cancel",
+          "max_busy_slots": 2
+        }
+      ]
+    },
+    {
+      "directory": "bench\\results\\local-vision-cache-acceptance-20261012-desktop",
+      "report_sha256": "30b59aedc208cc32b56f4b42f282e5fb8464f0584230a55b8e523ca43d53352f",
+      "status": "pass",
+      "args": [
+        "--model",
+        "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
+        "--max-context",
+        "262144",
+        "--prefill",
+        "4096",
+        "--spec",
+        "2",
+        "--expert-cache",
+        "auto",
+        "--vram-reserve-mib",
+        "1536",
+        "--suffix-draft",
+        "0",
+        "--pcie-frac",
+        "0.25",
+        "--pcie-mode",
+        "kernel",
+        "--kv",
+        "int8",
+        "--no-prefill-borrow",
+        "--adapt-every",
+        "4",
+        "--adapt-swaps",
+        "96",
+        "--conversation-cache-mib",
+        "8192",
+        "--conversation-cache-slots",
+        "4",
+        "--prompt-cache",
+        "6",
+        "--stats",
+        "--check-logits",
+        "--expert-profile",
+        "G:\\Strata\\Strata-Safetensors\\bench\\results\\local-vision-cache-acceptance-20261012-desktop\\expert-profile.bin",
+        "--pool-tasks",
+        "40",
+        "--vision",
+        "--batch",
+        "2"
+      ],
+      "info": {
+        "version": "0.1.43",
+        "logit_bias": 1,
+        "context": 262144,
+        "kv": "int8",
+        "kv_resident": 0,
+        "expert_slots": 5113,
+        "expert_cache_mib": 13482,
+        "expert_slots_primary": 5113,
+        "expert_cache_primary_mib": 13482,
+        "spec": 2,
+        "mtp_max": 0,
+        "lookup": 0,
+        "vram_free_mib": 1715,
+        "cvec": 0,
+        "arena_mib": 64800,
+        "pool_workers": 15,
+        "pcie_frac": "0.25",
+        "pcie_auto": 0,
+        "pcie_balance": 0,
+        "spec_min_p": "0.00",
+        "conversation_cache_mib": 8192,
+        "conversation_cache_slots": 4,
+        "conversation_cache_min_free_mib": 2560,
+        "conversation_cache_min_tokens": 0,
+        "tail_role_token": -1,
+        "vram_elastic": 0,
+        "route_tail_skip": 0,
+        "batch_slots": 2,
+        "slot_cache": 1,
+        "batch_groups": 1,
+        "engine": "0.1.43",
+        "weight_source": "safetensors",
+        "native_adapter": 1,
+        "expert_ram_bytes": 67948118016,
+        "expert_cuda_pinned_bytes": 67948118016,
+        "expert_os_locked_bytes": 0,
+        "prefill_chunk": 4096,
+        "prefill_workspace": "dedicated",
+        "native_vision_slots": 1,
+        "startup_ms": 59347
+      },
+      "requests": [
+        {
+          "name": "greedy-solo-red",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-solo-blue",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "9be5903e5c991bfba452b584512c9f217771b988be0bb62dfa64398d54bbe5af",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-image-image-1",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "9be5903e5c991bfba452b584512c9f217771b988be0bb62dfa64398d54bbe5af",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-image-image-0",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-historical-image-continuation-0",
+          "input_tokens": 214,
+          "image_tokens": 49,
+          "reused": 189,
+          "output_tokens": 96,
+          "output_sha256": "86d5b5c7ade4e6a9f99f10d2a62b685fcaf52950077b0e8ba20a153cf565c41e",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "greedy-historical-image-continuation-1",
+          "input_tokens": 214,
+          "image_tokens": 49,
+          "reused": 189,
+          "output_tokens": 96,
+          "output_sha256": "6343b38d08bd463f57f0195c7361f1b5725d9bf80750bd2c86156e99baf137ff",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-solo-red",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "26d8e7c08d5a51142af2c3b9d0a7be7eb9fb309c4d1bd7884da730549fc69ee4",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-solo-blue",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "9f2b1f2083c1b2b4dd51180ec6f3207d436b9753dab6647b0deaa886d1336a35",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-image-image-0",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "26d8e7c08d5a51142af2c3b9d0a7be7eb9fb309c4d1bd7884da730549fc69ee4",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-image-image-1",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "9f2b1f2083c1b2b4dd51180ec6f3207d436b9753dab6647b0deaa886d1336a35",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-historical-image-continuation-0",
+          "input_tokens": 214,
+          "image_tokens": 49,
+          "reused": 189,
+          "output_tokens": 96,
+          "output_sha256": "64190e3b0655d3f37dce15ade953211caaed4a85c00c42828833351f60bc6d4b",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "seeded-historical-image-continuation-1",
+          "input_tokens": 214,
+          "image_tokens": 49,
+          "reused": 189,
+          "output_tokens": 96,
+          "output_sha256": "9a756ec000f1a1368a195ab9d7ca6e53323aff39625539b205d70b235c72b9e2",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "solo-text",
+          "input_tokens": 31,
+          "image_tokens": 0,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "707f894931a8f11c4d4c980428a81f04801d1aba174004de8447b05e901b48a5",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-text-1",
+          "input_tokens": 31,
+          "image_tokens": 0,
+          "reused": 24,
+          "output_tokens": 96,
+          "output_sha256": "707f894931a8f11c4d4c980428a81f04801d1aba174004de8447b05e901b48a5",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-text-0",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "replacement-base-red",
+          "input_tokens": 100,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "8aa6186de205fdb191bd820fdac0eb0d24f535cb4079ce345cf9b38d0b9416ac",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "replacement-blue",
+          "input_tokens": 100,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "8d45744f8ebbcefc022db2ff333cdacde00e23c154138aac3cb09a563a16c587",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "replacement-blue-repeat",
+          "input_tokens": 100,
+          "image_tokens": 49,
+          "reused": 93,
+          "output_tokens": 96,
+          "output_sha256": "8d45744f8ebbcefc022db2ff333cdacde00e23c154138aac3cb09a563a16c587",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-cancel-0",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 12,
+          "output_sha256": "193e20af99800e39e4c17f2179b00dac2253910e660bc330e9017541557e8840",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-cancel-1",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "9be5903e5c991bfba452b584512c9f217771b988be0bb62dfa64398d54bbe5af",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-after-cancel",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-after-cancel-repeat",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 87,
+          "output_tokens": 96,
+          "output_sha256": "b4cdffa0473627ef687cac30398132950ef8f938d9354fcec2d8cb2485fe1e1d",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "long-solo-0",
+          "input_tokens": 141098,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "085658d0aab163eb934ad8942ffdc64058ef021fa79229da26765766b5e0e865",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "long-solo-1",
+          "input_tokens": 126147,
+          "image_tokens": 98,
+          "reused": 114688,
+          "output_tokens": 96,
+          "output_sha256": "6ed0d1bd7c4a33ac213fa883b7dbb4871fff8faf655d7a1dbcd343c85ec1966e",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "long-different-grid-images-1",
+          "input_tokens": 126147,
+          "image_tokens": 98,
+          "reused": 126140,
+          "output_tokens": 96,
+          "output_sha256": "6ed0d1bd7c4a33ac213fa883b7dbb4871fff8faf655d7a1dbcd343c85ec1966e",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "long-different-grid-images-0",
+          "input_tokens": 141098,
+          "image_tokens": 49,
+          "reused": 141091,
+          "output_tokens": 96,
+          "output_sha256": "085658d0aab163eb934ad8942ffdc64058ef021fa79229da26765766b5e0e865",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "long-historical-images-0",
+          "input_tokens": 141216,
+          "image_tokens": 49,
+          "reused": 141193,
+          "output_tokens": 96,
+          "output_sha256": "40a6229bdb099e7a5730b0d36e64eb1d4c239356a011f20d30b3d36e1b1eba11",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "long-historical-images-1",
+          "input_tokens": 126265,
+          "image_tokens": 98,
+          "reused": 126242,
+          "output_tokens": 96,
+          "output_sha256": "f0746b5b141ba56470317fafddf39aa2488bd3919a297eef826fbdabc716e3d8",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "short-during-image-prefill",
+          "input_tokens": 94,
+          "image_tokens": 49,
+          "reused": 0,
+          "output_tokens": 96,
+          "output_sha256": "9be5903e5c991bfba452b584512c9f217771b988be0bb62dfa64398d54bbe5af",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "long-image-prefill-yield",
+          "input_tokens": 141106,
+          "image_tokens": 49,
+          "reused": 8192,
+          "output_tokens": 96,
+          "output_sha256": "90cc72490ac4c6c08141d468b7a3cb8c8f39d93c91f099529b1260d9f25bbcbc",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "long-image-after-yield-repeat",
+          "input_tokens": 141106,
+          "image_tokens": 49,
+          "reused": 141099,
+          "output_tokens": 96,
+          "output_sha256": "90cc72490ac4c6c08141d468b7a3cb8c8f39d93c91f099529b1260d9f25bbcbc",
+          "file_blobs": 0,
+          "file_mb": 0.0
+        }
+      ],
+      "pairs": [
+        {
+          "name": "greedy-image-image",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "greedy-historical-image-continuation",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "seeded-image-image",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "seeded-historical-image-continuation",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "image-text",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "image-cancel",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "long-different-grid-images",
+          "max_busy_slots": 2
+        },
+        {
+          "name": "long-historical-images",
+          "max_busy_slots": 2
+        }
+      ]
+    }
+  ],
+  "http": {
+    "status": "pass",
+    "responses": [
+      {
+        "name": "images",
+        "rows": [
+          {
+            "id": "chatcmpl-353eae82ca8e4039b7aaaf27",
+            "object": "chat.completion",
+            "created": 1791801573,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "The solid color depicted in this image is **red** — specifically, a pure, saturated, and vivid shade of red that fills the entire frame without gradients, textures, or variations. This particular hue corresponds to what is often referred to as “pure red” or “RGB red,” with hexadecimal code #FF0000, meaning it contains maximum intensity in the red channel and zero in green and blue. It is one of the three primary additive colors used in digital displays"
+                },
+                "finish_reason": "length"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 82,
+              "completion_tokens": 96,
+              "total_tokens": 178,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 82,
+              "prompt_ms": 657.2,
+              "prompt_per_token_ms": 8.015,
+              "prompt_per_second": 124.8,
+              "predicted_n": 96,
+              "predicted_ms": 2338.4,
+              "predicted_per_token_ms": 24.358,
+              "predicted_per_second": 41.1,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          },
+          {
+            "id": "chatcmpl-f1b3c4a720ce403794350a96",
+            "object": "chat.completion",
+            "created": 1791801573,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "The solid color depicted in this image is **blue** — specifically, a vibrant, saturated, and uniform shade that closely resembles what is often referred to as “pure blue” or “RGB blue” (with hexadecimal code #0000FF). This particular hue is one of the three primary additive colors used in digital displays, alongside red and green. When rendered at full intensity with no red or green components, it produces this electric, almost luminous blue that dominates the"
+                },
+                "finish_reason": "length"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 82,
+              "completion_tokens": 96,
+              "total_tokens": 178,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 82,
+              "prompt_ms": 1018.4,
+              "prompt_per_token_ms": 12.42,
+              "prompt_per_second": 80.5,
+              "predicted_n": 96,
+              "predicted_ms": 3067.8,
+              "predicted_per_token_ms": 31.956,
+              "predicted_per_second": 31.3,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          }
+        ]
+      },
+      {
+        "name": "historical-images",
+        "rows": [
+          {
+            "id": "chatcmpl-851e0a90241840faa4385cdf",
+            "object": "chat.completion",
+            "created": 1791801578,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "(red, alongside green and blue), and it holds profound significance across science, culture, psychology, art, and design.\n\nIn nature, red is one of the most visible and emotionally arresting colors. It appears in sunsets, autumn leaves, ripe fruits like strawberries and cherries, and in the blood that flows through our veins — a biological signal of life, vitality, and urgency. The human eye is particularly sensitive to red wavelengths (around 620–75"
+                },
+                "finish_reason": "length"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 197,
+              "completion_tokens": 96,
+              "total_tokens": 293,
+              "prompt_tokens_details": {
+                "cached_tokens": 177
+              }
+            },
+            "timings": {
+              "cache_n": 177,
+              "prompt_n": 20,
+              "prompt_ms": 312.3,
+              "prompt_per_token_ms": 15.615,
+              "prompt_per_second": 64.0,
+              "predicted_n": 96,
+              "predicted_ms": 2477.0,
+              "predicted_per_token_ms": 25.802,
+              "predicted_per_second": 38.8,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          },
+          {
+            "id": "chatcmpl-0ac92abe4023463a9bba414f",
+            "object": "chat.completion",
+            "created": 1791801578,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "entire frame, evoking associations with sky, ocean, technology, and calm.\n\nBlue holds profound psychological and cultural significance across human societies. Psychologically, it is widely regarded as a calming and stabilizing color. Studies in color psychology suggest that blue can lower heart rate and reduce feelings of anxiety, which is why it’s frequently used in therapeutic environments, bedrooms, and corporate branding to convey trust, professionalism, and serenity. Think of financial institutions like Chase or PayPal —"
+                },
+                "finish_reason": "length"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 197,
+              "completion_tokens": 96,
+              "total_tokens": 293,
+              "prompt_tokens_details": {
+                "cached_tokens": 177
+              }
+            },
+            "timings": {
+              "cache_n": 177,
+              "prompt_n": 20,
+              "prompt_ms": 309.3,
+              "prompt_per_token_ms": 15.465,
+              "prompt_per_second": 64.7,
+              "predicted_n": 96,
+              "predicted_ms": 2118.8,
+              "predicted_per_token_ms": 22.071,
+              "predicted_per_second": 45.3,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          }
+        ]
+      },
+      {
+        "name": "repeat-history",
+        "rows": [
+          {
+            "id": "chatcmpl-090b14d7ae244994956eec3e",
+            "object": "chat.completion",
+            "created": 1791801581,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "(red, alongside green and blue), and it holds profound significance across science, culture, psychology, art, and design.\n\nIn nature, red is one of the most visible and emotionally arresting colors. It appears in sunsets, autumn leaves, ripe fruits like strawberries and cherries, and in the blood that flows through our veins — a biological signal of life, vitality, and urgency. The human eye is particularly sensitive to red wavelengths (around 620–75"
+                },
+                "finish_reason": "length"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 197,
+              "completion_tokens": 96,
+              "total_tokens": 293,
+              "prompt_tokens_details": {
+                "cached_tokens": 190
+              }
+            },
+            "timings": {
+              "cache_n": 190,
+              "prompt_n": 7,
+              "prompt_ms": 139.4,
+              "prompt_per_token_ms": 19.914,
+              "prompt_per_second": 50.2,
+              "predicted_n": 96,
+              "predicted_ms": 1889.0,
+              "predicted_per_token_ms": 19.677,
+              "predicted_per_second": 50.8,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          },
+          {
+            "id": "chatcmpl-2e1d83a6f077419589f5370c",
+            "object": "chat.completion",
+            "created": 1791801581,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "entire frame, evoking associations with sky, ocean, technology, and calm.\n\nBlue holds profound psychological and cultural significance across human societies. Psychologically, it is widely regarded as a calming and stabilizing color. Studies in color psychology suggest that blue can lower heart rate and reduce feelings of anxiety, which is why it’s frequently used in therapeutic environments, bedrooms, and corporate branding to convey trust, professionalism, and serenity. Think of financial institutions like Chase or PayPal —"
+                },
+                "finish_reason": "length"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 197,
+              "completion_tokens": 96,
+              "total_tokens": 293,
+              "prompt_tokens_details": {
+                "cached_tokens": 190
+              }
+            },
+            "timings": {
+              "cache_n": 190,
+              "prompt_n": 7,
+              "prompt_ms": 127.2,
+              "prompt_per_token_ms": 18.171,
+              "prompt_per_second": 55.0,
+              "predicted_n": 96,
+              "predicted_ms": 2075.0,
+              "predicted_per_token_ms": 21.615,
+              "predicted_per_second": 46.3,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          }
+        ]
+      },
+      {
+        "name": "images-thinking",
+        "rows": [
+          {
+            "id": "chatcmpl-4d30765282be4a89a9e74f8b",
+            "object": "chat.completion",
+            "created": 1791801583,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "Red",
+                  "reasoning_content": "The user wants the dominant color of the image. The image is a solid, uniform red field. I need to provide just the color word after brief reasoning. The answer is clearly \"red\".\n"
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 108,
+              "completion_tokens": 44,
+              "total_tokens": 152,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 108,
+              "prompt_ms": 646.6,
+              "prompt_per_token_ms": 5.987,
+              "prompt_per_second": 167.0,
+              "predicted_n": 44,
+              "predicted_ms": 1119.3,
+              "predicted_per_token_ms": 25.439,
+              "predicted_per_second": 39.3,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          },
+          {
+            "id": "chatcmpl-d9f0841b4f4a4f8c95eec615",
+            "object": "chat.completion",
+            "created": 1791801583,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "Blue",
+                  "reasoning_content": "The user wants the dominant color of the image. The image is a solid fill of pure blue (RGB 0,0,255). I need to provide just the color word after brief reasoning. The answer is simply \"Blue\".\n"
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 108,
+              "completion_tokens": 54,
+              "total_tokens": 162,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              }
+            },
+            "timings": {
+              "cache_n": 0,
+              "prompt_n": 108,
+              "prompt_ms": 636.4,
+              "prompt_per_token_ms": 5.893,
+              "prompt_per_second": 169.7,
+              "predicted_n": 54,
+              "predicted_ms": 2010.1,
+              "predicted_per_token_ms": 37.224,
+              "predicted_per_second": 26.9,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          }
+        ]
+      },
+      {
+        "name": "thinking-historical-images",
+        "rows": [
+          {
+            "id": "chatcmpl-a9c207865cad4a9dbd6f30dc",
+            "object": "chat.completion",
+            "created": 1791801586,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "Red",
+                  "reasoning_content": "The user is asking me to confirm which color I named in my previous response. I previously answered \"Red\" for the image color. This is a simple recall question. I should just state the color word again concisely.\n"
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 169,
+              "completion_tokens": 51,
+              "total_tokens": 220,
+              "prompt_tokens_details": {
+                "cached_tokens": 151
+              }
+            },
+            "timings": {
+              "cache_n": 151,
+              "prompt_n": 18,
+              "prompt_ms": 282.9,
+              "prompt_per_token_ms": 15.717,
+              "prompt_per_second": 63.6,
+              "predicted_n": 51,
+              "predicted_ms": 1031.5,
+              "predicted_per_token_ms": 20.225,
+              "predicted_per_second": 49.4,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          },
+          {
+            "id": "chatcmpl-f9b7c2acf7d043ed819201c0",
+            "object": "chat.completion",
+            "created": 1791801586,
+            "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "Blue",
+                  "reasoning_content": "The user is asking me to recall the color I named in my previous response. I previously answered \"Blue\" for the solid blue image. The answer is straightforward and self-contained.\n"
+                },
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 179,
+              "completion_tokens": 41,
+              "total_tokens": 220,
+              "prompt_tokens_details": {
+                "cached_tokens": 161
+              }
+            },
+            "timings": {
+              "cache_n": 161,
+              "prompt_n": 18,
+              "prompt_ms": 236.4,
+              "prompt_per_token_ms": 13.133,
+              "prompt_per_second": 76.1,
+              "predicted_n": 41,
+              "predicted_ms": 1213.5,
+              "predicted_per_token_ms": 29.598,
+              "predicted_per_second": 33.8,
+              "draft_n": 0,
+              "draft_n_accepted": 0
+            }
+          }
+        ]
+      }
+    ],
+    "max_running": 2,
+    "max_decoding_slots": 2,
+    "health": {
+      "status": "ok",
+      "max_context": 262144,
+      "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+      "images": true,
+      "api_key": false,
+      "loaded": true,
+      "service": "strata"
+    },
+    "engine": {
+      "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+      "max_context": 262144,
+      "images": true,
+      "version": "0.1.43",
+      "logit_bias": 1,
+      "context": 262144,
+      "kv": "int8",
+      "kv_resident": 0,
+      "expert_slots": 5113,
+      "expert_cache_mib": 13482,
+      "expert_slots_primary": 5113,
+      "expert_cache_primary_mib": 13482,
+      "spec": 2,
+      "mtp_max": 0,
+      "lookup": 0,
+      "vram_free_mib": 1732,
+      "cvec": 0,
+      "arena_mib": 64800,
+      "pool_workers": 15,
+      "pcie_frac": "0.25",
+      "pcie_auto": 0,
+      "pcie_balance": 0,
+      "spec_min_p": "0.00",
+      "conversation_cache_mib": 8192,
+      "conversation_cache_slots": 4,
+      "conversation_cache_min_free_mib": 2560,
+      "conversation_cache_min_tokens": 0,
+      "tail_role_token": -1,
+      "vram_elastic": 0,
+      "route_tail_skip": 0,
+      "batch_slots": 2,
+      "slot_cache": 1,
+      "batch_groups": 1,
+      "engine": "0.1.43",
+      "weight_source": "safetensors",
+      "native_adapter": 1,
+      "expert_ram_bytes": 67948118016,
+      "expert_cuda_pinned_bytes": 67948118016,
+      "expert_os_locked_bytes": 0,
+      "prefill_chunk": 4096,
+      "prefill_workspace": "dedicated",
+      "native_vision_slots": 1,
+      "startup_ms": 59370
+    },
+    "image_first_yield": {
+      "long": {
+        "id": "chatcmpl-4f003b8c4dc140b28baa3e59",
+        "object": "chat.completion",
+        "created": 1791801588,
+        "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The image presented is a solid, uniform field of **red**. This specific shade appears to be a highly saturated, primary red, often associated with the digital color code #FF0000, representing the maximum intensity of the red channel in the RGB color model. Red is arguably the most visceral and emotionally potent color in the visible spectrum, possessing a unique ability to command immediate attention and evoke a wide, often contradictory, range of psychological and physiological responses. Biologically, humans"
+            },
+            "finish_reason": "length"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 141092,
+          "completion_tokens": 96,
+          "total_tokens": 141188,
+          "prompt_tokens_details": {
+            "cached_tokens": 12288
+          }
+        },
+        "timings": {
+          "cache_n": 12288,
+          "prompt_n": 128804,
+          "prompt_ms": 39342.9,
+          "prompt_per_token_ms": 0.305,
+          "prompt_per_second": 3273.9,
+          "predicted_n": 96,
+          "predicted_ms": 1796.8,
+          "predicted_per_token_ms": 18.717,
+          "predicted_per_second": 53.4,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      },
+      "short": {
+        "id": "chatcmpl-90cde77901c540a581608712",
+        "object": "chat.completion",
+        "created": 1791801589,
+        "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The solid color depicted in this image is **blue** — specifically, a vibrant, saturated, and uniform shade that closely resembles what is often referred to as “pure blue” or “RGB blue” (with hexadecimal code #0000FF). This particular hue is one of the three primary additive colors used in digital displays, alongside red and green. When rendered at full intensity with no red or green components, it produces this electric, almost luminous blue that dominates the"
+            },
+            "finish_reason": "length"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 82,
+          "completion_tokens": 96,
+          "total_tokens": 178,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          }
+        },
+        "timings": {
+          "cache_n": 0,
+          "prompt_n": 82,
+          "prompt_ms": 656.3,
+          "prompt_per_token_ms": 8.004,
+          "prompt_per_second": 124.9,
+          "predicted_n": 96,
+          "predicted_ms": 5332.2,
+          "predicted_per_token_ms": 55.544,
+          "predicted_per_second": 18.0,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      },
+      "repeat": {
+        "id": "chatcmpl-3342d5ac03e94a21bb13abe0",
+        "object": "chat.completion",
+        "created": 1791801634,
+        "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The image presented is a solid, uniform field of **red**. This specific shade appears to be a highly saturated, primary red, often associated with the digital color code #FF0000, representing the maximum intensity of the red channel in the RGB color model. Red is arguably the most visceral and emotionally potent color in the visible spectrum, possessing a unique ability to command immediate attention and evoke a wide, often contradictory, range of psychological and physiological responses. Biologically, humans"
+            },
+            "finish_reason": "length"
+          }
+        ],
+        "usage": {
+          "prompt_tokens": 141092,
+          "completion_tokens": 96,
+          "total_tokens": 141188,
+          "prompt_tokens_details": {
+            "cached_tokens": 141085
+          }
+        },
+        "timings": {
+          "cache_n": 141085,
+          "prompt_n": 7,
+          "prompt_ms": 524.8,
+          "prompt_per_token_ms": 74.971,
+          "prompt_per_second": 13.3,
+          "predicted_n": 96,
+          "predicted_ms": 1548.6,
+          "predicted_per_token_ms": 16.131,
+          "predicted_per_second": 62.0,
+          "draft_n": 0,
+          "draft_n_accepted": 0
+        }
+      },
+      "yield_lines": [
+        "strata batch: the prompt read gives way at 12288 of 141092 tokens; slot 1 holds it (copied in 7.5 ms)",
+        "strata batch: slot 1 gave back 12288 tokens of this conversation (all it holds) in 7.6 ms",
+        "strata batch: slot 1 gave back 141095 tokens of this conversation (all it holds) in 48.9 ms",
+        "strata batch: slot 1 gave back 141085 tokens of this conversation (its turn checkpoint) in 31.0 ms"
+      ]
+    },
+    "final_cumulative_expert_file_bytes": 0
+  },
+  "limits": [
+    "Generated solid-color images and repetitive long text; finite correctness checks only.",
+    "No throughput, broad quality, retrieval or BF16-equivalence claim.",
+    "HIP/SYCL, multi-GPU and more than two slots were not validated.",
+    "Initial harness launch failed on a nonexistent expert-profile file; profile-copy corrected before these passing runs."
+  ],
+  "deployment": {
+    "parallel": "build-native-engine/strata-vision-cache.exe",
+    "single": "build-native-engine/strata-desktop-cleanup.exe",
+    "conversation_cache_mib": 8192,
+    "port": 8880,
+    "host": "127.0.0.1",
+    "health": {
+      "status": "ok",
+      "max_context": 262144,
+      "model": "Qwen3.8-Flash-Next-NVFP4-Native",
+      "images": true,
+      "api_key": false,
+      "loaded": true,
+      "service": "strata"
+    },
+    "verified_idle": true
+  }
+}

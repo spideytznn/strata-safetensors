@@ -19,6 +19,7 @@
 #include "strata/kernels/mtp_fp8.hpp"
 #include "strata/kernels/native_qsa.hpp"
 #include "strata/kernels/native_rope.hpp"
+#include "strata/kernels/mrope.hpp"
 #include "strata/kernels/native_router.hpp"
 #include "strata/kernels/qsa.hpp"
 #include "strata/kernels/qsa_decode_attn.hpp"
@@ -55,6 +56,12 @@ namespace strata::core {
 namespace {
 
 constexpr float EPS = 1e-6f;
+
+struct MropeScope {
+    const int32_t* saved = strata::kernels::mrope_table();
+    explicit MropeScope(const int32_t* table) { if (table) strata::kernels::mrope_table_set(table); }
+    ~MropeScope() { strata::kernels::mrope_table_set(saved); }
+};
 
 // #783 PR-i: STRATA_MTP_CATCHUP_ALL=1 catches the drafter's K/V up for the whole verified window, rejected rows included
 bool mtp_catchup_all() {
@@ -691,6 +698,7 @@ bool MtpDrafter::record_forward(int T, int step_row0, cudaStream_t cs, std::stri
 
 bool MtpDrafter::record_front(int T, int row0, cudaStream_t cs, std::string& err) {
     using namespace strata::kernels;
+    const MropeScope positions(mrope_table_);
     const ModelGeometry& g = *g_;
     const int64_t N = g.n_embd, HC = g.hc, NH = g.n_head, HD = g.head_dim, NKV = g.n_head_kv;
     const QsaShapes s = shapes_of(g);
@@ -816,6 +824,7 @@ void MtpDrafter::norm_rope(float* data, const float* gamma, int rows, int cols, 
 
 bool MtpDrafter::record_rest(int step_row, cudaStream_t cs, std::string& err) {
     using namespace strata::kernels;
+    const MropeScope positions(mrope_table_);
     const ModelGeometry& g = *g_;
     SessionState& ss = *ss_;
     const int T = 1;

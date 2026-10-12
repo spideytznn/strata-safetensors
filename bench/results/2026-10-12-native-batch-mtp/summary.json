@@ -1,0 +1,577 @@
+{
+  "status": "pass",
+  "date": "2026-10-12",
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "reported_vram_mib": 32607,
+    "driver": "617.14",
+    "cpu": "Ryzen 9 9950X3D",
+    "ram_gib": 96,
+    "os": "Windows",
+    "build": "CUDA 13, SM120"
+  },
+  "final_exe_sha256": "c3d1c5f0adee627dbeddd1290b54efddde8c5c17c6810c2a54cb56ee8728fc18",
+  "desktop_config": {
+    "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-native-batch-mtp-final.exe",
+    "args": [
+      "--model",
+      "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
+      "--max-context",
+      "262144",
+      "--prefill",
+      "4096",
+      "--spec",
+      "3",
+      "--mtp",
+      "native",
+      "--batch-mtp",
+      "--spec-min-p",
+      "0.5",
+      "--expert-cache",
+      "auto",
+      "--vram-reserve-mib",
+      "1536",
+      "--suffix-draft",
+      "0",
+      "--pcie-frac",
+      "0.25",
+      "--pcie-mode",
+      "kernel",
+      "--kv",
+      "int8",
+      "--no-prefill-borrow",
+      "--adapt-every",
+      "4",
+      "--adapt-swaps",
+      "96",
+      "--conversation-cache-mib",
+      "8192",
+      "--conversation-cache-slots",
+      "4",
+      "--prompt-cache",
+      "6",
+      "--stats",
+      "--check-logits",
+      "--expert-profile",
+      "G:\\Strata\\Strata-Safetensors\\data\\expert-profile.bin",
+      "--pool-tasks",
+      "40",
+      "--vision"
+    ],
+    "cwd": "G:\\Strata\\Strata-Safetensors",
+    "log": "logs/native-262k-parallel.log",
+    "tokenizer": "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
+    "tokenizer_format": "safetensors",
+    "chat_template": "G:\\Strata\\Strata-Safetensors\\config\\native\\froggeric-v22.5.jinja",
+    "model_name": "Qwen3.8-Flash-Next-NVFP4-Native",
+    "fit_max_tokens": true,
+    "lib_dirs": [
+      "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin\\x64",
+      "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin"
+    ],
+    "env": {
+      "STRATA_NVFP4_F32": "1",
+      "STRATA_NVFP4_TC": "0",
+      "STRATA_PREFILL_NVFP4": "w4a8",
+      "STRATA_PREFILL_TRACE": "1",
+      "STRATA_PREFILL_CPU_SHARE": "0",
+      "STRATA_PREFILL_BF16X2": "1",
+      "STRATA_SPEC_STOP_BOUNDARY": "1",
+      "STRATA_NATIVE_ALLOC_PINNED": "1",
+      "STRATA_NATIVE_LOAD_BATCH": "64",
+      "STRATA_NATIVE_LOAD_WORKERS": "4",
+      "STRATA_PLE_TRACE": "1",
+      "STRATA_NATIVE_KV_GROW": "1",
+      "STRATA_NATIVE_CLOSE_FILES": "1",
+      "STRATA_NATIVE_PREFILL_FIRST": "1",
+      "STRATA_NVFP4_F32_UNROLL": "1",
+      "STRATA_NVFP4_F32_REUSE": "1",
+      "STRATA_OWNED_PRICE": "exact",
+      "STRATA_NVFP4_F32_REUSE_TILE": "4",
+      "STRATA_NVFP4_F32_CANONICAL": "1",
+      "STRATA_ONE_TOKEN_COMMIT": "0",
+      "STRATA_NATIVE_WARM_WEIGHTS": "1",
+      "STRATA_NATIVE_KV_INDEPENDENT": "1",
+      "STRATA_NATIVE_SLOT_COPY": "1",
+      "STRATA_ROUTE_TAIL_SKIP": "0",
+      "STRATA_ADAPT_OVERLAP": "1",
+      "STRATA_ADAPT_OVERLAP_RESIDENT": "1",
+      "STRATA_ADAPT_NOWAIT": "0",
+      "STRATA_ADAPT_LAG": "1"
+    },
+    "allowed_hosts": [
+      "*"
+    ],
+    "sampling": {
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "top_k": 20,
+      "min_p": 0.0,
+      "presence_penalty": 0.0,
+      "repetition_penalty": 1.0
+    },
+    "vision": {
+      "exe": "G:\\Strata\\Strata-Official\\engine\\q6\\strata-vision.exe",
+      "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+      "model": "G:\\Strata\\Strata-data\\vision\\qwen3.8-flash-next-vision-vocab.gguf",
+      "gpu": true,
+      "max_tokens": 1024,
+      "threads": 16
+    },
+    "parallel": 2
+  },
+  "thinking_screen": {
+    "temperature": 0.7,
+    "thinking": true,
+    "seed": 9950,
+    "warm_repeats": 2,
+    "warmups": 1,
+    "output_tokens_per_slot": 256,
+    "medians": {
+      "serial": {
+        "text": {
+          "total_tok_s": 91.04766688853039,
+          "steady_tok_s": 96.34038959606023
+        },
+        "code": {
+          "total_tok_s": 93.43276957790735,
+          "steady_tok_s": 99.49416888100183
+        },
+        "doc8k": {
+          "total_tok_s": 90.38885248569085,
+          "steady_tok_s": 96.89314389817005
+        }
+      },
+      "off": {
+        "text": {
+          "total_tok_s": 81.2352920305851,
+          "steady_tok_s": 85.42970392950585
+        },
+        "code": {
+          "total_tok_s": 81.686039851418,
+          "steady_tok_s": 86.44143938620653
+        },
+        "doc8k": {
+          "total_tok_s": 81.59276931407064,
+          "steady_tok_s": 86.29684279118051
+        }
+      }
+    },
+    "gains": {
+      "text": {
+        "off": 81.2352920305851,
+        "mtp": 91.04766688853039,
+        "gain_percent": 12.078955602511932
+      },
+      "code": {
+        "off": 81.686039851418,
+        "mtp": 93.43276957790735,
+        "gain_percent": 14.380339342996606
+      },
+      "doc8k": {
+        "off": 81.59276931407064,
+        "mtp": 90.38885248569085,
+        "gain_percent": 10.780468962588973
+      }
+    },
+    "configs": [
+      {
+        "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-native-batch-mtp-final.exe",
+        "args": [
+          "--model",
+          "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
+          "--prefill",
+          "4096",
+          "--expert-cache",
+          "auto",
+          "--vram-reserve-mib",
+          "1536",
+          "--suffix-draft",
+          "0",
+          "--pcie-frac",
+          "0.25",
+          "--pcie-mode",
+          "kernel",
+          "--kv",
+          "int8",
+          "--no-prefill-borrow",
+          "--adapt-every",
+          "4",
+          "--adapt-swaps",
+          "96",
+          "--conversation-cache-mib",
+          "8192",
+          "--conversation-cache-slots",
+          "4",
+          "--prompt-cache",
+          "6",
+          "--stats",
+          "--check-logits",
+          "--pool-tasks",
+          "40",
+          "--vision",
+          "--batch",
+          "2",
+          "--max-context",
+          "262144",
+          "--expert-profile",
+          "G:\\Strata\\Strata-Safetensors\\bench\\results\\local-native-batch-mtp-20261012-thinking-bench\\r1-serial\\expert-profile.bin",
+          "--spec",
+          "3",
+          "--mtp",
+          "native",
+          "--batch-mtp",
+          "--spec-min-p",
+          "0.5"
+        ],
+        "cwd": "G:\\Strata\\Strata-Safetensors",
+        "log": "logs/native-262k-parallel.log",
+        "tokenizer": "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
+        "tokenizer_format": "safetensors",
+        "chat_template": "G:\\Strata\\Strata-Safetensors\\config\\native\\froggeric-v22.5.jinja",
+        "model_name": "Qwen3.8-Flash-Next-NVFP4-Native",
+        "fit_max_tokens": true,
+        "lib_dirs": [
+          "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin\\x64",
+          "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin"
+        ],
+        "env": {
+          "STRATA_NVFP4_F32": "1",
+          "STRATA_NVFP4_TC": "0",
+          "STRATA_PREFILL_NVFP4": "w4a8",
+          "STRATA_PREFILL_TRACE": "1",
+          "STRATA_PREFILL_CPU_SHARE": "0",
+          "STRATA_PREFILL_BF16X2": "1",
+          "STRATA_SPEC_STOP_BOUNDARY": "1",
+          "STRATA_NATIVE_ALLOC_PINNED": "1",
+          "STRATA_NATIVE_LOAD_BATCH": "64",
+          "STRATA_NATIVE_LOAD_WORKERS": "4",
+          "STRATA_PLE_TRACE": "1",
+          "STRATA_NATIVE_KV_GROW": "1",
+          "STRATA_NATIVE_CLOSE_FILES": "1",
+          "STRATA_NATIVE_PREFILL_FIRST": "1",
+          "STRATA_NVFP4_F32_UNROLL": "1",
+          "STRATA_NVFP4_F32_REUSE": "1",
+          "STRATA_OWNED_PRICE": "exact",
+          "STRATA_NVFP4_F32_REUSE_TILE": "4",
+          "STRATA_NVFP4_F32_CANONICAL": "1",
+          "STRATA_ONE_TOKEN_COMMIT": "0",
+          "STRATA_NATIVE_WARM_WEIGHTS": "1",
+          "STRATA_NATIVE_KV_INDEPENDENT": "1",
+          "STRATA_NATIVE_SLOT_COPY": "1",
+          "STRATA_ROUTE_TAIL_SKIP": "0",
+          "STRATA_ADAPT_OVERLAP": "1",
+          "STRATA_ADAPT_OVERLAP_RESIDENT": "1",
+          "STRATA_ADAPT_NOWAIT": "0",
+          "STRATA_ADAPT_LAG": "1",
+          "STRATA_NATIVE_BATCH_MTP_ASYNC": "0"
+        },
+        "allowed_hosts": [
+          "*"
+        ],
+        "sampling": {
+          "temperature": 0.7,
+          "top_p": 0.95,
+          "top_k": 20,
+          "min_p": 0.0,
+          "presence_penalty": 0.0,
+          "repetition_penalty": 1.0
+        },
+        "vision": {
+          "exe": "G:\\Strata\\Strata-Official\\engine\\q6\\strata-vision.exe",
+          "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+          "model": "G:\\Strata\\Strata-data\\vision\\qwen3.8-flash-next-vision-vocab.gguf",
+          "gpu": true,
+          "max_tokens": 1024,
+          "threads": 16
+        },
+        "parallel": 2
+      },
+      {
+        "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-native-batch-mtp-final.exe",
+        "args": [
+          "--model",
+          "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
+          "--prefill",
+          "4096",
+          "--expert-cache",
+          "auto",
+          "--vram-reserve-mib",
+          "1536",
+          "--suffix-draft",
+          "0",
+          "--pcie-frac",
+          "0.25",
+          "--pcie-mode",
+          "kernel",
+          "--kv",
+          "int8",
+          "--no-prefill-borrow",
+          "--adapt-every",
+          "4",
+          "--adapt-swaps",
+          "96",
+          "--conversation-cache-mib",
+          "8192",
+          "--conversation-cache-slots",
+          "4",
+          "--prompt-cache",
+          "6",
+          "--stats",
+          "--check-logits",
+          "--pool-tasks",
+          "40",
+          "--vision",
+          "--batch",
+          "2",
+          "--max-context",
+          "262144",
+          "--expert-profile",
+          "G:\\Strata\\Strata-Safetensors\\bench\\results\\local-native-batch-mtp-20261012-thinking-bench\\r1-off\\expert-profile.bin",
+          "--spec",
+          "2"
+        ],
+        "cwd": "G:\\Strata\\Strata-Safetensors",
+        "log": "logs/native-262k-parallel.log",
+        "tokenizer": "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
+        "tokenizer_format": "safetensors",
+        "chat_template": "G:\\Strata\\Strata-Safetensors\\config\\native\\froggeric-v22.5.jinja",
+        "model_name": "Qwen3.8-Flash-Next-NVFP4-Native",
+        "fit_max_tokens": true,
+        "lib_dirs": [
+          "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin\\x64",
+          "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\bin"
+        ],
+        "env": {
+          "STRATA_NVFP4_F32": "1",
+          "STRATA_NVFP4_TC": "0",
+          "STRATA_PREFILL_NVFP4": "w4a8",
+          "STRATA_PREFILL_TRACE": "1",
+          "STRATA_PREFILL_CPU_SHARE": "0",
+          "STRATA_PREFILL_BF16X2": "1",
+          "STRATA_SPEC_STOP_BOUNDARY": "1",
+          "STRATA_NATIVE_ALLOC_PINNED": "1",
+          "STRATA_NATIVE_LOAD_BATCH": "64",
+          "STRATA_NATIVE_LOAD_WORKERS": "4",
+          "STRATA_PLE_TRACE": "1",
+          "STRATA_NATIVE_KV_GROW": "1",
+          "STRATA_NATIVE_CLOSE_FILES": "1",
+          "STRATA_NATIVE_PREFILL_FIRST": "1",
+          "STRATA_NVFP4_F32_UNROLL": "1",
+          "STRATA_NVFP4_F32_REUSE": "1",
+          "STRATA_OWNED_PRICE": "exact",
+          "STRATA_NVFP4_F32_REUSE_TILE": "4",
+          "STRATA_NVFP4_F32_CANONICAL": "1",
+          "STRATA_ONE_TOKEN_COMMIT": "0",
+          "STRATA_NATIVE_WARM_WEIGHTS": "1",
+          "STRATA_NATIVE_KV_INDEPENDENT": "1",
+          "STRATA_NATIVE_SLOT_COPY": "1",
+          "STRATA_ROUTE_TAIL_SKIP": "0",
+          "STRATA_ADAPT_OVERLAP": "1",
+          "STRATA_ADAPT_OVERLAP_RESIDENT": "1",
+          "STRATA_ADAPT_NOWAIT": "0",
+          "STRATA_ADAPT_LAG": "1",
+          "STRATA_NATIVE_BATCH_MTP_ASYNC": "0"
+        },
+        "allowed_hosts": [
+          "*"
+        ],
+        "sampling": {
+          "temperature": 0.7,
+          "top_p": 0.95,
+          "top_k": 20,
+          "min_p": 0.0,
+          "presence_penalty": 0.0,
+          "repetition_penalty": 1.0
+        },
+        "vision": {
+          "exe": "G:\\Strata\\Strata-Official\\engine\\q6\\strata-vision.exe",
+          "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+          "model": "G:\\Strata\\Strata-data\\vision\\qwen3.8-flash-next-vision-vocab.gguf",
+          "gpu": true,
+          "max_tokens": 1024,
+          "threads": 16
+        },
+        "parallel": 2
+      }
+    ],
+    "initial_expert_profile_sha256": "8f59b4aa8873209dff11c11e37bcda9529a1335b724a1afeea37bf6388975baf",
+    "fixtures": {
+      "text": [
+        {
+          "tokens": 37,
+          "sha256": "18a769c4fbcbfa8068a030e907c478bce89d5b4adae02257b0978a2142568d0c"
+        },
+        {
+          "tokens": 29,
+          "sha256": "87f77bfb7e897b14d186c6eab80143f4bc45fe1dffeaa556dfee48a6e0a00fa8"
+        }
+      ],
+      "code": [
+        {
+          "tokens": 29,
+          "sha256": "c318ae26ca28cfa5d864dcf4e913b169aaf39e7a1faa7a2faa8be4015864ebe7"
+        },
+        {
+          "tokens": 30,
+          "sha256": "bffeb6cdf31b0521f3717fa449470a45df76816feac7c2b2179bd9deb5ef0cb8"
+        }
+      ],
+      "doc8k": [
+        {
+          "tokens": 8024,
+          "sha256": "7d19333a15986881ec77580dd1bf4648662852027dc1b2867db775733bfa9814"
+        },
+        {
+          "tokens": 8023,
+          "sha256": "66e6da832be336284bb3579001ddcdf19f0d47c41c12dd340922f0c430ac4e2e"
+        }
+      ]
+    },
+    "raw": "local-native-batch-mtp-20261012-thinking-bench/results.json"
+  },
+  "greedy_screen": {
+    "medians": {
+      "off": {
+        "text": {
+          "total_tok_s": 79.47582700200115,
+          "steady_tok_s": 84.25357805012078
+        },
+        "code": {
+          "total_tok_s": 77.66042283529666,
+          "steady_tok_s": 82.32869802545179
+        },
+        "doc8k": {
+          "total_tok_s": 79.92343960515828,
+          "steady_tok_s": 85.49276142929696
+        }
+      },
+      "serial": {
+        "text": {
+          "total_tok_s": 89.06507176114278,
+          "steady_tok_s": 94.59743183532905
+        },
+        "code": {
+          "total_tok_s": 94.67614741125664,
+          "steady_tok_s": 100.77860541020263
+        },
+        "doc8k": {
+          "total_tok_s": 87.01432200566153,
+          "steady_tok_s": 93.4868632409819
+        }
+      },
+      "async": {
+        "text": {
+          "total_tok_s": 89.05408537442904,
+          "steady_tok_s": 94.57351748435406
+        },
+        "code": {
+          "total_tok_s": 95.1588996519736,
+          "steady_tok_s": 101.26530524256955
+        },
+        "doc8k": {
+          "total_tok_s": 87.28474321792818,
+          "steady_tok_s": 93.85193547816468
+        }
+      }
+    },
+    "exe_sha256": "a3f05d6f4cebaa81d5b1ca83c6d7d3e5db837dab617c2c61c57331ec184caecc",
+    "raw": "local-native-batch-mtp-20261012-bench/results.json",
+    "conclusion": "No clear extra benefit from asynchronous draft streams; keep them explicit opt-in."
+  },
+  "correctness": {
+    "raw": "local-native-batch-mtp-20261012-final-regression/results.json",
+    "exe_sha256": "a3f05d6f4cebaa81d5b1ca83c6d7d3e5db837dab617c2c61c57331ec184caecc",
+    "variant": "asynchronous drafts (then default)",
+    "cases": [
+      "greedy",
+      "seeded",
+      "penalties",
+      "mixed_confidence",
+      "no_proposals",
+      "cancel_resume",
+      "followup",
+      "caps",
+      "eos",
+      "kv_growth_long_slot"
+    ],
+    "row_layouts": [
+      [
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "adaptive": {
+      "multi_slot_rounds": 92,
+      "promoted": 8516
+    },
+    "source_bytes": {
+      "expert": 0,
+      "MTP": 0
+    }
+  },
+  "image_acceptance": {
+    "final_serial": {
+      "raw": "local-native-batch-mtp-20261012-final-vision-r2/results.json",
+      "requests": 22,
+      "exe_sha256": "c3d1c5f0adee627dbeddd1290b54efddde8c5c17c6810c2a54cb56ee8728fc18",
+      "source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      },
+      "exit_code": 0
+    },
+    "long_async": {
+      "raw": "local-native-batch-mtp-20261012-vision-extended/results.json",
+      "requests": 31,
+      "exe_sha256": "980519c96f106f99ae22b2fc21db98a1bf96baf39af4a6907207c515bc6f0eb2",
+      "source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      },
+      "largest_input_tokens": 141216
+    },
+    "cross_mode_identical_complete_outputs": 27
+  },
+  "checks": {
+    "server_tests": 9,
+    "ctests": 4,
+    "py_compile": "pass",
+    "git_diff_check": "pass"
+  },
+  "limits": [
+    "Finite output parity, not a broad quality evaluation.",
+    "Two warm repeats per case; no confidence interval or general speed guarantee.",
+    "Cold 8K document pair essentially unchanged under daily sampling; no prefill speedup claimed.",
+    "About 2.7 GiB less hot-expert VRAM cache; all experts remain in pinned RAM.",
+    "Drafts still run after low confidence to probe the next candidate.",
+    "No HIP/SYCL/Linux/multi-GPU build or hardware validation.",
+    "No remote push and no HTTP service started."
+  ],
+  "excluded_run": {
+    "raw": "local-native-batch-mtp-20261012-final-vision/results.json",
+    "reason": "Harness post-close exit-code access used engine.proc after close cleared it. Repaired and repeated; only r2 is counted as final acceptance."
+  },
+  "source_sha256": {
+    "src\\program\\generate.cpp": "07b2ba314380c53b7b0d38a63db70677b33ef08ffe9c47a25f56fb4fcb16433f",
+    "src\\core\\mtp.cpp": "bbe17dd6a99195b8cfc557ee8041af931d030938b9764468cf3abfafe60f39c3",
+    "include\\strata\\core\\mtp.hpp": "91ea9f1d9f771a49dc0a7b2c4baef54c77e24eda9f2aa80930d1bb0a15c71cd2",
+    "tools\\native_batch_mtp_bench.py": "832e46d5e6e5e4623627d2ac9910c997503e89d602fab5d684e7347f66ad850f",
+    "tools\\native_concurrency_acceptance.py": "023cd225b2f41c1ed3d9584cb1c5a3d734f75f976eebc629d614fa10cdc5559c",
+    "tools\\native_vision_concurrency_acceptance.py": "a0c0c4767a33e6fa60c3b113c6310c8478924128a7f8101f97b453d42bffb1be"
+  }
+}

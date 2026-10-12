@@ -15,7 +15,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 维护稳定线为 `main`，引擎程序和命令仍叫 `strata`。
 
 `main` 维护稳定版本：已验证单路或双路文本请求、热专家晋升、INT8 KV 和视觉，
-稳定回退配置不加载 MTP；本地单路后来已重新启用，见下方快照。
+稳定回退配置不加载 MTP；本地单路后来已重新启用，双路也已根据同日对照启用共享原生 MTP，见下方快照。
 后续类 vLLM 调度实验已回退，不宣称它们带来热态解码提速。
 见[稳定版验收记录](bench/results/2026-10-11-two-slot-rollback/README.md)、
 [主分支验收要求](docs/STABLE_NATIVE.md)与
@@ -36,7 +36,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 | MTP | 直接使用模型原生草稿权重，由主模型验证；可调整草稿长度和置信度门槛，也可完整卸载 MTP。 |
 | 多会话缓存 | 前缀复用、会话驻留与切回、A/B/A 切换，以及 KV 和线性注意力状态的磁盘保存/恢复。 |
 | 视觉 | 通过已有外部 BF16 编码器接入图片；视觉侧车仍使用 mmproj / 词表 GGUF，主模型保持 safetensors。 |
-| 服务 | 网页聊天、OpenAI / Anthropic 兼容 API、流式输出、工具调用。可选两路文本并发；图片请求独占执行，超额请求排队。 |
+| 服务 | 网页聊天、OpenAI / Anthropic 兼容 API、流式输出、工具调用。可选两路并发，支持带图历史和共享原生 MTP；超额请求排队。 |
 
 这是针对该模型结构的后端，尚不是通用 safetensors 推理框架。
 
@@ -72,7 +72,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 每套配置只启动一台引擎，不能当成多轮稳定吞吐估计；该候选使用四枚草稿、0.7 草稿门槛及两枚强制草稿。
 
 **2026-10-12 本地配置文件：单路启用 native MTP / spec 3 / min-p 0.5，温度 1.0；
-双路完全不加载 MTP，温度 0.7。网页共享设置和请求参数可以覆盖采样默认值。**
+双路启用共享 native MTP / spec 3 / min-p 0.5，温度 0.7，并发每路最多一枚草稿。网页共享设置和请求参数可以覆盖采样默认值。**
 上述成绩对应历史 MTP 配置，不是当前配置的重新测速，也不是所有任务的速度承诺。
 回退后的最新验收检查正确性和实际热专家晋升，不构成新的吞吐提升证据。
 
@@ -109,7 +109,7 @@ OpenAI 客户端地址为 **http://127.0.0.1:8880/v1**。
 | 总上下文 / 专用 prefill | 262144 token / 4096 行 |
 | KV / 视觉 | INT8 按需增长 / 外部 GPU 编码器，每张图最多 1024 token |
 | 显存预留 | 单路 700 MiB / 双路 1536 MiB；启动后仍检查最终显存余量 |
-| MTP | 单路 native / spec 3 / min-p 0.5；双路不加载草稿权重；suffix drafting 均关闭 |
+| MTP | 单路 native / spec 3 / min-p 0.5；双路共享 native MTP / spec 3 / min-p 0.5，并发每路最多一枚草稿；suffix drafting 均关闭 |
 | 采样 | 文件温度：单路 **1.0**、双路 **0.7**；top_p 0.95、top_k 20、min_p 0、presence_penalty 0、repetition_penalty 1 |
 | 模板 | Froggeric v22.5，默认开启思考；请求未指定强度时默认 medium |
 | 服务 | 127.0.0.1:8880，HTTP Host 头不设白名单 |
@@ -121,15 +121,23 @@ OpenAI 客户端地址为 **http://127.0.0.1:8880/v1**。
 
 只维护当前单路与双路两份桌面配置；旧对照配置和额外启动入口已移除。
 
-`START-NATIVE-262K-PARALLEL.bat` 选择可选的**两路文本并发**，仍为 262K 上下文、
-4096 行专用 prefill。图片请求独占引擎；并发配置完全不加载 MTP，所有请求直接由主模型解码。
+`START-NATIVE-262K-PARALLEL.bat` 选择可选的**两路并发**，仍为 262K 上下文、
+4096 行专用 prefill。每路保留独立图片位置与带图缓存，共享一份原始 MTP 权重、各自保留草稿 KV。
+每路最多一枚草稿，低置信度时该路退回单行目标验证，主模型仍验证输出。
 本机并发配置还启用了按会话长度独立伸缩的 KV 和显存内槽位迁移。
 内存开销、验收及首字/吞吐测量见[原生并发说明](docs/NATIVE_CONCURRENCY.md)。原桌面入口不变。
-当前本地配置指向 `build-native-engine/strata-desktop-cleanup.exe`。
+单路本地配置指向 `build-native-engine/strata-desktop-cleanup.exe`，双路指向
+`build-native-engine/strata-native-batch-mtp-final.exe`。
 构建此程序名时，在英文 CMake 配置命令中加上
 `-DSTRATA_EXECUTABLE_NAME=strata-desktop-cleanup`；通用配置示例则使用 `strata.exe`。
-本分支不再保留原生双路 MTP 扩展；官方 GGUF batch MTP 能力保留。
+原生双路 MTP 复用官方 slot verifier；异步草稿是显式选项，默认不开。官方 GGUF batch MTP 能力保留。
 Git clone 不包含本机预编译程序或视觉资源，其他机器需要自行构建并适配路径。
+
+2026-10-12 同日对照（5090 / 9950X3D / 96GB、温度 0.7、思考模式、每路 256 token）：
+预热后的双路合计吞吐由约 81–82 提高到 90–93 tok/s，三组提升约 11%–14%，
+各模式输出逐 token 一致。冷文档首次请求包含 prefill 的总吞吐基本持平。
+共享 MTP 使热专家显存缓存减少约 2.7 GiB，专家仍全部常驻锁定 RAM。
+完整条件与验收见[本日记录](bench/results/2026-10-12-native-batch-mtp/README.md)。
 
 ## 验收与边界
 

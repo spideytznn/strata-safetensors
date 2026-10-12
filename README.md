@@ -21,7 +21,8 @@ Local desktop-scope cleanup is on `cleanup/desktop-native-20261012`; it is not a
 `main` is the maintained stable line. Its validated native deployment supports
 one or two text requests, adaptive hot-expert promotion, INT8 KV and vision,
 with MTP unloaded in the stable rollback profiles. Local single-request MTP
-was subsequently enabled; see the dated inventory above. The later vLLM-style scheduler experiments were rolled back;
+was subsequently enabled; the local parallel profile now selects shared native
+batch MTP after a same-day comparison. See the dated inventory above. The later vLLM-style scheduler experiments were rolled back;
 no warm-decode speedup is claimed for them. See the
 [stable validation record](bench/results/2026-10-11-two-slot-rollback/README.md),
 [release checks](docs/STABLE_NATIVE.md)
@@ -39,7 +40,7 @@ and [automated CPU checks](https://github.com/spideytznn/strata-safetensors/acti
 | MTP | Uses the checkpoint's native draft weights. The main model verifies proposals; draft length and confidence gating are configurable. MTP can be fully unloaded. |
 | Session reuse | Prefix reuse, multiple parked conversations, A/B/A switching, and disk save/restore of KV and linear-attention state. |
 | Vision | Image input through Strata's existing external BF16 encoder. The visual sidecar uses mmproj/vocabulary GGUF files; the main model stays in safetensors. |
-| Serving | Web chat, OpenAI-compatible and Anthropic-compatible APIs, streaming and tool calling. Opt-in two-slot text concurrency; image requests run exclusively. Excess requests queue. |
+| Serving | Web chat, OpenAI-compatible and Anthropic-compatible APIs, streaming and tool calling. Opt-in two-slot concurrency, including image histories and shared native batch MTP on supported single-GPU engines. Excess requests queue. |
 
 This is a model-specific backend, not a general safetensors runner. See
 [scope and validation](docs/SAFETENSORS_NATIVE.md) for the supported geometry,
@@ -178,17 +179,21 @@ policy; set the client context to 262,144 as well.
 Only the single-request and parallel desktop profiles are maintained.
 Historical and experimental profiles and launchers were removed.
 
-`START-NATIVE-262K-PARALLEL.bat` selects an opt-in **two-request text batch**,
-with the same 262K context and dedicated 4096-row prefill. Images run exclusively;
-this profile leaves MTP weights unloaded and uses target-only decode for all requests.
-Native target-only batching also offers independent per-session elastic KV and
+`START-NATIVE-262K-PARALLEL.bat` selects an opt-in **two-request batch**,
+with the same 262K context and dedicated 4096-row prefill. Each slot keeps its own
+image positions and image-aware cached history. This local profile enables shared
+native MTP: one proposal per concurrent slot with a 0.5 confidence threshold.
+Native batching also offers independent per-session elastic KV and
 direct device slot migration; the measured local profile enables both.
 See [native concurrency](docs/NATIVE_CONCURRENCY.md) for tests, memory costs and
 latency/throughput measurements. The original desktop launcher is unchanged.
-The current local profiles select `build-native-engine/strata-desktop-cleanup.exe`.
-To build that executable name, add `-DSTRATA_EXECUTABLE_NAME=strata-desktop-cleanup`
-to the CMake configure command above, or use the generic config's `strata.exe`.
-Native batch MTP is not retained. Upstream GGUF batch-MTP support remains.
+The local single-request profile selects `build-native-engine/strata-desktop-cleanup.exe`;
+the parallel profile selects `build-native-engine/strata-native-batch-mtp-final.exe`.
+Set `-DSTRATA_EXECUTABLE_NAME` to the desired name in the CMake configure command
+above, or use the generic config's `strata.exe`.
+Native batch MTP is opt-in: shared original draft weights and one proposal per
+slot, with private KV and image positions. The local desktop parallel profile
+selects it after same-day measurement. See [native concurrency](docs/NATIVE_CONCURRENCY.md).
 Prebuilt local executables and machine-specific visual assets are not distributed
 by Git clone.
 

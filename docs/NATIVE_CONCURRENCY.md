@@ -2,10 +2,63 @@
 
 The CUDA native backend can decode two text requests in one target-model window
 with `"parallel": 2` in the server config (`--batch 2` / `--slots 2` in the
-engine). This is opt-in. The desktop parallel entry leaves MTP unloaded;
-the local single-request entry enables native MTP. See the dated
+engine). This is opt-in. The desktop parallel entry enables native batch MTP;
+the local single-request entry uses solo native MTP. See the dated
 [feature/profile inventory](FORK_FEATURES.md) for current settings.
 The measurements below retain their historical executables and configurations.
+
+## Image histories and progress
+
+Native single-GPU batches can register a stable M-RoPE table for each
+slot. Admission copies the main request's table into that slot. Query/key norms
+and rotations and pooled indexer forward/commit use the slot's table, including
+when two requests have the same token position. Projections and expert matrix
+operations retain the existing multi-row path. Tables for two 262144-cell slots
+add approximately 6 MiB of VRAM (the exact allocation includes the engine's cell
+padding).
+
+Image identity (grid and embedding hash) is retained with cached slot tokens and
+checkpoints. A later turn containing the same historical images can restore that
+state; equal image-pad token IDs alone cannot match a different picture. Image
+prefill can yield at existing chunk boundaries and resume from the slot. The
+existing in-memory parked-conversation budget and eviction rules still apply.
+
+The engine reports `native_vision_slots=1` only for this supported configuration.
+The Python server uses the existing exclusive image gate for older binaries,
+solo-MTP batch configurations and layer splits. Merely loading the vision encoder does not
+mean every request contains images.
+
+Parallel monitor progress now comes from the request that consumed the engine's
+control lines. A waiting request reports that it is queued and does not display
+another request's completed prefill. Request-scoped progress also applies to
+requests outside batch slots.
+
+`vision_slot_positions_test` checks captured image/image and text/image rotations
+and pooled indexer state against separate calls, bit for bit. The server gate
+and monitor tests run without a model in `serve.test_native_concurrency`. Full
+model acceptance uses generated images rather than user conversations:
+
+```powershell
+.venv-native/Scripts/python.exe tools/native_vision_concurrency_acceptance.py --config config/native/rtx5090-262k-parallel.json --exe build-native-engine/strata-vision-cache.exe --output bench/results/local-vision-cache-acceptance
+```
+
+That command requires the desktop service to be stopped to free model memory.
+Compilation and small synthetic GPU tests alone do not establish full-model
+parity or a speedup. On 2026-10-12, the full model also passed private-stdin tests
+with both 16K/512 and desktop 262144/4096 context/prefill allocations on the
+RTX 5090, Ryzen 9950X3D, 96 GB Windows CUDA machine. Two different image grids
+in 141098- and 126147-token prompts matched their single-request token outputs
+in parallel. Their continuations reused 141193 and 126242 tokens. A cold image
+request yielded at 8192 of 141106 tokens and resumed there; its warm repeat
+reused 141099 tokens. Expert file reads remained zero. These are correctness
+checks with generated pictures and repetitive text, not a quality or speed
+benchmark. This change has not been validated on HIP or SYCL.
+
+The restored desktop HTTP service also passed image-history and thinking-history
+continuation with two decoding slots. A 141092-token request with its image before
+the long text yielded at 12288, resumed there, and reused 141085 tokens on repeat
+with the same output. See the [dated repair record](../bench/results/2026-10-12-vision-slot-cache/README.md)
+for counts, exact settings and limits.
 
 ## Local launch
 
@@ -15,13 +68,13 @@ Use `START-NATIVE-262K-PARALLEL.bat`, or the desktop
 using that port before launching this one. The profile keeps original safetensors
 weights, INT8 KV, 262144 context, a dedicated 4096-row prefill workspace, the
 existing external GPU vision encoder and unrestricted HTTP Host headers.
-The current local profile uses `strata-upstream143.exe`, with tail skipping
+The current local profile uses `strata-native-batch-mtp-final.exe`, with tail skipping
 explicitly off. The 2026-10-11 rollback used `strata-two-slot.exe`, rebuilt
 from the pre-continuous-batching source at `34541c37`.
 The later continuous lifetime/handoff, CPU DAG, shared-prefix pages and ragged
 prefill changes are removed from the active source. Adaptive hot-expert promotion
 and the earlier independent-KV/device-copy fixes remain. The desktop profile is
-two slots, vision enabled and MTP unloaded. Rollback checks are recorded under
+two slots, vision enabled and shared native MTP. Rollback checks are recorded under
 `bench/results/2026-10-11-two-slot-rollback`.
 The v0.1.42 checks are recorded in [the integration notes](UPSTREAM_V0142.md); the
 measurements below retain their named historical executables. It enables independent session KV and direct
@@ -33,7 +86,8 @@ server setting; its default is still one request. The measured desktop profile
 contains additional arithmetic, memory and scheduling settings, so a generic
 config is not a reproduction of its measurements.
 
-The desktop parallel profile leaves MTP entirely disabled: no `--mtp`, no draft
+Before the native batch-MTP update on 2026-10-12, the desktop parallel profile
+left MTP entirely disabled: no `--mtp`, no draft
 weights loaded, `--spec 2` and `--suffix-draft 0`. Every request, including one
 running alone, uses target-only decode. Removing MTP also removes its draft
 weight/state allocation; the earlier acceptance profile reported 2620 MiB for
@@ -42,12 +96,12 @@ cache sizing; WDDM allocation variation still affects the available cache.
 
 When another text request arrives, the server drains the solo generation and
 resumes it in an independent batch slot. Slots verify one target token each per
-window. A custom config can still load native MTP for solo requests, as in the
-initial acceptance runs below; concurrent slots remain target-only.
-The unused native `--batch-mtp` extension was removed in the
-[desktop-scope cleanup](DESKTOP_SCOPE.md). It is rejected for safetensors;
-upstream GGUF batch-MTP support remains. No target weights or projections are
-requantized by concurrency.
+window. A custom config can load native MTP for solo requests, as in the initial
+acceptance runs below. Concurrent slots remain target-only unless `--batch-mtp`
+is explicitly selected. The native adapter described below restores this option
+after the earlier [desktop-scope cleanup](DESKTOP_SCOPE.md). Upstream GGUF
+batch-MTP support remains. No target weights or projections are requantized
+by concurrency.
 
 More than two requests wait for a free slot. Admissions share one prompt reader;
 active slots receive decode windows between prompt chunks. This is batch decode
@@ -55,6 +109,64 @@ with chunk-level admission scheduling, not simultaneous prompt GEMMs. The
 maximum wait between those decode opportunities includes a full prefill chunk.
 Disk `/slots/0` save/restore remains unavailable while batch mode is enabled.
 In-memory live-slot, checkpoint and parked-conversation reuse remain available.
+
+## Optional native batch MTP
+
+`--mtp native --batch 2 --batch-mtp --spec 3 --spec-min-p 0.5` enables the
+existing slot verifier with native draft weights. The main drafter owns one
+shared copy of the original BF16/F32 and FP8 weights and full output head.
+Each slot owns its draft KV, activation scratch, residual rows and graph inputs.
+Each slot proposes at most **one** token per batch window, regardless of the
+solo `--spec` setting. Two proposing slots therefore verify four rows. A slot
+below its request's confidence threshold verifies one row; the other slot can
+continue proposing. Length/EOS/cancellation still apply per request.
+
+Draft graphs capture each slot's stable image position table. Independent
+elastic KV includes resident draft pools, while streamed draft KV retains its
+existing snapshot fallback. Target slot migration can still use device copies.
+The default submits and waits for each slot's draft using the upstream interface.
+`STRATA_NATIVE_BATCH_MTP_ASYNC=1` opts into submitting both private streams
+before joining completion, for a same-build A/B. It does not change target
+verification or confidence gating. Draft work still
+runs in low-confidence windows to obtain the next confidence estimate.
+
+The current desktop parallel entry explicitly selects this option. MTP consumes
+VRAM that could otherwise hold hot experts; acceptance rate alone does not prove
+a throughput improvement. The private benchmark retains actual output tokens,
+loads vision before expert-cache sizing, clones the same initial expert profile,
+and measures warm end-to-end and decode throughput with both slots active:
+
+```powershell
+.venv-native/Scripts/python.exe tools/native_batch_mtp_bench.py --config config/native/rtx5090-262k-parallel.json --exe build-native-engine/strata-native-batch-mtp-final.exe --output bench/results/local-native-batch-mtp-bench
+```
+
+On RTX 5090 32 GB, Ryzen 9950X3D and 96 GB RAM, the same-day private-stdin
+comparison used 262144 context, a dedicated 4096-row prefill workspace, GPU
+vision loaded before cache sizing, INT8 KV, the same cloned initial expert
+profile, adaptive promotion, temperature 0.7, thinking enabled and seed 9950.
+Each result below is the median of two warm repeats after one retained warmup;
+each pair emits 256 tokens per slot. Total throughput counts the 512 actual
+emitted tokens over wall time including both admissions. It is not the engine's
+verify-row counter.
+
+| Pair | MTP unloaded | Shared native MTP | Change |
+|---|---:|---:|---:|
+| Short text | 81.24 tok/s | 91.05 tok/s | +12.1% |
+| Code | 81.69 tok/s | 93.43 tok/s | +14.4% |
+| 8K document, cached repeat | 81.59 tok/s | 90.39 tok/s | +10.8% |
+
+The first uncached document pair was 42.00 versus 42.04 tok/s including prefill;
+this is no demonstrated cold-prefill improvement. A separate greedy screen
+found no clear extra benefit from overlapping draft streams, so it stays opt-in.
+All retained outputs matched token for token across each screen's modes. These
+finite checks are not a broad quality evaluation or a guarantee for other prompts
+and context lengths. The MTP allocation takes about 2.7 GiB from the hot-expert
+cache on this configuration; experts remain resident in locked RAM.
+
+See [the validation record](../bench/results/2026-10-12-native-batch-mtp/README.md)
+for configurations, raw-run references and limits. Generic engine/server defaults
+remain target-only unless the user supplies the MTP flags. Remove `--mtp native`
+and `--batch-mtp`, and set `--spec 2`, to unload MTP in the desktop profile.
 
 ## State, sampling and memory
 
@@ -128,7 +240,7 @@ Two optional native, target-only paths are implemented in `strata-concurrency5.e
   its saved running state, then copies the authoritative KV from the live slot.
   RAM conversation snapshots and their file format are unchanged.
 
-Both flags default off and require native batching with MTP unloaded. Direct
+Both flags default off and require native target-only or native batch-MTP batching. Direct
 copies require fully resident device KV (mode 0); they do not implement streaming
 or draft-ring migration. No projection, expert arithmetic, quantization or
 attention kernel changes are involved. Source and destination remain idle until
@@ -159,13 +271,13 @@ rotation mismatch refusal, and another session's size/bytes surviving selected
 growth and shrink. Server/gate/config tests also passed. CUDA SM120 was built;
 HIP/SYCL were not built or validated on this PC.
 
-Vision kernels use a shared mutable M-RoPE position table. The server therefore
-allows text requests to share the engine but gives image requests exclusive
-generation, after existing text slots and cancellation drains finish. Waiting
-images take precedence over newly arriving text. The engine also refuses a
-native image admission that would overlap active batch slots, including direct
-stdin callers. The external encoder can prepare the image before generation
-gets its exclusive permit. This does not establish parallel image generation.
+Before the image-slot fix described above, vision kernels used a shared mutable
+M-RoPE position table. The server therefore allowed text requests to share the
+engine but gave image requests exclusive
+generation, after existing text slots and cancellation drains finished. Waiting
+images took precedence over newly arriving text. That guard remains for engines
+without `native_vision_slots=1`, including MTP and layer-split configurations.
+The external encoder can prepare the image before generation gets its permit.
 
 ## Validation on this PC
 

@@ -620,6 +620,19 @@ class StrataEngine:
             tl = self.__dict__.setdefault("_tl", threading.local())
             tl.last = value
 
+    def bind_request_status(self, status):
+        """Progress belongs to the request consuming control lines, including requests outside batch slots."""
+        self.__dict__.setdefault("_tl", threading.local()).status = status
+
+    def _request_progress(self, phase, **values):
+        status = getattr(self.__dict__.get("_tl"), "status", None)
+        if status is not None:
+            status.update(engine_phase=phase, **values)
+            if phase == "queued":
+                status["phase"] = "waiting for the engine"
+            elif phase == "reading":
+                status["phase"] = "reading the prompt"
+
     def __init__(self, exe: str, args: list[str], cwd: str | None = None, log: str | None = None,
                  env: dict | None = None, lazy: bool = False, cpus: list[int] | None = None):
         self.spawn = (exe, list(args), cwd, log, env, False, cpus)   # to start it again after it died (issue #27)
@@ -1067,6 +1080,7 @@ class StrataEngine:
             if not line.startswith(("PP ", "INFO")):
                 btrace("ctl<", self._ctl_mode, line.strip()[:60])
             if line.startswith("T "):
+                self._request_progress("generating")
                 on_token(int(line[2:]))
                 if not stopped and (cancel.is_set() or (stop_when is not None and stop_when())):
                     self._send("STOP")
@@ -1078,6 +1092,8 @@ class StrataEngine:
                     self.progress = (int(f[1]), int(f[2]))
                     self.progress_ms = float(f[3]) if len(f) >= 4 else 0.0
                     self.prefill_tok_s_mean = float(f[4]) if len(f) >= 5 else None
+                    self._request_progress("reading", prompt_progress=self.progress,
+                                           prefill_tok_s_mean=self.prefill_tok_s_mean)
                 if not stopped and cancel.is_set():
                     # #879: a Stop during the prompt read went out only after the first token (or after 10 s of
                     # silence, which a stream of PP lines never allows): the engine read the whole prompt first
@@ -1269,7 +1285,7 @@ class StrataEngine:
         """A request decoding in a slot that is alone now (no other slot busy, nobody waiting) goes back to the solo
         path with its MTP drafts: the engine continues it from the slot's sessions (its slot cache; INFO
         slot_cache=1).  STRATA_PARALLEL_SOLO=0 keeps it in the slot."""
-        if (embeddings or times >= self.SOLO_AGAIN_MAX or left < self.SOLO_AGAIN_MIN_LEFT or
+        if ((embeddings and not self.info.get("native_vision_slots")) or times >= self.SOLO_AGAIN_MAX or left < self.SOLO_AGAIN_MIN_LEFT or
                 not (self.info or {}).get("slot_cache") or os.environ.get("STRATA_PARALLEL_SOLO") == "0"):
             return False
         with self.slot_cv:
@@ -1321,6 +1337,7 @@ class StrataEngine:
                 if alone and left > 1:
                     head = f"GENI {left}{keys} {embeddings}" if embeddings else f"GEN {left}{keys}"
                     self._last_done = None                  # (#879: this request's DONE decides below)
+                    self._request_progress("reading", prompt_progress=None, prefill_tok_s_mean=None)
                     self._send(f"{head} {','.join(str(int(t)) for t in prompt)}")
                     phase = "solo"
                     self._ctl_mode, self._ctl_result, self._yielded = "solo", None, None
@@ -1334,7 +1351,7 @@ class StrataEngine:
                             out.append(t)
                             yield t
                         if x is None:                       # a heartbeat (False: a token, flushed above)
-                            if (reserved is None and not out and not embeddings and yields < self.YIELDS_MAX and
+                            if (reserved is None and not out and (not embeddings or self.info.get("native_vision_slots")) and yields < self.YIELDS_MAX and
                                     self._shorter_waiting(len(prompt))):
                                 with self.slot_cv:          # the slot the part read will wait in
                                     reserved = self.pick_slot(prompt)
@@ -1432,6 +1449,7 @@ class StrataEngine:
                             "started": time.time(), "first_token": None}
                     self.slot_live[slot] = live
                     self._last_done = None                  # (#879: this admission's DONE decides below)
+                    self._request_progress("reading", prompt_progress=None, prefill_tok_s_mean=None)
                     self._send(f"{head} {','.join(str(int(t)) for t in prompt)}")
                     self.slot_held[slot] = []               # the admission overwrites what the slot held
                     phase = "admit"
@@ -1444,7 +1462,7 @@ class StrataEngine:
                             out.append(t)
                             yield t
                         if x is None:
-                            if (not asked and not embeddings and yields < self.YIELDS_MAX and
+                            if (not asked and (not embeddings or self.info.get("native_vision_slots")) and yields < self.YIELDS_MAX and
                                     self._shorter_waiting(len(prompt))):
                                 self._send(f"BYIELD {slot}")
                                 asked = True
@@ -1464,6 +1482,7 @@ class StrataEngine:
                 holding = False
                 if not cont:
                     return
+                self._request_progress("generating")
                 live.update(state="decoding", first_token=time.time(), generated=len(out))
                 gen0 = len(out) - 1                         # the admission's own token: the slot feeds it first
                 going_solo = False
@@ -1685,7 +1704,8 @@ class StrataEngine:
             raise EngineDied("the engine is unavailable; this request was not sent")
         bias_api.validate_request(sampling or {}, self, None)
         if getattr(self, "batch", 0):
-            if self.info.get("weight_source") == "safetensors":
+            self._request_progress("queued", prompt_progress=None, prefill_tok_s_mean=None)
+            if self.info.get("weight_source") == "safetensors" and not self.info.get("native_vision_slots"):
                 entered = yield from self._native_batch_gate(cancel, bool(embeddings))
                 if not entered:
                     return
@@ -3371,9 +3391,14 @@ class Service:
             hist = list(self.history)
             totals = dict(self.totals)
         now = time.time()
-        progress = getattr(self.engine, "progress", None)
-        if s.get("busy") and s.get("first_token") is None:
-            state = "reading"
+        par = int(getattr(self.engine, "batch", 0) or 0)
+        # In parallel mode the newest request can still be queued while another owns the control lines.
+        # Never attach that other's global PP progress to this request.
+        progress = s.get("prompt_progress") if par else getattr(self.engine, "progress", None)
+        if s.get("busy") and par and s.get("engine_phase") in ("queued", "reading"):
+            state = s["engine_phase"]
+        elif s.get("busy") and s.get("first_token") is None:
+            state = s.get("engine_phase", "reading") if par else "reading"
         elif s.get("busy"):
             state = "generating"
         elif not self.loaded():
@@ -3387,7 +3412,8 @@ class Service:
                 "elapsed_s": round(now - s["started"], 1) if s.get("busy") and s.get("started") else None,
                 "tok_s": round(self._tok_s(), 1) if state == "generating" else None,
                 "tok_s_mean": round(self._tok_s_mean(), 1) if state == "generating" else None,
-                "prefill_tok_s_mean": getattr(self.engine, "prefill_tok_s_mean", None) if s.get("busy") else None,
+                "prefill_tok_s_mean": (s.get("prefill_tok_s_mean") if par else
+                                         getattr(self.engine, "prefill_tok_s_mean", None)) if s.get("busy") else None,
                 "tok_s_window_s": RATE_WINDOW_S if state == "generating" else None}
         if state == "reading" and progress:
             live["prompt_read"], live["prompt_total"] = progress
@@ -3741,7 +3767,10 @@ class Service:
             s = dict(self.status if st is None else st)
         el = now - s.get("started", now)
         if s.get("first_token") is None:
-            pr = getattr(self.engine, "progress", None)   # (position reached, prompt tokens): a reused prefix counts
+            if s.get("engine_phase") == "queued":
+                print(f"[strata] waiting for the engine: {s.get('prompt_tokens', 0):,} tokens, {el:.0f} s so far", flush=True)
+                return now
+            pr = s.get("prompt_progress") if getattr(self.engine, "batch", 0) else getattr(self.engine, "progress", None)
             done = f"{pr[0]:,} of {pr[1]:,}" if pr and pr[1] else f"{s.get('prompt_tokens', 0):,}"   # as read (#29)
             print(f"[strata] reading the prompt: {done} tokens, {el:.0f} s so far", flush=True)
         else:
@@ -3899,6 +3928,8 @@ class Service:
                     for ev in opening:
                         yield "event", ev
                     while True:
+                        if hasattr(self.engine, "bind_request_status"):
+                            self.engine.bind_request_status(st)
                         segment_before = getattr(self.engine, "last", None)
                         segments_before = len(segments)     # (#879: a pass sent again leaves no segment)
                         gen = self.engine.generate(prompt, max_new - n, sampling, cancel, embeddings=emb) if emb \
@@ -4199,6 +4230,8 @@ class Service:
                                 self.status.pop("tail", None)
                                 self.status.pop("tool", None)
         finally:
+            if hasattr(self.engine, "bind_request_status"):
+                self.engine.bind_request_status(None)
             if emb:
                 Path(emb).unlink(missing_ok=True)
         for ev in cut(parser.finish(finish)):
