@@ -68,7 +68,7 @@ try {
     $env:STRATA_PARTIAL_PIN = $(if ($RamOnly) { '0' } else { '1' })
     $env:STRATA_PARTIAL_PIN_GIB = $MappedGiB.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
     $env:STRATA_RESIDENT_HEADROOM_GIB = $HeadroomGiB.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
-    Write-Host '[Strata Fusion Q6KL NoMTP] UD-Q6_K_XL + original FP8 ngram; MTP disabled; upstream 0.1.41 with local memory planning; SSD session cache disabled.'
+    Write-Host '[Strata Fusion Q6KL NoMTP] UD-Q6_K_XL + original FP8 ngram; MTP disabled; upstream 0.1.43.1 with local memory planning; SSD session cache disabled.'
     Write-Host '[Strata Fusion Q6KL NoMTP] 262144 context; int8 RAM KV (32768 GPU cells); RAM conversation snapshot cache disabled; one request at a time; PCIe fraction auto; prefill auto; GPU vision.'
     Write-Host "[Strata Fusion Q6KL NoMTP] Expert RAM budget: up to 81 GiB; available-memory clamp; headroom $HeadroomGiB GiB."
     Write-Host "[Strata Fusion Q6KL NoMTP] Mapped RAM: up to $MappedGiB GiB; the CUDA driver may accept less."

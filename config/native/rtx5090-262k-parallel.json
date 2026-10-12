@@ -1,5 +1,5 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-native-batch-mtp-final.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-v01431.exe",
   "args": [
     "--model",
     "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",

@@ -1,5 +1,5 @@
 {
-  "exe": "G:\\Strata\\Strata\\engine\\fusion-v041\\strata.exe",
+  "exe": "G:\\Strata\\Strata\\engine\\fusion-v01431\\strata.exe",
   "args": [
     "--pack",
     "G:\\Strata\\Strata-data\\packs\\unsloth-ud-q6_k_xl",
@@ -55,5 +55,12 @@
   "cors_origins": [
     "*"
   ],
-  "parallel": 1
+  "parallel": 1,
+  "env": {
+    "STRATA_ROUTE_TAIL_SKIP": "0",
+    "STRATA_ADAPT_OVERLAP": "1",
+    "STRATA_ADAPT_OVERLAP_RESIDENT": "1",
+    "STRATA_ADAPT_NOWAIT": "0",
+    "STRATA_ADAPT_LAG": "1"
+  }
 }

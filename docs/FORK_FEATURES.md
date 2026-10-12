@@ -1,7 +1,7 @@
 # 当前分支与官方的维护边界
 
-核对日期：2026-10-12。官方基线为 v0.1.43
-`7695859aa13afb248bdb4d36f9b2e95707db079d`。
+核对日期：2026-10-13。官方基线为 v0.1.43.1
+`a0116b2782a5b82622358c04a06496485d12b2d6`。
 清理工作分支为 `cleanup/desktop-native-20261012`，验收后同步到项目主分支。
 此次以桌面实际使用的两个入口为范围，清理未使用的分支扩展；
 官方原有功能继续保留。具体删除与验收见 [桌面范围整理](DESKTOP_SCOPE.md)。
@@ -23,6 +23,8 @@
 这些是原生适配与具体扩展，并不表示 CPU/GPU 协同、热专家晋升、MTP、INT8 KV、
 会话缓存、视觉、网页或兼容 API 是本项目独创。它们来自官方和继承分支。
 v0.1.43 的非有限值保护、请求计时修复、交换重叠及后端修复继续保留。
+v0.1.43.1 的槽位拒绝重试、工具结束符解析、取消图片准备、会话停车进度、
+交换信号和 prefill 借用修复已融合，见 [升级记录](UPSTREAM_V01431.md)。
 
 ## 当前本机入口
 
@@ -33,8 +35,8 @@ v0.1.43 的非有限值保护、请求计时修复、交换重叠及后端修复
 | `Start-Strata-Safetensors.bat` | [fast-v0142](../config/native/rtx5090-262k-fast-v0142.json) | native / spec 3 / min-p 0.5 | 700 MiB | 1.0 |
 | `Start-Strata-Safetensors-Parallel.bat` | [parallel](../config/native/rtx5090-262k-parallel.json) | native / batch-mtp / spec 3 / min-p 0.5 | 1536 MiB | 0.7 |
 
-单路继续使用 `strata-desktop-cleanup.exe`；双路切换为带图缓存修复版
-`strata-native-batch-mtp-final.exe`。旧程序保留供回退。
+单路和双路均使用 `strata-v01431.exe`，分别由原有配置控制 MTP 和槽位。
+旧 `strata-desktop-cleanup.exe`、`strata-native-batch-mtp-final.exe` 保留供回退。
 二者均保留 262144 总窗口、4096 prefill、INT8 KV、GPU 视觉、会话缓存、
 Host 头不限与 `127.0.0.1:8880` 监听。Q4KL/Q6KL/官方 GGUF 桌面入口属于其他仓库。
 `--spec 3` 是一行目标加最多两行草稿；未设最少草稿数，可按置信度截断。

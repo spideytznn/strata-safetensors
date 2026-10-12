@@ -1,0 +1,127 @@
+{
+  "upstream_tag": "v0.1.43.1",
+  "upstream_commit": "a0116b2782a5b82622358c04a06496485d12b2d6",
+  "hardware": {
+    "gpu": "RTX 5090 32GB",
+    "cpu": "Ryzen 9950X3D",
+    "ram": "96GB",
+    "os": "Windows",
+    "cuda": "13.0",
+    "arch": "sm120"
+  },
+  "native": {
+    "native-vision": {
+      "passed": true,
+      "exit_code": 0,
+      "requests": 22,
+      "cases": [],
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      }
+    },
+    "native-concurrency": {
+      "passed": true,
+      "exit_code": 0,
+      "requests": 0,
+      "cases": [
+        "greedy",
+        "seeded",
+        "penalties",
+        "mixed_confidence",
+        "strict_confidence",
+        "cancel_resume",
+        "followup",
+        "caps",
+        "eos",
+        "kv_growth_long_slot"
+      ],
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      }
+    },
+    "single": {
+      "passed": true,
+      "exit_code": 0,
+      "requests": 4,
+      "continuation_reused": 72,
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      },
+      "vram_reserve_mib": 700
+    }
+  },
+  "gguf": {
+    "gguf-before": {
+      "passed": true,
+      "exit_code": 0,
+      "requests": 4,
+      "prompt_tokens": [
+        25,
+        27026,
+        25,
+        null
+      ],
+      "continuation_reused": 72,
+      "reference_token_parity": null
+    },
+    "gguf-after": {
+      "passed": true,
+      "exit_code": 0,
+      "requests": 4,
+      "prompt_tokens": [
+        25,
+        27026,
+        25,
+        null
+      ],
+      "continuation_reused": 72,
+      "reference_token_parity": [
+        true,
+        true,
+        false,
+        false
+      ]
+    }
+  },
+  "tests": {
+    "native_server": {
+      "run": 368,
+      "skipped": 0,
+      "passed": true
+    },
+    "gguf_server": {
+      "run": 396,
+      "skipped": 1,
+      "passed": true
+    },
+    "setup_benchmark_tools": {
+      "run": 77,
+      "passed": true
+    },
+    "native_ctest": 6,
+    "gguf_ctest": 4,
+    "ple_formats_selftest": "pass"
+  },
+  "limitations": [
+    "No throughput benchmark for this release",
+    "Finite regressions are not a general quality evaluation",
+    "No HIP/SYCL/Linux/multi-GPU validation"
+  ],
+  "pushed": false,
+  "desktop_service_started": false,
+  "deployment": {
+    "native_exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-v01431.exe",
+    "native_sha256": "02781fb369e5aeba90b0a595e40360258eb7688ffa38040c770d1e79dbcf6a17",
+    "gguf_exe": "G:\\Strata\\Strata\\engine\\fusion-v01431\\strata.exe",
+    "gguf_sha256": "e5a806002eb06a29912ac5044d8051ed617da7993f9fb6307a3122e961eabd76",
+    "native_config_changes": "exe only",
+    "gguf_config_changes": "exe and explicit tail-skip/adaptive-overlap environment",
+    "sidecars": {
+      "rtx5090-262k-fast-v0142.shared-settings.json": "81fca7633f3c2f0433af821a52531eda32b2e0e592dfc6804b1d5821c4779941",
+      "rtx5090-262k-parallel.shared-settings.json": "81fca7633f3c2f0433af821a52531eda32b2e0e592dfc6804b1d5821c4779941"
+    }
+  }
+}

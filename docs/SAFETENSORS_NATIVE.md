@@ -5,7 +5,8 @@ checkpoint directory with `strata --model <directory>` (`--safetensors` is an
 alias). It adapts Strata's existing forward pass, scheduler and conversation
 state. The original checkpoint is read-only. The current maintenance scope is
 [the desktop inventory](FORK_FEATURES.md) and [cleanup record](DESKTOP_SCOPE.md).
-Upstream v0.1.43 integration is recorded in [UPSTREAM_V0143](UPSTREAM_V0143.md).
+Upstream v0.1.43.1 integration is recorded in [UPSTREAM_V01431](UPSTREAM_V01431.md).
+Earlier v0.1.43 validation remains in [UPSTREAM_V0143](UPSTREAM_V0143.md).
 
 ## Weight and memory contract
 
