@@ -2166,6 +2166,10 @@ struct PeTimer {
 
 bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::string& err) {
     err.clear();
+    if (finish_after_chunk && (next_ != nullptr || hand_in_ != nullptr)) {
+        err = "prefill: cooperative finish requires a single stage";
+        return false;
+    }
     Impl& m = *impl_;
     const core::OnDevice on_device(m.device);
     const core::ModelGeometry& g = *m.g;
@@ -2240,7 +2244,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                            (ss.ple.w.key_bf16 != nullptr || ss.ple.w.key_native_data != nullptr) &&
                            m.region_bytes / ((uint64_t) (3 * strata::kernels::NG_HC_DIM + N + 4) * 4 + (uint64_t) N * 2 + 4096) >= 64;
     const int32_t prev0[2] = {prev[0], prev[1]};
-    auto ple_gather = [&m, &ss, tokens, n, prev0](int64_t c0, int buf, std::string& e) -> bool {
+    auto* const ple_reader = ple_table_override ? ple_table_override : ss.ple.table;
+    auto ple_gather = [&m, &ss, tokens, n, prev0, ple_reader](int64_t c0, int buf, std::string& e) -> bool {
         const int64_t T = std::min(m.T, n - c0);
         auto at = [&](int64_t i) { return i < 2 ? prev0[i] : (int32_t) tokens[i - 2]; };   // prev0, then the tokens
         int32_t pv[2] = {at(c0), at(c0 + 1)};
@@ -2251,7 +2256,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
             pv[0] = pv[1];
             pv[1] = tok;
         }
-        return ss.ple.table->gather_batch(m.ple_rows[buf].data(), (size_t) T, m.ple_emb_host[buf], e);
+        return ple_reader->gather_batch(m.ple_rows[buf].data(), (size_t) T, m.ple_emb_host[buf], e);
     };
     std::string ple_next_err;
     std::future<bool> ple_next;             // declared after everything it reads: an early return waits for it
@@ -4376,7 +4381,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                 std::fclose(f);
             }
         }
-        if (on_chunk || on_stage_chunk) {
+        if (on_chunk || on_stage_chunk || finish_after_chunk) {
             const auto toc = Clock::now();
             if (cudaStreamSynchronize(m.cs) != cudaSuccess) {
                 err = std::string("prefill: ") + cudaGetErrorString(cudaGetLastError());
@@ -4394,6 +4399,12 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                              std::chrono::duration<double,std::milli>(toc2-chunk_start).count(),
                              std::chrono::duration<double,std::milli>(chunk_done-toc2).count(),
                              std::chrono::duration<double,std::milli>(chunk_done-chunk_start).count());
+            }
+            if (finish_after_chunk && finish_after_chunk(p0 + T)) {
+                // Keep the normal epilogue: the caller may immediately copy this session
+                // into a batch slot. Returning early here would leave ple_prev stale.
+                n = c0 + T;
+                break;
             }
         }
     }

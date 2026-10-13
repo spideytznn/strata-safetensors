@@ -145,6 +145,9 @@ public:
     /// K/V from them.  The prefill stream is synchronized before the call.
     std::function<bool(const float* R_rows, int64_t T, int64_t pos0, std::string& err)> on_chunk;
 
+    /// Optional independent PLE reader for prompt/decode overlap; nullptr retains the session reader.
+    strata::kernels::PleTable* ple_table_override = nullptr;
+
     /// Layer split: called by every stage when it has read a chunk, with the position reached, while its own state
     /// is still at that chunk's end (its stream synchronized; the last stage calls it just before `on_chunk`).  An
     /// earlier stage is a chunk or more ahead of the last one by the time `on_chunk` runs, so this is where a
@@ -153,6 +156,12 @@ public:
 
     /// Checked before every chunk: true stops the prompt early (`run` returns false with err "cancelled").
     std::function<bool()> should_stop;
+
+    /// Single-stage cooperative pause, checked after on_chunk and stream synchronization.
+    /// True finishes this run successfully at `done` (absolute token position), committing
+    /// PLE history and draining copies normally. The caller tracks `done` and resumes there.
+    /// Unlike should_stop this is not cancellation. Do not use with a layer pipeline.
+    std::function<bool(int64_t done)> finish_after_chunk;
 
     /// The vision path: HOST rows (n_embd floats) indexed by absolute position, read in place of the token
     /// embedding where non-null (an image's <|image_pad|> cells).  Null (default): every position embeds its token.

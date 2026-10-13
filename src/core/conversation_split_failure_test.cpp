@@ -58,5 +58,38 @@ int main() {
         std::printf("stages %zu: allocation-failure cases preserved: %d\n",stages,faults);
         total_faults+=faults;
     }
+    {
+        using namespace strata::core;
+        SavedConversation source;
+        source.live.ids={1,2,3,4,5};
+        ConversationCheckpoint c;
+        c.ids={1,2};c.imgs={{1,9}};c.gdn={7,8,9};c.ple={10};c.tails={11};
+        source.checkpoints={c};
+        source.kv.resize(1);source.kv[0].k.resize(64,12);
+        const auto before=source;
+        const std::vector<int64_t> prompt={1,2,90,91};
+        const std::vector<ConversationImageKey> images={{1,9}};
+        bool finished=false;
+        int faults=0;
+        for(int n=0;n<64 && !finished;++n) {
+            ConversationBranchPrefix out;
+            out.ids={99};
+            fail_after=n;
+            try {
+                const bool ok=conversation_branch_prefix(source,prompt,images,2,1 << 20,out);
+                fail_after=-1;
+                if(!ok || out.ids!=c.ids || out.checkpoints.size()!=1 || !equal(out.checkpoints[0],c)) return 11;
+                finished=true;
+            } catch(const std::bad_alloc&) {
+                fail_after=-1;++faults;
+                if(out.ids!=std::vector<int32_t>{99} || !out.checkpoints.empty()) return 12;
+            }
+            if(source.live.ids!=before.live.ids || source.checkpoints.size()!=1 ||
+               !equal(source.checkpoints[0],before.checkpoints[0]) || !(source.kv[0].k==before.kv[0].k)) return 13;
+        }
+        if(!finished || faults==0) return 14;
+        total_faults+=faults;
+        std::printf("branch prefix: allocation-failure cases preserved: %d\n",faults);
+    }
     return total_faults>0?0:3;
 }

@@ -247,6 +247,55 @@ int main() {
               "an oversized put drops nothing");
     }
     {
+        // A parked long branch lends a shared checkpoint to an unrelated tail.
+        // Returning the source image must preserve its deep state without any
+        // shared mutable prefix state or duplicate KV payload allocation.
+        SavedConversation parent = image({1,2,3,4,5,6,7,8});
+        auto root = image({1,2}).live, deep = image({1,2,3,4,5,6}).live;
+        parent.checkpoints = {root, deep};
+        parent.kv.resize(1);
+        parent.kv[0].k.resize(128, 9);
+        const std::vector<int64_t> child_ids = {1,2,90,91,92};
+        const std::vector<int64_t> parent_next = {1,2,3,4,5,6,80,81,82};
+        ConversationCache cache(1 << 20, 4);
+        check(cache.put(std::move(parent)), "park parent before checkpoint borrowing");
+        auto matched = cache.best(child_ids, {}, true);
+        check(matched.tokens == 2 && !matched.live, "child borrows shared root");
+        auto source = cache.take(matched.index);
+        const uint8_t* payload = nullptr;
+        source.kv[0].k.visit(0,1,[&](const uint8_t* p,size_t,size_t){payload=p;return true;});
+        ConversationBranchPrefix prefix;
+        check(!conversation_branch_prefix(source,child_ids,{},2,0,prefix), "prefix allocation budget refusal");
+        check(source.live.ids.size()==8 && source.checkpoints.size()==2 && prefix.ids.empty(),
+              "refusal preserves source and destination");
+        check(conversation_branch_prefix(source,child_ids,{},2,1 << 20,prefix), "prepare matching prefix only");
+        check(prefix.ids==root.ids && prefix.checkpoints.size()==1 && prefix.checkpoints[0].gdn==root.gdn,
+              "branch carries exact prefix state and excludes deeper parent checkpoints");
+        prefix.checkpoints[0].gdn[0]=33;
+        check(source.checkpoints[0].gdn[0]==7, "branch prefix state does not alias parent state");
+        check(!conversation_branch_prefix(source,child_ids,{},3,1 << 20,prefix), "missing selected checkpoint refused");
+        check(prefix.checkpoints[0].gdn[0]==33, "preparation refusal does not partially overwrite branch");
+        check(cache.put(std::move(source)), "return original checkpoint lender");
+        SavedConversation child=image({1,2,90,91});
+        child.checkpoints=prefix.checkpoints;
+        child.checkpoints.push_back(image({1,2,90}).live);
+        check(cache.put(std::move(child)), "park completed child without superseding parent");
+        const auto recovered=cache.best(parent_next,{},true);
+        check(recovered.tokens==6 && !recovered.live && cache.evictions()==0,
+              "parent retains deepest checkpoint with no capacity eviction");
+        auto returned=cache.take(recovered.index);
+        returned.kv[0].k.visit(0,1,[&](const uint8_t* p,size_t,size_t){
+            check(p==payload,"original KV allocation survives branch borrowing");return true;});
+        returned.checkpoints[0].imgs={{1,123}};
+        check(!conversation_branch_prefix(returned,child_ids,{{1,124}},2,1 << 20,prefix),
+              "different image rejects borrowed checkpoint");
+        check(conversation_branch_prefix(returned,child_ids,{{1,123}},2,1 << 20,prefix) &&
+              prefix.imgs==returned.checkpoints[0].imgs,"same image prefix is preserved");
+        returned.stage_images.emplace_back();
+        check(!conversation_branch_prefix(returned,child_ids,{{1,123}},2,1 << 20,prefix),
+              "single-stage prefix preparation refuses a layer split");
+    }
+    {
         ConversationCache disabled(0,4), no_slots(1024,0);
         check(!disabled.enabled() && !no_slots.enabled(), "both disable switches");
         check(!disabled.put(image({1,2,3})) && !no_slots.put(image({1,2,3})), "disabled cache stores nothing");

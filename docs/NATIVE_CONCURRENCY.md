@@ -7,6 +7,10 @@ the local single-request entry uses solo native MTP. See the dated
 [feature/profile inventory](FORK_FEATURES.md) for current settings.
 The measurements below retain their historical executables and configurations.
 
+The separate Windows [prefill overlap profile](NATIVE_PREFILL_OVERLAP.md) can run
+native prompt processing alongside live-slot decode. It is opt-in; the original
+parallel launcher keeps its existing scheduling.
+
 ## Image histories and progress
 
 Native single-GPU batches can register a stable M-RoPE table for each
@@ -407,3 +411,76 @@ last first-content wait. These were sequential profile runs, not interleaved
 paired trials; cache state adapted and GPU clocks were not recorded. They are
 functional/latency screening evidence, not a stable peak-throughput claim.
 The serial desktop entry remains the choice for one user's maximum speed.
+
+## Continuous prefill with idle batch slots (2026-10-13)
+
+`STRATA_NATIVE_PREFILL_CONTINUOUS=1` opts into a single-GPU safetensors prompt
+path for a batch-enabled engine with no slot decoding. The default remains off.
+It reads a whole prompt segment in one `Prefill::run`, retaining the existing
+chunk size, MTP callbacks and checkpoints. This keeps next-chunk PLE host reads
+overlapped with the current chunk's GPU work instead of restarting that prefetch
+at every outer scheduler piece. It does not change weight or KV precision.
+
+The engine still checks for `BYIELD` at every completed chunk. A cooperative
+finish runs the normal prefill epilogue before the scheduler copies the partial
+session into a slot: PLE token history is committed and outstanding copies are
+drained. A speculative next-chunk PLE read is joined before returning. STOP
+continues to use the existing cancellation checks. With a decoding slot, peer
+GPU, layer split or pipelined groups, the existing scheduling path is retained.
+
+The executable is `build-native-engine/strata-continuous-prefill.exe`. Following
+the user's activation request, the desktop `Start-Strata-Safetensors-Parallel.bat`
+entry selects it through `START-NATIVE-262K-OVERLAP.bat` and
+`config/native/rtx5090-262k-prefill-overlap.json`, with the continuous switch on.
+The existing overlap and branch-preservation switches remain enabled, as do the
+other desktop settings. Port 8880 is unchanged; activation did not start a server.
+The previous configuration is saved in
+`work/codecheck/continuous-prefill/desktop-overlap-before.json`.
+The same-source pre-change executable is `strata-continuous-baseline.exe`.
+
+`tools/native_continuous_prefill_test.py` compares that baseline with the
+candidate disabled/enabled, using private engine pipes and copied expert
+profiles. It checks first-token logits, generated tokens, long-prompt run
+lengths, a mid-prefill BYIELD followed by an intervening request and slot
+restoration, and STOP followed by a retry. It opens no HTTP listener.
+
+On the RTX 5090 / Ryzen 9950X3D / 96 GB Windows machine, the same candidate
+binary with the switch off/on measured the following prompt times. Both used
+two batch slots but one request, 64K INT8 KV, 4096-token chunks, native MTP,
+fixed 4000 requested expert-cache slots, all missed experts on the GPU, no
+adaptive swaps or vision, and a copied identical initial expert profile.
+Tracing and prefill timing were enabled in both runs. These are single samples
+after a short warmup, not medians or a general throughput guarantee.
+
+| Prompt | Switch off | Switch on | Prompt time change |
+| --- | ---: | ---: | ---: |
+| 8192 tokens, repeated report text | 2861.9 ms | 2874.5 ms | +0.4% |
+| 32768 tokens, mixed DETAILS.md text | 13943.2 ms | 12007.7 ms | -13.9% |
+
+The independently compiled pre-change source measured 2831.9 / 13687.9 ms
+respectively. The candidate with the switch off matched its output tokens and
+first-token logits byte-for-byte on all four 8K/32K/24K/20K requests. With the
+switch on, the same comparisons passed, including a 24K prompt yielded after
+8192 tokens, an intervening side request, and restoration of all 8192 tokens
+from the slot. STOP interrupted a separate 20K prompt after 8192 tokens; retry
+matched the uninterrupted reference. The largest continuous run processed
+32761 tokens while retaining 4096-token internal chunks.
+
+Evidence: `bench/results/local-continuous-prefill-20261013-r2/results.json`
+and per-run logs. The initial run stopped during startup because the harness
+combined fixed expert-cache size with `STRATA_NATIVE_PREFILL_FIRST=1`; r2
+corrected this to 0 consistently for all three engines. CUDA compilation and
+the above real-model checks passed; HIP, SYCL, multi-GPU and vision are not
+validated for this change. No HTTP listener was started.
+
+The existing `native_concurrency_acceptance.py` suite also passed with the
+switch enabled, independent KV and device slot copying. Its ten cases covered
+greedy/seeded/penalized sampling, mixed and strict draft-confidence thresholds,
+cancel/resume, followups, small output caps, EOS, and a 7801-token long slot
+growing/reusing KV beside a short admission. Concurrent outputs matched solo
+references. This suite uses its required prefill-first/automatic-cache setup;
+its initial fixed-cache attempt stopped before inference and was corrected.
+Records: `bench/results/local-continuous-prefill-concurrency-20261013-r2`.
+
+Candidate SHA256:
+`100c2e506b1f4a2d929328236bfad2591b0abd258ac73f1fac49503d9f69f120`.

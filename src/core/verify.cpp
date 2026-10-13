@@ -767,7 +767,17 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
         return false;
     }
     if (ext_stream_ != nullptr) cs_ = ext_stream_;   // set_stream (pipelined windows): the stage's shared stream
-    else if (cudaStreamCreateWithFlags(&cs_, cudaStreamNonBlocking) != cudaSuccess) cs_ = nullptr;
+    else {
+        bool priority = false;
+#if !defined(STRATA_USE_HIP) && !defined(STRATA_HIP_GFX906)
+        const char* overlap = std::getenv("STRATA_NATIVE_PREFILL_OVERLAP");
+        int low = 0, high = 0;
+        if (overlap && std::atoi(overlap) == 1 && cudaDeviceGetStreamPriorityRange(&low, &high) == cudaSuccess)
+            priority = cudaStreamCreateWithPriority(&cs_, cudaStreamNonBlocking, high) == cudaSuccess;
+        if (overlap && std::atoi(overlap) == 1) cudaGetLastError();
+#endif
+        if (!priority && cudaStreamCreateWithFlags(&cs_, cudaStreamNonBlocking) != cudaSuccess) cs_ = nullptr;
+    }
     if (cs_ == nullptr || cudaStreamCreateWithFlags(&sh_cs_, cudaStreamNonBlocking) != cudaSuccess) {
         err = "verify: stream create failed";
         return false;

@@ -1871,6 +1871,14 @@ static double ple_direct_rows_per_s(strata::kernels::PleTable& t) {
 
 int strata_main(int argc, char** argv) {
     const auto engine_start = std::chrono::steady_clock::now();
+    const bool native_prefill_overlap = [] {
+        const char* v = std::getenv("STRATA_NATIVE_PREFILL_OVERLAP");
+        return v && std::atoi(v) == 1;
+    }();
+    const bool preserve_checkpoint_branch = [] {
+        const char* v = std::getenv("STRATA_CONVERSATION_BRANCH_PRESERVE");
+        return v && std::atoi(v) == 1;
+    }();
     // **UNBUFFERED, BECAUSE THE INTERESTING OUTPUT IS THE OUTPUT BEFORE A CRASH.**  `stdout` redirected to a
     // pipe or a file is block-buffered, so a program that dies loses every line it had already printed - which
     // turns "it crashed at step 7" into "it crashed somewhere", and the difference is a debugging session.
@@ -3578,7 +3586,7 @@ int strata_main(int argc, char** argv) {
     // module was built and parity-tested, and nothing called it.  Everything below is construction - the table
     // is a mapping of the ORIGINAL second GGUF shard, the six weights are already loaded in the arena, and the
     // three buffers are the only allocation.
-    strata::kernels::PleTable ple_table;
+    strata::kernels::PleTable ple_table, prefill_ple_table;
     std::vector<float> ple_emb_host((size_t) strata::kernels::NG_N_EMBD);
     float* ple_emb_dev = nullptr;
     float* ple_scratch = nullptr;
@@ -3604,6 +3612,14 @@ int strata_main(int argc, char** argv) {
         if (!(safetensors ? safetensors->open_ple(ple_table,pio,err) : ple_table.open(o.ple_gguf, err, pio))) {
             std::fprintf(stderr, "strata generate: %s\n", err.c_str());
             return 1;
+        }
+        if (native_prefill_overlap && safetensors) {
+            auto prompt_pio = pio;
+            prompt_pio.cache_rows = std::min<uint64_t>(pio.cache_rows, 65536);
+            if (!safetensors->open_ple(prefill_ple_table, prompt_pio, err)) {
+                std::fprintf(stderr, "strata generate: independent prefill PLE reader: %s\n", err.c_str());
+                return 1;
+            }
         }
         // Recommend, never force: when the default direct reads measure slow, switch to the mapped reads (40-100x
         // faster on the reporters' drives); an explicit --ple-io direct is kept and only warned about.
@@ -7452,6 +7468,7 @@ int strata_main(int argc, char** argv) {
         }
         auto serve_prefill = early_prefill ? std::move(early_prefill) : std::make_unique<strata::prefill::Prefill>();
         strata::prefill::Prefill& sp = *serve_prefill;
+        if (native_prefill_overlap && safetensors) sp.ple_table_override = &prefill_ple_table;
         const int64_t configured_prefill_chunk = o.prefill_chunk;
         // the pool is idle while a prompt is read unless batch slots decode between its parts; with
         // STRATA_PREFILL_CPU_SHARE the staged-chunk limit before the chunk below sizes the loans (bytes_needed reads it)
@@ -8750,12 +8767,17 @@ int strata_main(int argc, char** argv) {
         // runs there, on the Prefill that ran the chunk, instead of the drafter's own per-8-row pass.  The drafts' K/V
         // come from Q8_1 x Q8_0 MMQ rather than mmvq: drafts may differ, the target's tokens never.
         static const bool split_mtp_batch = strata::program::draft_kv::split_env_on(std::getenv("STRATA_SPLIT_MTP_BATCH"));
-        sp.on_chunk = [&](const float* R_rows, int64_t T, int64_t p0, std::string& e) -> bool {
-            const auto callback_start = Clock::now();
+        struct DeferredDraftPrefill {
+            bool ready = false, batched = false;
+            int64_t pos = -1;
+            double ms = 0;
+        } deferred_draft;
+        auto prefill_draft = [&](const float* R_rows, int64_t T, int64_t p0,
+                                 bool& batched, std::string& e) -> bool {
             std::vector<int32_t> nxt((size_t) T);
             for (int64_t t = 0; t < T; ++t) nxt[(size_t) t] = (int32_t) cur[(size_t) (p0 + t + 1)];
             // E-9: batched through the prompt path when it can (a layer split: only with STRATA_SPLIT_MTP_BATCH=1)
-            bool batched = false;
+            batched = false;
             const strata::program::draft_kv::Plan dkv = strata::program::draft_kv::plan(
                 use_mtp, multi_gpu, split_mtp_batch, strata::core::native_embed() != nullptr);
             if (dkv.try_batched || dkv.why != nullptr) {
@@ -8776,7 +8798,18 @@ int strata_main(int argc, char** argv) {
                 }
             }
             if (!e.empty() || (use_mtp && !batched && !mtp.prefill(R_rows, nxt.data(), T, p0, e))) return false;
+            return true;
+        };
+        sp.on_chunk = [&](const float* R_rows, int64_t T, int64_t p0, std::string& e) -> bool {
+            const auto callback_start = Clock::now();
+            bool batched = false;
+            const bool already_drafted = deferred_draft.ready && deferred_draft.pos == p0;
+            if (already_drafted) batched = deferred_draft.batched;
+            else if (!prefill_draft(R_rows, T, p0, batched, e)) return false;
             const auto draft_done = Clock::now();
+            const double draft_ms = already_drafted ? deferred_draft.ms :
+                std::chrono::duration<double, std::milli>(draft_done-callback_start).count();
+            deferred_draft.ready = false;
             if (use_mtp && std::getenv("STRATA_SNAPSHOT_VERIFY") != nullptr)
                 std::fprintf(stderr, "strata serve: DRAFT_PREFILL path=%s mode=%d cells=%lld\n",
                              batched ? "batched" : "token", mtp.kv_state().kv_mode, (long long) T);
@@ -8821,7 +8854,7 @@ int strata_main(int argc, char** argv) {
                 const auto elapsed = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b-a).count(); };
                 std::fprintf(stderr,"strata prefill callback: start=%lld rows=%lld draft_path=%s draft_ms=%.3f checkpoint_ms=%.3f total_ms=%.3f\n",
                              (long long)p0,(long long)T,!use_mtp?"off":batched?"batched":"token",
-                             elapsed(callback_start,draft_done),elapsed(checkpoint_start,callback_done),elapsed(callback_start,callback_done));
+                             draft_ms,elapsed(checkpoint_start,callback_done),elapsed(callback_start,callback_done));
             }
             return true;
         };
@@ -9988,6 +10021,11 @@ int strata_main(int argc, char** argv) {
                             (unsigned long long) src.resident_bytes(), (unsigned long long) src.pinned_bytes(),
                             (unsigned long long) src.locked_bytes(), (long long) sp.chunk(),
                             borrow != nullptr ? "borrowed" : "dedicated", native_slot_vision ? 1 : 0, batch_mtp ? 1 : 0);
+            if (native_prefill_overlap && safetensors)
+                std::printf("INFO native_prefill_overlap=1 prefill_private_ple_cache_rows=%llu\n",
+                            (unsigned long long) std::min<uint64_t>((uint64_t) o.ple_row_cache, 65536));
+            if (preserve_checkpoint_branch)
+                std::printf("INFO conversation_branch_preserve=1 single_stage_only=1\n");
         }
         // issue #29: a request whose heartbeat (tokens, prompt chunks, verify windows) stops for this long is stuck on
         // a flag nobody will raise - end the engine with where it was, so the server starts it again instead of the
@@ -11560,11 +11598,40 @@ int strata_main(int argc, char** argv) {
                                  mtp.kv_state().kv_mode, "ram",
                                  (long long) (mtp.kv_state().n_slots * strata::kernels::qsa_real_shapes().page_size));
                 }
-                live = std::move(incoming->live.ids);
-                live_imgs = std::move(incoming->live.imgs);
-                if (stages.empty()) {
+                std::optional<strata::core::ConversationBranchPrefix> branch_prefix;
+                if (preserve_checkpoint_branch && !parked.live && stages.empty()) {
+                    // A shared-checkpoint borrower must not consume the original
+                    // long branch. Copy only its needed prefix state, never KV.
+                    const uint64_t floor = (uint64_t) o.conversation_cache_min_free_mib << 20;
+                    const auto mem = strata::core::sample_host_memory();
+                    try {
+                        if (mem && mem->available >= floor) {
+                            branch_prefix.emplace();
+                            if (!strata::core::conversation_branch_prefix(*incoming, ids, req_imgs, parked.tokens,
+                                    (size_t) std::min<uint64_t>(mem->available - floor, SIZE_MAX), *branch_prefix))
+                                branch_prefix.reset();
+                        }
+                        const auto after = strata::core::sample_host_memory();
+                        if (branch_prefix && !strata::core::conversation_memory_admit(
+                                after ? std::optional<uint64_t>(after->available) : std::nullopt, 0, floor))
+                            branch_prefix.reset();
+                    } catch (const std::bad_alloc&) { branch_prefix.reset(); }
+                    if (!branch_prefix)
+                        std::fprintf(stderr, "strata serve: conversation cache: branch preservation skipped "
+                                             "(prefix allocation/RAM admission); source=%zu resume=%lld\n",
+                                     incoming->live.ids.size(), (long long) parked.tokens);
+                }
+                if (branch_prefix) {
+                    live = std::move(branch_prefix->ids);
+                    live_imgs = std::move(branch_prefix->imgs);
+                    checks = std::move(branch_prefix->checkpoints);
+                } else {
+                    live = std::move(incoming->live.ids);
+                    live_imgs = std::move(incoming->live.imgs);
+                }
+                if (!branch_prefix && stages.empty()) {
                     checks = std::move(incoming->checkpoints);
-                } else {   // give each checkpoint back its stage parts (moved, not copied); none if they do not line up
+                } else if (!branch_prefix) {   // give each checkpoint back its stage parts (moved, not copied)
                     strata::core::ConversationCheckpointSplit cs;
                     cs.stage0 = std::move(incoming->checkpoints);
                     for (auto& si : incoming->stage_images) cs.parts.push_back(std::move(si.checkpoints));
@@ -11573,7 +11640,18 @@ int strata_main(int argc, char** argv) {
                 cvec_cached = incoming->cvec;
                 resume = parked.tokens;
                 from_live = parked.live;
-                if (std::getenv("STRATA_SNAPSHOT_FULL_CAPTURE") == nullptr) {
+                if (branch_prefix) {
+                    const size_t source_tokens = incoming->live.ids.size();
+                    // put() bounds parked bytes/slots. Its KV must not also enter
+                    // the mutable retained-buffer pool of the new active branch.
+                    bool stored = false;
+                    try { stored = conversations.put(std::move(*incoming)); }
+                    catch (const std::bad_alloc&) {} // optional preservation must not kill a serving process
+                    std::fprintf(stderr, "strata serve: conversation cache: branch source %s %zu tokens; "
+                                         "borrowed=%lld parked=%zu bytes=%zu evictions=%zu\n",
+                                 stored ? "preserved" : "skipped", source_tokens, (long long) resume,
+                                 conversations.size(), conversations.bytes(), conversations.evictions());
+                } else if (std::getenv("STRATA_SNAPSHOT_FULL_CAPTURE") == nullptr) {
                     std::vector<std::vector<strata::core::ConversationKv>> stage_kv;   // every stage's, for its next park
                     for (auto& si : incoming->stage_images) stage_kv.push_back(std::move(si.kv));
                     conversations.retain(std::move(incoming->kv), int64_t(live.size()), std::move(stage_kv));
@@ -12024,6 +12102,14 @@ int strata_main(int argc, char** argv) {
             bool batch_fatal = false;
             int64_t il_parts = 0;   // the slots' windows run between this prompt's chunks
             double il_ms = 0;
+            if (native_prefill_overlap && (!safetensors || !native_kv_independent || piped || multi_gpu ||
+                    !stages.empty() || pf_borrow || ajob || o.prefill_auto ||
+                    !std::getenv("STRATA_PREFILL_CPU_SHARE") ||
+                    std::atof(std::getenv("STRATA_PREFILL_CPU_SHARE")) != 0.0)) {
+                std::fprintf(stderr, "strata: prefill overlap requires native single-GPU independent KV, dedicated "
+                                     "fixed prefill, CPU share 0, and synchronous expert adaptation\n");
+                return 2;
+            }
             int64_t yielded_at = -1;   // BYIELD: the read stopped here and its slot holds it
             int yielded_slot = -1;
             // `BYIELD <slot>` (the server: a shorter request is waiting): at the next chunk boundary the part read so
@@ -12040,10 +12126,97 @@ int strata_main(int argc, char** argv) {
                 const int64_t C = std::max<int64_t>(sp.chunk(), 1);
                 const int64_t piece = strata::program::batch_read_piece(o.batch > 0, piped, !stages.empty(), batch_on(), C, yield_chunks);
                 if (piece <= 0) return sp.run(ids.data() + a0, b0 - a0, a0, e);
+                static const bool continuous_enabled = [] {
+                    const char* v = std::getenv("STRATA_NATIVE_PREFILL_CONTINUOUS");
+                    return v != nullptr && std::atoi(v) != 0;
+                }();
+                const bool continuous = continuous_enabled && safetensors && !multi_gpu &&
+                                        stages.empty() && !piped && o.peer_device < 0;
                 for (int64_t q = a0; q < b0;) {
-                    const int64_t r = std::min(b0, q + piece);
+                    int64_t r = std::min(b0, q + piece);
                     const auto tq = Clock::now();
-                    if (!sp.run(ids.data() + q, r - q, q, e)) return false;
+                    const bool overlap = native_prefill_overlap && batch_on();
+                    if (continuous && !batch_on()) {
+                        // One run keeps next-chunk PLE reads overlapped with GPU work.
+                        // A queued BYIELD pauses only AFTER the normal chunk callback;
+                        // run's epilogue commits history before copy_to_slot below.
+                        struct FinishRestore {
+                            strata::prefill::Prefill& sp;
+                            decltype(sp.finish_after_chunk) callback;
+                            ~FinishRestore() { sp.finish_after_chunk = std::move(callback); }
+                        } finish{sp, std::move(sp.finish_after_chunk)};
+                        r = q;
+                        sp.finish_after_chunk = [&](int64_t done) {
+                            r = done;
+                            std::lock_guard<std::mutex> lk(in_mu);
+                            return std::any_of(in_lines.begin(), in_lines.end(), [](const std::string& line) {
+                                return line.rfind("BYIELD ", 0) == 0;
+                            });
+                        };
+                        if (!sp.run(ids.data() + q, b0 - q, q, e)) return false;
+                        if (r <= q || r > b0) { e = "continuous prefill made invalid progress"; return false; }
+                        if (trace) std::fprintf(stderr, "strata trace: continuous prefill %lld -> %lld\n",
+                                                (long long) q, (long long) r);
+                    } else if (overlap) {
+                        // Mapping VMM pages or changing expert residency requires a quiet device. Reserve
+                        // decode headroom before launching the prompt thread; never grow it inside that thread.
+                        for (size_t b = 0; b < bs.size(); ++b) if (bs[b].active &&
+                                !kvg_ensure(std::min<int64_t>(o.max_context, bs[b].p + 1024),
+                                            [&] { cudaDeviceSynchronize(); apply_pending(true); },
+                                            bslot_ss[0][b].get())) {
+                            e = "prefill overlap: decode KV headroom allocation failed";
+                            return false;
+                        }
+                        struct CallbackRestore {
+                            strata::prefill::Prefill& sp;
+                            decltype(sp.on_chunk) callback;
+                            ~CallbackRestore() { sp.on_chunk = std::move(callback); }
+                        } callback{sp, std::move(sp.on_chunk)};
+                        const float* residual = nullptr;
+                        int64_t callback_rows = 0, callback_pos = 0;
+                        deferred_draft.ready = false;
+                        sp.on_chunk = [&](const float* rows, int64_t count, int64_t pos, std::string& ce) {
+                            if (residual) { ce = "prefill overlap expected one chunk"; return false; }
+                            residual = rows; callback_rows = count; callback_pos = pos;
+                            const auto draft_start = Clock::now();
+                            if (!prefill_draft(rows, count, pos, deferred_draft.batched, ce)) return false;
+                            deferred_draft.pos = pos;
+                            deferred_draft.ms = std::chrono::duration<double, std::milli>(Clock::now()-draft_start).count();
+                            deferred_draft.ready = true;
+                            return true;
+                        };
+                        std::string worker_error;
+                        in_prompt_read = true; // freeze the expert table until all prompt kernels have completed
+                        auto worker = std::async(std::launch::async, [&, q, r] {
+                            strata::aux_cpus::pin_current_thread();
+                            return sp.run(ids.data() + q, r - q, q, worker_error);
+                        });
+                        bool decode_ok = true;
+                        int64_t windows = 0;
+                        while (worker.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+                            bool room = true;
+                            for (size_t b = 0; b < bs.size(); ++b) if (bs[b].active && kvg.on &&
+                                    strata::core::qsa_kv_elastic_cells(kv_pools(bslot_ss[0][b].get())) < bs[b].p + 256)
+                                room = false;
+                            if (batch_on() && room) {
+                                if (!batch_step()) { decode_ok = false; break; }
+                                ++windows;
+                            } else worker.wait_for(std::chrono::milliseconds(1));
+                        }
+                        const bool prompt_ok = worker.get(); // join before callbacks, VMM changes, or error cleanup
+                        in_prompt_read = false;
+                        if (!decode_ok) { deferred_draft.ready = false; batch_fatal = true; e = "overlapped batch window failed"; return false; }
+                        if (!prompt_ok) { deferred_draft.ready = false; e = worker_error; return false; }
+                        // Main-thread callback preserves MTP draft KV, request progress and all conversation
+                        // checkpoints; no verifier/caching code runs concurrently with a decode window.
+                        if (callback.callback && residual &&
+                                !callback.callback(residual, callback_rows, callback_pos, e)) return false;
+                        ++il_parts;
+                        il_ms += std::chrono::duration<double, std::milli>(Clock::now() - tq).count();
+                        std::fprintf(stderr, "strata prefill overlap: start=%lld rows=%lld decode_windows=%lld wall_ms=%.3f\n",
+                                     (long long) q, (long long) (r-q), (long long) windows,
+                                     std::chrono::duration<double, std::milli>(Clock::now()-tq).count());
+                    } else if (!sp.run(ids.data() + q, r - q, q, e)) return false;
                     q = r;
                     if (q >= b0) continue;
                     int ys = -1;
@@ -12097,7 +12270,7 @@ int strata_main(int argc, char** argv) {
                         std::fprintf(stderr, "strata batch: BYIELD %d not taken at %lld of %lld%s%s\n", ys, (long long) q,
                                      (long long) n, ye.empty() ? "" : ": ", ye.c_str());
                     }
-                    if (decode_share <= 0.0 || !batch_on()) continue;
+                    if (overlap || decode_share <= 0.0 || !batch_on()) continue;
                     const double budget = decode_share * std::chrono::duration<double, std::milli>(Clock::now() - tq).count();
                     const auto td = Clock::now();
                     in_prompt_read = true;

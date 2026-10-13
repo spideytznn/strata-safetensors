@@ -188,6 +188,54 @@ int64_t conversation_prefix(const ConversationCheckpoint& c, const std::vector<T
     return (int64_t) n;
 }
 
+// The active branch needs only matching prefix checkpoints. The source's KV
+// and complete running state remain owned by its original parked image.
+struct ConversationBranchPrefix {
+    std::vector<int32_t> ids;
+    std::vector<ConversationImageKey> imgs;
+    std::vector<ConversationCheckpoint> checkpoints;
+    size_t bytes() const {
+        size_t n = ids.capacity() * sizeof(int32_t) + imgs.capacity() * sizeof(ConversationImageKey) +
+                   checkpoints.capacity() * sizeof(ConversationCheckpoint);
+        for (const auto& c : checkpoints) n += c.bytes();
+        return n;
+    }
+};
+
+// Single-stage branch preparation. Refusal or allocation failure leaves the
+// source intact. The caller admits this allocation against physical RAM too.
+template<class Token>
+bool conversation_branch_prefix(const SavedConversation& source, const std::vector<Token>& prompt,
+                                const std::vector<ConversationImageKey>& images, int64_t resume,
+                                size_t budget, ConversationBranchPrefix& out) {
+    const ConversationCheckpoint* selected = nullptr;
+    size_t count = 0, estimate = 0;
+    auto add = [&](size_t n) {
+        if (n > budget - estimate) return false;
+        estimate += n;
+        return true;
+    };
+    for (const auto& c : source.checkpoints) {
+        if (int64_t(c.ids.size()) > resume || conversation_prefix(c, prompt, images) == 0) continue;
+        if (!c.stage_parts.empty() || !add(sizeof(ConversationCheckpoint)) || !add(c.bytes())) return false;
+        ++count;
+        if (int64_t(c.ids.size()) == resume) selected = &c;
+    }
+    if (!source.stage_images.empty() || !selected ||
+        !add(selected->ids.size() * sizeof(int32_t)) ||
+        !add(selected->imgs.size() * sizeof(ConversationImageKey))) return false;
+    ConversationBranchPrefix candidate;
+    candidate.ids = selected->ids;
+    candidate.imgs = selected->imgs;
+    candidate.checkpoints.reserve(count);
+    for (const auto& c : source.checkpoints)
+        if (int64_t(c.ids.size()) <= resume && conversation_prefix(c, prompt, images) > 0)
+            candidate.checkpoints.push_back(c);
+    if (candidate.bytes() > budget) return false;
+    out = std::move(candidate);
+    return true;
+}
+
 class ConversationCache {
 public:
     struct Match {
