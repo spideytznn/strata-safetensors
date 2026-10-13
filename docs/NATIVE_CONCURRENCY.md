@@ -7,9 +7,9 @@ the local single-request entry uses solo native MTP. See the dated
 [feature/profile inventory](FORK_FEATURES.md) for current settings.
 The measurements below retain their historical executables and configurations.
 
-The separate Windows [prefill overlap profile](NATIVE_PREFILL_OVERLAP.md) can run
-native prompt processing alongside live-slot decode. It is opt-in; the original
-parallel launcher keeps its existing scheduling.
+The Windows [prefill overlap path](NATIVE_PREFILL_OVERLAP.md) can run native
+prompt processing alongside live-slot decode. The current parallel desktop
+profile enables it; the generic engine default is off.
 
 ## Image histories and progress
 
@@ -66,53 +66,22 @@ for counts, exact settings and limits.
 
 ## Local launch
 
-Use `START-NATIVE-262K-PARALLEL.bat`, or the desktop
-`Start-Strata-Safetensors-Parallel.bat`. Both use
-`config/native/rtx5090-262k-parallel.json` and port 8880. Stop any other server
-using that port before launching this one. The profile keeps original safetensors
-weights, INT8 KV, 262144 context, a dedicated 4096-row prefill workspace, the
-existing external GPU vision encoder and unrestricted HTTP Host headers.
-The current local profile uses `strata-native-batch-mtp-final.exe`, with tail skipping
-explicitly off. The 2026-10-11 rollback used `strata-two-slot.exe`, rebuilt
-from the pre-continuous-batching source at `34541c37`.
-The later continuous lifetime/handoff, CPU DAG, shared-prefix pages and ragged
-prefill changes are removed from the active source. Adaptive hot-expert promotion
-and the earlier independent-KV/device-copy fixes remain. The desktop profile is
-two slots, vision enabled and shared native MTP. Rollback checks are recorded under
-`bench/results/2026-10-11-two-slot-rollback`.
-The v0.1.42 checks are recorded in [the integration notes](UPSTREAM_V0142.md); the
-measurements below retain their named historical executables. It enables independent session KV and direct
-device slot copies, and keeps a 1536 MiB explicit reserve for runtime graph
-allocations. The profile contains this PC's paths; adapt them elsewhere.
+Use `START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat`, or the desktop
+`Start-Strata-Safetensors-Parallel.bat`. The current configuration is
+`config/native/rtx5090-262k-prefill-tc-bf16-parallel.json`: BF16 KV Tensor Core,
+8192 W4A4/CUTLASS prefill, 262144 context, native/batch MTP, original expert
+scheduling, vision, continuous prefill and independent elastic KV. It uses
+`strata-classic-bf16-kv.exe` and localhost port 8880. See
+[current desktop scope](DESKTOP_SCOPE.md). Stop another server before starting it.
 
-For a generic local config, `tools/native_config.py --parallel 2` adds the
-server setting; its default is still one request. The measured desktop profile
-contains additional arithmetic, memory and scheduling settings, so a generic
-config is not a reproduction of its measurements.
+The dated sections and commands below record earlier engines and configurations.
+Old INT8/4096 trial launchers and configurations have since been removed;
+those performance measurements do not describe the current BF16 hybrid.
 
-Before the native batch-MTP update on 2026-10-12, the desktop parallel profile
-left MTP entirely disabled: no `--mtp`, no draft
-weights loaded, `--spec 2` and `--suffix-draft 0`. Every request, including one
-running alone, uses target-only decode. Removing MTP also removes its draft
-weight/state allocation; the earlier acceptance profile reported 2620 MiB for
-that allocation. The target-only acceptance below measures the resulting KV and
-cache sizing; WDDM allocation variation still affects the available cache.
-
-When another text request arrives, the server drains the solo generation and
-resumes it in an independent batch slot. Slots verify one target token each per
-window. A custom config can load native MTP for solo requests, as in the initial
-acceptance runs below. Concurrent slots remain target-only unless `--batch-mtp`
-is explicitly selected. The native adapter described below restores this option
-after the earlier [desktop-scope cleanup](DESKTOP_SCOPE.md). Upstream GGUF
-batch-MTP support remains. No target weights or projections are requantized
-by concurrency.
-
-More than two requests wait for a free slot. Admissions share one prompt reader;
-active slots receive decode windows between prompt chunks. This is batch decode
-with chunk-level admission scheduling, not simultaneous prompt GEMMs. The
-maximum wait between those decode opportunities includes a full prefill chunk.
-Disk `/slots/0` save/restore remains unavailable while batch mode is enabled.
-In-memory live-slot, checkpoint and parked-conversation reuse remain available.
+Excess requests wait for a free slot. Admissions share one prompt reader, with
+decode opportunities between prefill chunks. In-memory checkpoint and parked
+conversation reuse remain available; disk `/slots/0` save/restore is unavailable
+while batch mode is enabled.
 
 ## Optional native batch MTP
 

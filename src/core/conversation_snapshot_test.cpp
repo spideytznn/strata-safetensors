@@ -317,6 +317,25 @@ int main(int argc, char** argv) {
     }
     int devices=0;
     if (cudaGetDeviceCount(&devices)!=cudaSuccess || !devices) return 77;
+    for (int mode : {0, 1, 2}) {
+        Fixture f(kKvF16, mode); const bool index = mode != 2;
+        f.state.kv_bf16 = true; f.fill(81);
+        ConversationKv image, restored; std::string error;
+        check(conversation_kv_save(image, f.state, f.g, 9, index, error), "save BF16 pools");
+        check(image.format == 64, "BF16 snapshot encoding marker");
+        f.state.kv_bf16 = false;
+        check(!conversation_kv_restore(image, f.state, f.g, 9, index, error), "reject BF16 snapshot into FP16");
+        f.state.kv_bf16 = true; f.fill(93);
+        check(conversation_kv_restore(image, f.state, f.g, 9, index, error), "restore BF16 resident/streamed/ring");
+        check(conversation_kv_save(restored, f.state, f.g, 9, index, error) && equal(image, restored), "BF16 snapshot bytes");
+        if (mode == 0) {
+            Fixture dest(kKvF16, 0); dest.state.kv_bf16 = true;
+            check(conversation_kv_copy(f.state, dest.state, f.g, 9, index, error), "direct BF16 slot copy");
+            check(conversation_kv_save(restored, dest.state, f.g, 9, index, error) && equal(image, restored), "BF16 slot copy bytes");
+            dest.state.kv_bf16 = false;
+            check(!conversation_kv_copy(f.state, dest.state, f.g, 9, index, error), "reject direct BF16 into FP16");
+        }
+    }
     for (int fmt : std::array<int,4>{kKvF16,kKvInt8,kKvQ4,3}) for (int mode : {0,1,2}) {
         if (fmt==3 && mode!=0) continue;
         Fixture f(fmt,mode);

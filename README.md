@@ -16,17 +16,12 @@ converted expert pack is required.
 
 The validated deployment is **Windows + RTX 5090 32 GB + Ryzen 9950X3D + 96 GB RAM**.
 The maintained stable line is `main`; the executable and CLI retain the name `strata`.
-Local desktop-scope cleanup is on `cleanup/desktop-native-20261012`; it is not a remote release announcement.
-
-`main` is the maintained stable line. Its validated native deployment supports
-one or two text requests, adaptive hot-expert promotion, INT8 KV and vision,
-with MTP unloaded in the stable rollback profiles. Local single-request MTP
-was subsequently enabled; the local parallel profile now selects shared native
-batch MTP after a same-day comparison. See the dated inventory above. The later vLLM-style scheduler experiments were rolled back;
-no warm-decode speedup is claimed for them. See the
-[stable validation record](bench/results/2026-10-11-two-slot-rollback/README.md),
-[release checks](docs/STABLE_NATIVE.md)
-and [automated CPU checks](https://github.com/spideytznn/strata-safetensors/actions/workflows/native-stability.yml).
+The current desktop deployment uses W4A4/CUTLASS prefill at 8192 tokens,
+BF16 KV Tensor Core attention and the original expert decode/scheduling backend.
+Both single-request and two-request entries enable native MTP; the latter also
+enables batch MTP. See [desktop scope](docs/DESKTOP_SCOPE.md),
+[prefill](docs/NVFP4_PREFILL_ONLY.md) and [BF16 KV](docs/CLASSIC_BF16_KV.md).
+Earlier validation records describe their own builds and settings.
 
 ## What it does
 
@@ -35,8 +30,8 @@ and [automated CPU checks](https://github.com/spideytznn/strata-safetensors/acti
 | Original weights | Loads NVIDIA NVFP4 safetensors, BF16 dense weights, FP8 ngram data and native MTP weights directly. Expert repacking changes layout, preserving codes and scales. |
 | Expert residency | All main experts have locked RAM copies, including experts cached on the GPU. Expert and loaded MTP source reads are sealed after loading. |
 | CPU/GPU scheduling | Hot experts execute on GPU. Cold experts can execute on CPU with AVX-512 or be transferred to GPU; adaptive swaps update the hot set. |
-| Prefill | Dedicated prompt workspace, W4A8 expert prefill, BF16 dense projections with activation-remainder compensation, and prefill-first allocation in the tuned desktop profile. |
-| Context | FP16 or INT8 KV; the desktop uses INT8 and grows KV as needed. A 262,000-token input has passed capacity and session-state checks within a 262,144-token total window. |
+| Prefill | 8192-token dedicated workspace, W4A4 FP4 Tensor Core experts with CUTLASS auto, and BF16-rounded dense prefill projections. |
+| Context | Desktop BF16 KV Tensor Core attention with elastic growth. Inherited FP16/INT8 paths remain generic options. The configured total window is 262,144 tokens; older capacity records used INT8. |
 | MTP | Uses the checkpoint's native draft weights. The main model verifies proposals; draft length and confidence gating are configurable. MTP can be fully unloaded. |
 | Session reuse | Prefix reuse, multiple parked conversations, A/B/A switching, and disk save/restore of KV and linear-attention state. |
 | Vision | Image input through Strata's existing external BF16 encoder. The visual sidecar uses mmproj/vocabulary GGUF files; the main model stays in safetensors. |
@@ -51,8 +46,8 @@ numerical comparisons and remaining limits.
 - **Keep experts resident.** The full expert arena is CUDA-pinned and GPU-mapped,
   avoiding an extra host staging copy. Runtime SSD reads are for ngram rows,
   plus session files when explicitly saving or restoring.
-- **Use both processors.** The parallel desktop profile runs about 75% of cold experts on
-  CPU and 25% on GPU; the single entry auto-selects its share at startup.
+- **Use both processors.** Both desktop profiles select about 75% of cold experts on
+  CPU and 25% on GPU.
   These fractions apply to cache misses, not all model work.
   AVX-512 row-loop specialization and GPU weight reuse reduce repeated work.
 - **Allocate prefill space first.** Allocate and write the requested workspace
@@ -64,10 +59,9 @@ numerical comparisons and remaining limits.
 - **Reuse conversation state.** Keep both KV and linear-attention state so a
   resumed session processes its new suffix rather than its entire history.
 
-The retained desktop path uses NVFP4 weights with FP32 decode activations,
-W4A8 expert prefill and original BF16 dense weights. Unused FP4 MMA and Q8 MTP
-projection experiments were removed; see [the desktop scope](docs/DESKTOP_SCOPE.md).
-Preserving weight codes does not establish bitwise equivalence to an unquantized BF16 model.
+The desktop path keeps original expert decode and MTP projections. Prefill and
+KV arithmetic differ from the historical INT8/W4A8 desktop path. Preserving
+weight codes does not establish equal task quality or identical output.
 
 ## Measured performance
 
@@ -87,115 +81,53 @@ over English, Chinese and code. It used one fresh engine per profile and is
 not a repeated throughput estimate. That candidate used four drafts, a 0.7
 confidence gate and a two-draft floor.
 
-**The 2026-10-12 local single-request file enables MTP at temperature 1.0;
-the parallel file unloads MTP at temperature 0.7.** The figures above describe
-archived MTP configurations, not new measurements of these settings, and are
-not a speed promise for every prompt. The rollback's
-checks establish tested correctness and adaptive promotion, not a new throughput
-improvement.
+The figures above describe archived configurations, not fresh measurements of
+the current BF16/W4A4 desktop deployment.
 
 ## Build and run on Windows
 
-The following is a source-build route for an RTX 5090. Install Git, Python 3.12+,
-Visual Studio 2022 C++ Build Tools, CUDA 13, CMake 3.24+ and Ninja. Run the commands
-from PowerShell with the **x64 MSVC development environment** activated and those
-tools on PATH. Model weights
-must already be downloaded outside this repository.
+Install Git, Python 3.12+, Visual Studio 2022 C++ Build Tools, CUDA 13,
+CMake 3.24+ and Ninja. Model and vision assets are not distributed in this repo.
 
 ```powershell
 git clone https://github.com/spideytznn/strata-safetensors.git
 cd strata-safetensors
 python -m venv .venv-native
 .\.venv-native\Scripts\python.exe -m pip install -r requirements-native.txt
-
-cmake -S . -B build-native-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTRATA_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=120 -DSTRATA_BUILD_TESTS=OFF "-DCMAKE_CXX_FLAGS=/utf-8 /EHsc"
-cmake --build build-native-engine --target strata --parallel 2
-
-.\.venv-native\Scripts\python.exe tools\native_config.py --model "D:\Models\Qwen3.8-Flash-Next-NVFP4" --output strata-native-local.json --exe build-native-engine\strata.exe --context 262144 --prefill 4096 --kv int8 --dedicated-prefill --mtp 0 --parallel 2 --load-batch 64 --load-workers 4
+.\.venv-native\Scripts\python.exe -m pip install cmake ninja
+.\tools\build_safetensors_engine.ps1 -Jobs 2
 ```
 
-CMake fetches its pinned ggml dependency unless `STRATA_GGML_DIR` is supplied.
-The generator validates model metadata, refuses to overwrite an existing config,
-and refuses output inside the model directory. Its generated config selects
-W4A8 expert prefill and does **not** reproduce every tuned desktop setting.
-Before starting, add this top-level `sampling` field to `strata-native-local.json`
-for Qwen's official thinking baseline:
+The helper builds `build-native-engine/strata-classic-bf16-kv.exe` with W4A4
+prefill, pinned CUTLASS and BF16 KV. It fetches CUTLASS into `build-deps/cutlass`;
+CMake fetches its pinned ggml unless `-GgmlDir` is supplied. It refuses to overwrite
+a running engine; use `-OutputName` to build a separate candidate.
 
-```json
-"sampling": {
-  "temperature": 1.0,
-  "top_p": 0.95,
-  "top_k": 20,
-  "min_p": 0.0,
-  "presence_penalty": 0.0,
-  "repetition_penalty": 1.0
-}
-```
+### Current desktop entries
 
-Then start the server. Vision requires separately configured encoder assets.
+| Entry | Config | Slots |
+|---|---|---:|
+| `START-NATIVE-262K-PREFILL-TC-BF16.bat` | [single](config/native/rtx5090-262k-prefill-tc-bf16.json) | 1 |
+| `START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat` | [parallel](config/native/rtx5090-262k-prefill-tc-bf16-parallel.json) | 2 |
 
-```powershell
-.\tools\run_safetensors.ps1 -Config .\strata-native-local.json -Port 8880
-```
+These deployment-specific configs contain Windows paths; adapt model, executable,
+tokenizer, template and vision asset paths on another PC. Both select 262144
+context, 8192 prefill, BF16 KV, native MTP (`spec=3`, confidence 0.5), 1536 MiB
+VRAM reserve, vision and original expert scheduling. The two-slot config also
+sets `--batch-mtp`; each concurrent slot can propose one MTP draft.
+The single and parallel desktop BAT files call these entries. Old trial entries
+were removed. Upstream generic setup and the config generator remain available.
 
-Open **http://127.0.0.1:8880** for chat; clients use
-**http://127.0.0.1:8880/v1**. Check `/health` and `/v1/models` for readiness and
-the served model ID. Ctrl+C stops the foreground server. Keep a local bind, or
-configure `--api-key` before exposing the API beyond localhost.
+Start one entry at a time. Open **http://127.0.0.1:8880** for chat; API clients use
+**http://127.0.0.1:8880/v1**, model `Qwen3.8-Flash-Next-NVFP4-Native`.
+Ctrl+C stops the foreground server. Check `/health` and `/v1/models` for readiness.
+The runner binds localhost; configure an API key before exposing it externally.
 
-The original model directory is read-only input. The measured expert RAM arena
-alone occupies **63.282 GiB**, before other weights, sessions, runtime buffers and
-the OS. 96 GB RAM is the validated configuration; a 64 GB native-resident setup
-has not been established.
-
-### Existing desktop deployment
-
-`START-NATIVE-262K.bat` uses
-[`config/native/rtx5090-262k-fast-v0142.json`](config/native/rtx5090-262k-fast-v0142.json).
-This checked-in profile and the local build helper contain deployment-specific
-Windows paths; adapt them before use on another PC. The generic build above
-avoids those fixed paths.
-
-| Setting | Local desktop files, 2026-10-12 (not shared-web overrides) |
-|---|---|
-| Context / dedicated prefill | 262,144 total tokens / 4,096 rows |
-| KV / vision | INT8 with elastic growth / external GPU encoder, at most 1,024 tokens per image |
-| Explicit VRAM reserve | 700 MiB single-request / 1,536 MiB two-request; the engine also checks final startup headroom |
-| MTP | Single: native / spec 3 / min-p 0.5. Parallel: fully unloaded. Suffix drafting disabled in both |
-| CPU/PCIe allocation | Single-request automatic trial; explicit `--pcie-frac N` still fixes the share |
-| Target sampling | File temperature: single **1.0**, parallel **0.7**; top_p 0.95, top_k 20, min_p 0, presence_penalty 0, repetition_penalty 1 |
-| Template | Froggeric v22.5; thinking on, effort defaults to medium when not specified |
-| Endpoint | `127.0.0.1:8880`; HTTP Host headers unrestricted |
-| Output budget | `fit_max_tokens: true` fits the requested output cap to remaining context; input is not truncated |
-
-**Is it fast on your PC?** Run `BENCH.bat` (`./bench.sh`): about 5-10 minutes, it measures chat, 4K/16K prompts and an agent-style session with your own settings and writes a report to share ([how](docs/COMMUNITY_BENCHMARKS.md#run-the-benchmark)).
-
-The temperature is a user-selected trial. [Qwen's official thinking preset](https://huggingface.co/Qwen/Qwen3.8-Flash-Next#best-practices) uses
-**1.0 / 0.95 / 20 / 0 / 0 / 1**, and its template defaults to xhigh.
-Explicit client parameters and persisted shared web settings can override
-server defaults. Output-budget fitting does not change a client's compaction
-policy; set the client context to 262,144 as well.
-
-Only the single-request and parallel desktop profiles are maintained.
-Historical and experimental profiles and launchers were removed.
-
-`START-NATIVE-262K-PARALLEL.bat` selects an opt-in **two-request batch**,
-with the same 262K context and dedicated 4096-row prefill. Each slot keeps its own
-image positions and image-aware cached history. This local profile enables shared
-native MTP: one proposal per concurrent slot with a 0.5 confidence threshold.
-Native batching also offers independent per-session elastic KV and
-direct device slot migration; the measured local profile enables both.
-See [native concurrency](docs/NATIVE_CONCURRENCY.md) for tests, memory costs and
-latency/throughput measurements. The original desktop launcher is unchanged.
-The local single-request profile selects `build-native-engine/strata-desktop-cleanup.exe`;
-the parallel profile selects `build-native-engine/strata-native-batch-mtp-final.exe`.
-Set `-DSTRATA_EXECUTABLE_NAME` to the desired name in the CMake configure command
-above, or use the generic config's `strata.exe`.
-Native batch MTP is opt-in: shared original draft weights and one proposal per
-slot, with private KV and image positions. The local desktop parallel profile
-selects it after same-day measurement. See [native concurrency](docs/NATIVE_CONCURRENCY.md).
-Prebuilt local executables and machine-specific visual assets are not distributed
-by Git clone.
+Both files default to temperature 0.7, top_p 0.95, top_k 20. Requests and persisted
+web settings can override sampling. The template is Froggeric v22.5; output
+budget fitting is enabled. Model inputs are read-only. The measured expert RAM
+arena alone occupies **63.282 GiB**, excluding other weights, sessions and OS;
+96 GB is the validated machine configuration.
 
 ## Validation and limits
 
@@ -212,8 +144,9 @@ by Git clone.
 - The 262K fixture proves capacity and tested state reuse. It does not establish
   general long-context reasoning quality, retrieval accuracy or 262K throughput.
 - Native text requests can decode together with `"parallel": 2`; admissions
-  share the prompt reader. Native multi-GPU, batched MTP, pipeline parallelism
-  and external draft models are unsupported. Images require exclusive generation.
+  share the prompt reader. Shared native batch MTP and image histories are supported on the desktop
+  single-GPU path. Multi-GPU, pipeline parallelism and external drafts are outside
+  this native deployment scope.
 - Native CUDA SM120 is validated locally. Linux, HIP, SYCL and other hardware
   have not been validated for this backend. Inherited backend support is not
   evidence for the new native path.

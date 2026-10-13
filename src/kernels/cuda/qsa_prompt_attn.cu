@@ -3,6 +3,9 @@
 #include <cstdlib>
 #include <cstring>
 #include "strata/kernels/qsa_prompt_attn.hpp"
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+#include "strata/kernels/kv_bf16_tc.hpp"
+#endif
 #include "strata/kernels/gfx_arch.hpp"
 #include "strata/kernels/kv_q8.hpp"
 #include "strata/kernels/kv_q4.hpp"
@@ -1803,6 +1806,15 @@ void qsa_prompt_attn_set_imma(int on) { g_pa_imma = on < 0 ? -1 : (on ? 1 : 0); 
 
 bool qsa_prompt_attn_batch(const float* q, const QsaAttnPools& pools, const int32_t* ids, const int32_t* steps,
                            int64_t cap, const QsaShapes& s, float* attn, int64_t n_q, void* stream) {
+    if (pools.bf16) {
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+        if(n_q>=32) {
+            qsa_bf16_tc_prompt(q,pools,ids,steps,cap,s,attn,n_q,stream);
+            return true;
+        }
+#endif
+        return false; // Short tails use split-K; never interpret BF16 bits as FP16.
+    }
     if (n_q <= 0) return true;
     bool volta = false, turing = false;   // per call, from the CURRENT device (a layer split can mix Turing with newer cards)
     {   // sm_75 or newer: the MMA above compiles for both.  sm_80+ runs the cp.async kernel (launch_i8); Turing has

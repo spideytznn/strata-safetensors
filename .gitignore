@@ -71,9 +71,14 @@ build-vision-cuda12.bat
 !bench/results/2026-10-11-native-pcie-auto/**/*.log
 bench/results/2026-10-11-native-pcie-auto/runtime/**/session.bin
 bench/results/2026-10-11-upstream-v0142/serial-mtp/**/session.bin
-config/native/rtx5090-262k-fast-v0142.shared-settings.json
 !bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/build/
 !bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/build/**
 
-# Local web sampling state, alongside the single-request sidecar.
-config/native/rtx5090-262k-parallel.shared-settings.json
+# Local experiments, dumps, and web sampling state are not source.
+/work/
+/bench/results/local-*/
+/config/native/*.shared-settings.json
+/.venv-native/
+/bench/results/classic-bf16-kv-20261014/*-prepared/
+/bench/results/prefill-only-port-20261014/*-prepared/
+/bench/results/desktop-prefill-tc-cleanup-20261014/server-tests.txt

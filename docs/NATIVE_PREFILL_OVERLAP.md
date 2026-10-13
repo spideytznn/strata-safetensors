@@ -2,23 +2,12 @@
 
 `STRATA_NATIVE_PREFILL_OVERLAP=1` lets an existing batch slot decode while the
 native prompt path reads the next request on its own thread and CUDA stream.
-It is off by default. The existing desktop configurations and deployed
-`strata-v01431.exe` are unchanged.
-
-The opt-in entry is `START-NATIVE-262K-OVERLAP.bat`, using
-`config/native/rtx5090-262k-prefill-overlap.json` and
-`build-native-engine/strata-continuous-prefill.exe` on `127.0.0.1:8880`.
-The desktop profile also enables [continuous prefill while slots are idle](NATIVE_CONCURRENCY.md#continuous-prefill-with-idle-batch-slots-2026-10-13).
-The current opt-in profile enables parked checkpoint branch preservation too
-(described below). The preceding `strata-prefill-overlap-final.exe` and its
-profile backup remain available.
-Stop the other model service before starting it. The original parallel entry
-remains available for rollback.
-
-At the user's request, the desktop `Start-Strata-Safetensors-Parallel.bat`
-now calls the overlap entry. Its previous contents are backed up under
-`build-native-engine/prefill-overlap-backup-20261013/`. The separate single-request
-desktop entry is unchanged. This desktop routing change does not start a service.
+It is off by default in the generic engine. The current two-slot desktop entry
+`START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat` enables it with continuous prefill
+and parked-checkpoint branch preservation. It uses the BF16 KV / W4A4 profile;
+see [current desktop scope](DESKTOP_SCOPE.md). The original overlap-only trial
+entry/configuration has been removed. Dated measurements below describe their
+original engine and settings, not the current hybrid's measured throughput.
 
 ## Execution
 

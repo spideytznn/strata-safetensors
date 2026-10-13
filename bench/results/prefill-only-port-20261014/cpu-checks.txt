@@ -1,0 +1,10 @@
+native_prefill_policy_default: passed
+native_prefill_policy_original: passed
+native_prefill_policy_custom: passed
+native_prefill_policy_auto: passed
+native_prefill_policy_cutlass: passed
+native_prefill_policy_invalid: passed
+native_prefill_policy_unbuilt: passed
+12 decode/state/CPU source files equal desktop repository HEAD (LF normalization only).
+Protected desktop launcher, active config and executable hashes unchanged.
+GPU tests/model service not started during port.

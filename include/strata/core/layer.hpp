@@ -211,6 +211,7 @@ struct QsaState {
     uint16_t* v_pool = nullptr;
     /// Plan v0.3 P7: INT8 KV (qsa_set_kv_int8). Codes [page][kv_head][page_size][head_dim], one FP16 scale per 64.
     bool kv_int8 = false;
+    bool kv_bf16 = false;           ///< BF16 encoding in the 16-bit pools.
     int8_t* k_q = nullptr;
     int8_t* v_q = nullptr;
     uint16_t* k_scale = nullptr;

@@ -42,6 +42,10 @@
 //    argument in this file for keeping both.
 #include "strata/core/emulate.hpp"
 #include "strata/kernels/qsa.hpp"
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+#include "strata/kernels/native_kv_bf16.hpp"
+#include "strata/kernels/kv_bf16_tc.hpp"
+#endif
 
 #include "strata/kernels/f16_bits.hpp"
 #include "strata/kernels/kv_stream.hpp"
@@ -594,6 +598,11 @@ const int32_t* step_upload_width(int64_t width, const QsaShapes& s) {
 
 void kv_append_step(uint16_t* k_pool, uint16_t* v_pool, const int32_t* page_table, const int32_t* step,
                     const float* kcur, const float* vcur, const QsaShapes& s, void* stream, const KvHostPools* host) {
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+    if(native_bf16_kv_enabled()) {
+        kv_append_bf16_steps(k_pool,v_pool,page_table,step,0,kcur,vcur,0,1,s,stream,host);return;
+    }
+#endif
     validate(s, "kv_append");
     if (step == nullptr) fail("kv_append: step is null");
     // The grid is the head x dim count, which is a CONSTANT - `kv_append` writes one cell.

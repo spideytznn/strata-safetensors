@@ -13,6 +13,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+#include "strata/kernels/kv_bf16_tc.hpp"
+#endif
 
 namespace strata::kernels {
 namespace {
@@ -634,6 +637,17 @@ void qsa_decode_attn_batch(const float* q, const QsaAttnPools& pools, const int3
     const float scale = 1.0f / sqrtf((float) HD);
     const dim3 grid((unsigned) n_chunks, (unsigned) s.n_head_kv, (unsigned) n_q);
     cudaStream_t st = (cudaStream_t) stream;
+    if (pools.bf16) {
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+        qsa_bf16_tc_chunks(q,pools,ids,steps,cap,s,scratch,n_q,stream);
+        attn_merge_kernel<<<dim3((unsigned)s.n_head,(unsigned)n_q),HD,0,st>>>(part_acc,part_m,part_l,n_chunks,attn,stride);
+        const auto e=cudaGetLastError();
+        if(e!=cudaSuccess){std::fprintf(stderr,"BF16 attention merge: %s\n",cudaGetErrorString(e));std::exit(1);}
+        return;
+#else
+        std::fprintf(stderr,"BF16 KV Tensor Core requires the native CUDA build\n");std::exit(1);
+#endif
+    }
     // S25: STRATA_ATTN_LANECELL=1 - the score phase one cell per thread (bit-identical scores, no shuffle reductions)
     static const bool lane_cell = [] { const char* v = std::getenv("STRATA_ATTN_LANECELL"); return v && v[0] == '1'; }();
 #if defined(STRATA_HIP_GFX906)
@@ -735,6 +749,17 @@ void qsa_decode_attn_step(const float* q, const QsaAttnPools& pools, const int32
     const float scale = 1.0f / sqrtf((float) HD);
     const dim3 grid((unsigned) n_chunks, (unsigned) s.n_head_kv);
     cudaStream_t st = (cudaStream_t) stream;
+    if (pools.bf16) {
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+        qsa_bf16_tc_chunks(q,pools,ids,step,cap,s,scratch,1,stream);
+        attn_merge_kernel<<<(unsigned)s.n_head,HD,0,st>>>(part_acc,part_m,part_l,n_chunks,attn);
+        const auto e=cudaGetLastError();
+        if(e!=cudaSuccess){std::fprintf(stderr,"BF16 attention merge: %s\n",cudaGetErrorString(e));std::exit(1);}
+        return;
+#else
+        std::fprintf(stderr,"BF16 KV Tensor Core requires the native CUDA build\n");std::exit(1);
+#endif
+    }
     if (kv_mode == 3)
         STRATA_ATTN_CHUNK(3)<<<grid, THREADS, 0, st>>>(q, pools, ids, step, (int) s.n_head_kv, (int) s.page_size,
                                                         scale, part_acc, part_m, part_l, n_chunks, 0, 0);

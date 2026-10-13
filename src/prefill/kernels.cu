@@ -4,6 +4,10 @@
 #include "strata/kernels/gfx_arch.hpp"
 #include "strata/kernels/router_top10.hpp"
 #include "strata/core/emulate.hpp"
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+#include "strata/kernels/native_kv_bf16.hpp"
+#include "strata/kernels/kv_bf16_tc.hpp"
+#endif
 
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
@@ -2127,6 +2131,11 @@ void kv_append(const float* K, const float* V, int64_t T, int64_t pos0, const in
                uint16_t* k_pool, uint16_t* v_pool, int8_t* k_q, int8_t* v_q, uint16_t* k_scale, uint16_t* v_scale,
                void* stream, const strata::kernels::KvHostPools* host, const strata::kernels::KvHostPools* stage) {
     if (T <= 0) return;
+#if defined(STRATA_BF16_KV_TC_BUILT) && !defined(STRATA_USE_HIP)
+    if(strata::kernels::native_bf16_kv_enabled()) {
+        strata::kernels::kv_append_bf16_prefill(K,V,T,pos0,page_table,(int)page_size,k_pool,v_pool,stream,host,stage);return;
+    }
+#endif
     kv_append_kernel<<<dim3((unsigned) T, 2, 8), 64, 0, (cudaStream_t) stream>>>(
         K, V, pos0, page_table, page_size, k_pool, v_pool, k_q, v_q, k_scale, v_scale,
         host ? *host : strata::kernels::KvHostPools{}, stage ? *stage : strata::kernels::KvHostPools{});

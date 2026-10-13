@@ -1,8 +1,8 @@
 # 当前分支与官方的维护边界
 
-核对日期：2026-10-13。官方基线为 v0.1.43.1
+核对日期：2026-10-14。官方基线为 v0.1.43.1
 `a0116b2782a5b82622358c04a06496485d12b2d6`。
-清理工作分支为 `cleanup/desktop-native-20261012`，验收后同步到项目主分支。
+维护分支为 `main`；当前仅保留新版 prefill / BF16 KV 单路与双路桌面入口。
 此次以桌面实际使用的两个入口为范围，清理未使用的分支扩展；
 官方原有功能继续保留。具体删除与验收见 [桌面范围整理](DESKTOP_SCOPE.md)。
 
@@ -13,7 +13,7 @@
 | 权重与布局 | 直接加载原始 NVFP4 safetensors；校验张量类型、范围和布局，保留专家编码与缩放、BF16 dense 权重。 | [模型绑定](../src/core/safetensors_model.cpp)、[读取器](../src/weights/safetensors.cpp) |
 | 常驻与读取保护 | 全部专家保留锁定 RAM 副本，GPU 热专家是额外驻留；批量加载、映射、关闭启动句柄、封闭驻留后专家/MTP 源读取。 | [加载](../src/core/safetensors_model.cpp)、[源接口](../include/strata/weights/safetensors.hpp) |
 | 原始专家计算 | NVFP4 的 FP32 激活 CPU/AVX-512 与 GPU 路径、行展开和权重复用；接入既有 CPU/GPU 调度。 | [CPU](../src/kernels/cpu/native_expert.cpp)、[GPU](../src/kernels/cuda/native_mmvq.cu) |
-| Prefill | W4A8 专家批计算、原始 BF16 dense 路径及激活余项补偿；专用工作区优先分配并预算后续分配。 | [prefill](../src/prefill/prefill.cpp)、[MoE MMQ](../src/prefill/moe_mmq.cu) |
+| Prefill | W4A4/CUTLASS auto 专家批计算、BF16 舍入的 dense prefill；8192 行专用工作区优先分配。 | [prefill](../src/prefill/prefill.cpp)、[MoE MMQ](../src/prefill/moe_mmq.cu) |
 | Ngram | 原始 FP8 ngram、分段张量地址和边界检查，按需读取。 | [读取器](../src/ngram/ple_reader.cpp) |
 | MTP | 加载原始 BF16/F32 draft 张量和 FP8 专家，使用完整原始输出头；复用官方验证、回滚和提交。双路共享权重、独立草稿 KV，每路最多一枚草稿。 | [加载](../src/core/safetensors_mtp.cpp)、[draft](../src/core/mtp.cpp) |
 | 缓存与两路 | 原生 KV/GDN/PLE 会话状态、A/B/A 和磁盘恢复；逐请求采样、两路热专家晋升、独立伸缩 KV 与设备槽复制；单 GPU target-only 或 batch MTP 支持带图历史双路与图片身份匹配。 | [快照](../src/core/conversation_snapshot.cpp)、[并发说明](NATIVE_CONCURRENCY.md) |
@@ -32,23 +32,19 @@ v0.1.43.1 的槽位拒绝重试、工具结束符解析、取消图片准备、�
 
 | 桌面入口 | 配置 | MTP | 显存预留 | 文件温度 |
 |---|---|---|---|---|
-| `Start-Strata-Safetensors.bat` | [fast-v0142](../config/native/rtx5090-262k-fast-v0142.json) | native / spec 3 / min-p 0.5 | 700 MiB | 1.0 |
-| `Start-Strata-Safetensors-Parallel.bat` | [parallel](../config/native/rtx5090-262k-parallel.json) | native / batch-mtp / spec 3 / min-p 0.5 | 1536 MiB | 0.7 |
+| `Start-Strata-Safetensors.bat` | [single](../config/native/rtx5090-262k-prefill-tc-bf16.json) | native / spec 3 / min-p 0.5 | 1536 MiB | 0.7 |
+| `Start-Strata-Safetensors-Parallel.bat` | [parallel](../config/native/rtx5090-262k-prefill-tc-bf16-parallel.json) | native / batch-mtp / spec 3 / min-p 0.5 | 1536 MiB | 0.7 |
 
-单路和双路均使用 `strata-v01431.exe`，分别由原有配置控制 MTP 和槽位。
-旧 `strata-desktop-cleanup.exe`、`strata-native-batch-mtp-final.exe` 保留供回退。
-二者均保留 262144 总窗口、4096 prefill、INT8 KV、GPU 视觉、会话缓存、
-Host 头不限与 `127.0.0.1:8880` 监听。Q4KL/Q6KL/官方 GGUF 桌面入口属于其他仓库。
-`--spec 3` 是一行目标加最多两行草稿；未设最少草稿数，可按置信度截断。
-
-`STRATA_ROUTE_TAIL_SKIP=0`。`STRATA_ADAPT_OVERLAP=1`、
-`STRATA_ADAPT_OVERLAP_RESIDENT=1`、`STRATA_ADAPT_NOWAIT=0`、
-`STRATA_ADAPT_LAG=1` 保持现有设置；两路 batch 交换边界仍同步等待。
-没有据此新增吞吐承诺。
+均使用 `strata-classic-bf16-kv.exe`，262144 总窗口、8192 prefill、BF16 KV Tensor Core、
+GPU 视觉、会话缓存、Host 头不限及 `127.0.0.1:8880`。
+`STRATA_ROUTE_TAIL_SKIP=7` 是用户保留的桌面调度设置；通用默认仍为 0。
+PCIe share 为 0.25，保留交换重叠、连续 prefill 和会话分支保护。
+当前配置未启用试验原生 W4A4 decode 或 MTP 投影；prefill 与 KV 是独立选择。
 
 ## 已移除与未验证
 
-- 移除闲置 FP4 MMA/W4A4 实验、Q8 MTP 投影、原生精简 draft 词表及 BF16 batch draft 实验。
+- 当前重新保留仅供 prefill 的 W4A4/CUTLASS 实现；闲置 W4A4 decode、FP8 KV、
+  Q8 MTP 投影、精简 draft 词表和旧试验配置不在当前维护路径。
   原生双路 MTP 后按用户要求重新适配官方 slot verifier：共享权重、独立 KV 与图片位置，
   每路最多一枚草稿，支持逐请求置信度截断及可选异步草稿提交；
   桌面双路根据本日温度 0.7 / 思考模式对照启用共享 MTP，异步草稿默认不开。

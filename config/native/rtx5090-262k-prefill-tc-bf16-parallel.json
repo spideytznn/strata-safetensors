@@ -1,12 +1,12 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous-prefill.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv.exe",
   "args": [
     "--model",
     "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
     "--max-context",
     "262144",
     "--prefill",
-    "4096",
+    "8192",
     "--spec",
     "3",
     "--mtp",
@@ -25,7 +25,7 @@
     "--pcie-mode",
     "kernel",
     "--kv",
-    "int8",
+    "bf16",
     "--no-prefill-borrow",
     "--adapt-every",
     "4",
@@ -46,7 +46,7 @@
     "--vision"
   ],
   "cwd": "G:\\Strata\\Strata-Safetensors",
-  "log": "logs/native-262k-prefill-overlap.log",
+  "log": "logs/rtx5090-262k-prefill-tc-bf16-parallel.log",
   "cache_diagnostics": true,
   "tokenizer": "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
   "tokenizer_format": "safetensors",
@@ -60,10 +60,10 @@
   "env": {
     "STRATA_NVFP4_F32": "1",
     "STRATA_NVFP4_TC": "0",
-    "STRATA_PREFILL_NVFP4": "w4a8",
+    "STRATA_PREFILL_NVFP4": "w4a4",
     "STRATA_PREFILL_TRACE": "1",
     "STRATA_PREFILL_CPU_SHARE": "0",
-    "STRATA_PREFILL_BF16X2": "1",
+    "STRATA_PREFILL_BF16X2": "0",
     "STRATA_SPEC_STOP_BOUNDARY": "1",
     "STRATA_NATIVE_ALLOC_PINNED": "1",
     "STRATA_NATIVE_LOAD_BATCH": "64",
@@ -88,7 +88,10 @@
     "STRATA_ADAPT_LAG": "1",
     "STRATA_NATIVE_PREFILL_OVERLAP": "1",
     "STRATA_NATIVE_PREFILL_CONTINUOUS": "1",
-    "STRATA_CONVERSATION_BRANCH_PRESERVE": "1"
+    "STRATA_CONVERSATION_BRANCH_PRESERVE": "1",
+    "STRATA_NVFP4_PREFILL_BACKEND": "auto",
+    "STRATA_NATIVE_PRECISION": "0",
+    "STRATA_KV_BF16_TC": "1"
   },
   "allowed_hosts": [
     "*"

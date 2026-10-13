@@ -1,5 +1,6 @@
 // src/prefill/gemm.cu - see include/strata/prefill/gemm.hpp.
 #include "strata/prefill/gemm.hpp"
+#include "strata/kernels/native_prefill.hpp"
 #include "strata/kernels/dequant_bf16.hpp"
 #if defined(STRATA_PREFILL_MMQ) && defined(__HIPCC__)
 #include "strata/prefill/moe_mmq.hpp"
@@ -903,6 +904,10 @@ void Gemm::f16_inplace(const uint16_t* X, const uint16_t* W, float* Y, int64_t T
 }
 
 namespace {
+__global__ void cast_f32_bf16(const float* x, uint16_t* y, int64_t n) {
+    const int64_t i = int64_t(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (i < n) y[i] = __bfloat16_as_ushort(__float2bfloat16_rn(x[i]));
+}
 __global__ void split_f32_bf16(const float* x, uint16_t* hi, uint16_t* lo, uint16_t* tail, int64_t n) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
@@ -917,6 +922,16 @@ __global__ void split_f32_bf16(const float* x, uint16_t* hi, uint16_t* lo, uint1
 }
 void Gemm::bf16_f32(const float* X, const uint16_t* W, float* Y, int64_t T, int64_t N, int64_t K, int64_t ldy) {
     if (ldy <= 0) ldy = N;
+    if (strata::kernels::native_nvfp4_prefill_enabled()) {
+        const int64_t rows = scratch_elems_ / K;
+        if (rows < 1) throw std::runtime_error("BF16 prefill activation workspace is too small");
+        for (int64_t t = 0; t < T; t += rows) {
+            const int64_t n = std::min(rows, T - t), count = n * K;
+            cast_f32_bf16<<<unsigned((count + 255) / 256), 256, 0, (cudaStream_t) stream_>>>(X + t * K, scratch_, count);
+            bf16(scratch_, W, Y + t * ldy, n, N, K, ldy);
+        }
+        return;
+    }
     const int64_t rows = scratch_elems_ / (3 * K);
     if (rows < 1) { std::fprintf(stderr, "fidelity prefill scratch too small\n"); std::exit(1); }
     for (int64_t t = 0; t < T; t += rows) {

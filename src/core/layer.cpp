@@ -28,6 +28,7 @@
 #include "strata/kernels/fused_gr.hpp"
 #include "strata/kernels/cvec.hpp"
 #include "strata/kernels/qsa_decode_attn.hpp"
+#include "strata/kernels/native_kv_bf16.hpp"
 #include "strata/kernels/fused_gdn.hpp"
 #include "strata/kernels/qsa_select.hpp"
 #include <algorithm>
@@ -719,6 +720,7 @@ uint64_t qsa_state_init(const ModelGeometry& g, int64_t max_cells, void* base, Q
     const int64_t pages = p.pages;
     Cursor c{(uint8_t*) base};
     st.kv_int8 = g_kv_int8 && !g_kv_q4;
+    st.kv_bf16 = !st.kv_int8 && strata::kernels::native_bf16_kv_enabled();
     st.kv_q4 = g_kv_q4;
     // Hybrid K8V4, main layers only (the drafter's state is created with the globals toggled to INT8 -
     // mtp.cpp). A streamed one keeps its host copy in the same three runs (kv_stream.cu, kKvHybrid).
@@ -919,6 +921,7 @@ void qsa_state_zero(const QsaState& st, const ModelGeometry& g, void* stream) {
 
 strata::kernels::QsaAttnPools qsa_attn_pools(const QsaState& st) {
     strata::kernels::QsaAttnPools pools;
+    pools.bf16 = st.kv_bf16;
     pools.page_table = st.page_table;
     if (st.kv_hybrid) { pools.k_q = st.k_q; pools.k_scale = st.k_scale; pools.v_q4 = st.v_q4; }
     else if (st.kv_q4) { pools.k_q4 = st.k_q4; pools.v_q4 = st.v_q4; }
@@ -1159,7 +1162,7 @@ int64_t max_blocks = (st.max_cells / s.idx_block) + 2;
     // KV streaming: every block the selection names is made resident before anything reads it
     qsa_kv_resolve(st, g, b.ids, st.step, 1, cap, stream);
     if (st.kv_rot) strata::kernels::fwht256_inplace_cuda(b.qcur, g.n_head, stream);   // <Hq, Hk> = <q, k>
-    if (g_fast_attn && !native_flash_attn_short && dump == nullptr) {
+    if (st.kv_bf16 || (g_fast_attn && !native_flash_attn_short && dump == nullptr)) {
         const strata::kernels::QsaAttnPools pools = qsa_attn_pools(st);
         strata::kernels::qsa_decode_attn_step(b.qcur, pools, b.ids, st.step, cap, s, b.attn_scratch, b.attn, stream);
     } else {

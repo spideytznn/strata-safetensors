@@ -32,7 +32,7 @@ jobs:
       - name: Install Python runtime dependencies
         run: python -m pip install -r requirements-native.txt
       - name: Server, concurrency and saved-settings regression
-        run: python -m unittest serve.test_parallel serve.test_native_concurrency serve.test_slot_alloc serve.test_control_cancel serve.test_restart_waiters serve.test_runconfig
+        run: python -m unittest serve.test_parallel serve.test_native_concurrency serve.test_slot_alloc serve.test_control_cancel serve.test_restart_waiters serve.test_runconfig serve.test_cache_diagnostics
       - name: Configure standalone weight-reader tests (no CUDA or model)
         run: cmake -S native_safetensors -B build-ci -DCMAKE_BUILD_TYPE=Release
       - name: Build standalone weight-reader tests

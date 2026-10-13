@@ -28,6 +28,10 @@ bool valid_extent(const QsaState& st, int64_t upto, std::string& error) {
 
 bool layout(const QsaState& st, const ModelGeometry& g, int64_t upto, bool index, Layout& l, std::string& error) {
     if (!valid_extent(st, upto, error)) return false;
+    if (st.kv_bf16 && (st.kv_int8 || st.kv_q4 || st.kv_hybrid || st.kv_rot)) {
+        error = "conversation snapshot: BF16 requires unrotated 16-bit pools";
+        return false;
+    }
     if (st.kv_hybrid && (st.kv_mode == 2 || st.kv_q4 || st.kv_int8)) {   // a streamed one reads its host copy
         error = "conversation snapshot: hybrid K8V4 cannot be a ring and needs distinct format flags";
         return false;
@@ -50,7 +54,8 @@ bool layout(const QsaState& st, const ModelGeometry& g, int64_t upto, bool index
     // snapshot or prompt checkpoint taken with the rotation never restores into one without it, nor the reverse.
     // (Q4_0 is always rotated: nothing to tell apart; without the rotation the format is the one it always was.)
     const int rotated = st.kv_rot && !st.kv_q4 && !st.kv_hybrid ? 16 : 0;
-    l = {(st.kv_hybrid ? 3 : qsa_kv_format(st)) + rotated, cells, pooled, s.page_size, 0, 0, 0, 0, 0};
+    l = {(st.kv_hybrid ? 3 : qsa_kv_format(st)) + rotated + (st.kv_bf16 ? 64 : 0),
+         cells, pooled, s.page_size, 0, 0, 0, 0, 0};
     using conversation_detail::product;
     if (!product(l.data, {(uint64_t) cells, (uint64_t) g.n_head_kv, per}) ||
         !product(l.scales, {(uint64_t) cells, (uint64_t) g.n_head_kv,

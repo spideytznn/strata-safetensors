@@ -32,15 +32,14 @@ conversation save/restore reads and writes session files.
 - Decode uses NVFP4 weights with FP32 activations/intermediates, CPU AVX-512
   specialization and GPU weight reuse. Existing hot-expert and PCIe scheduling
   remain in use.
-- Expert prefill uses W4A8 MMQ. Original BF16 dense projections use the existing
-  activation-remainder compensation path. The tuned desktop allocates and writes
-  its 4096-row workspace before sizing the expert cache and budgets late allocations.
-- INT8 KV and on-demand growth remain selected by the desktop. The original
-  FP16 KV option remains available in upstream code.
-- Idle fork-only FP4 MMA, W4A4 prefill, Q8 MTP projections and BF16 batch-draft
-  experiments were removed. `STRATA_PREFILL_NVFP4` accepts `w4a8` for native input;
-  other modes fail early. The old `STRATA_NVFP4_TC=0` profile field remains only
-  for configuration/fingerprint compatibility, with no FP4 dispatch behind it.
+- Desktop expert prefill uses W4A4 Tensor Core / CUTLASS auto and BF16-rounded
+  dense projections, with an 8192-row workspace allocated before the expert cache.
+  The inherited W4A8 and activation-remainder path remain the generic default.
+- Desktop KV uses BF16 storage and BF16 QK/PV Tensor Core products with FP32
+  accumulation. On-demand growth remains enabled. Generic INT8/FP16 paths remain.
+- Unused FP8 KV code was removed; the retained W4A4 kernels serve prefill only.
+  Q8 MTP projection and reduced draft-head experiments are not enabled.
+  The old `STRATA_NVFP4_TC=0` field is retained for fingerprint compatibility.
 
 Weight preservation is a storage/layout guarantee. It does not make the complete
 quantized forward pass byte-identical to an unquantized BF16 model.
@@ -72,12 +71,14 @@ See [native concurrency](NATIVE_CONCURRENCY.md).
 
 ## Serving and launch settings
 
-The two retained repository launchers are `START-NATIVE-262K.bat` and
-`START-NATIVE-262K-PARALLEL.bat`; they are called by the desktop shortcuts.
-Both select a 262144 total window, 4096 prefill, INT8 KV, GPU vision and port 8880.
+The two retained launchers are `START-NATIVE-262K-PREFILL-TC-BF16.bat` and
+`START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat`; the desktop shortcuts call them.
+Both select 262144 context, 8192 W4A4/CUTLASS prefill, BF16 KV Tensor Core,
+native MTP, GPU vision and port 8880. The parallel entry adds batch MTP.
+See [current desktop scope](DESKTOP_SCOPE.md).
 Host headers are unrestricted; the run script binds to `127.0.0.1`.
 
-File sampling defaults are temperature 1.0 for single and 0.7 for parallel,
+File sampling defaults are temperature 0.7 for both,
 with top_p 0.95, top_k 20, min_p 0, presence_penalty 0 and repetition_penalty 1.
 Explicit requests and the existing shared web-settings sidecars can override
 file defaults. The template is `config/native/froggeric-v22.5.jinja`; its default

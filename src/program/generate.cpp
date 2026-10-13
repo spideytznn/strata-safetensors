@@ -46,6 +46,8 @@
 #include "strata/core/safetensors_model.hpp"
 #include "strata/core/spec_visible.hpp"
 #include "strata/kernels/iq_kernels.hpp"
+#include "strata/kernels/native_prefill.hpp"
+#include "strata/kernels/native_kv_bf16.hpp"
 #include "strata/kernels/s2_expert_grouped.hpp"
 #include "strata/kernels/sampler.hpp"
 #include "strata/kernels/verify_kernels.hpp"
@@ -2394,6 +2396,28 @@ int strata_main(int argc, char** argv) {
         std::fprintf(stderr, "strata generate: --spec-min-drafts needs 0..7 and a serial MTP configuration\n");
         return 2;
     }
+    bool prefill_nvfp4_tc = false;
+    bool bf16_kv_tc = false;
+    try { bf16_kv_tc = strata::kernels::native_bf16_kv_enabled(); }
+    catch (const std::exception& e) { std::fprintf(stderr, "%s\n", e.what()); return 2; }
+    if (bf16_kv_tc) {
+        if (o.safetensors.empty() || o.kv != "bf16" || o.peer_device >= 0 || !o.layer_split.empty() ||
+            o.pipeline_windows > 0 || o.no_fast_attn || o.native_flash_attn_short) {
+            std::fprintf(stderr, "BF16 KV Tensor Core requires native --model DIR, --kv bf16, one GPU "
+                                 "and no pipeline or legacy attention overrides\n"); return 2;
+        }
+        int dev = 0; cudaDeviceProp prop{};
+        if (cudaGetDevice(&dev) != cudaSuccess || cudaGetDeviceProperties(&prop, dev) != cudaSuccess ||
+            prop.major != 12 || prop.minor != 0) {
+            std::fprintf(stderr, "BF16 KV Tensor Core requires a CUDA SM120 device\n"); return 2;
+        }
+        std::fprintf(stderr, "[bf16-kv] BF16 storage and QK/PV Tensor Core attention; original expert decode and MTP retained\n");
+    }
+    try { prefill_nvfp4_tc = strata::kernels::native_nvfp4_prefill_enabled(); }
+    catch (const std::exception& e) { std::fprintf(stderr, "%s\n", e.what()); return 2; }
+    if (prefill_nvfp4_tc && o.safetensors.empty()) {
+        std::fprintf(stderr, "W4A4 prefill requires native safetensors --model DIR\n"); return 2;
+    }
     if (!o.safetensors.empty()) {
         auto native_default = [](const char* key,const char* value) {
             if (std::getenv(key)) return;
@@ -2428,8 +2452,8 @@ int strata_main(int argc, char** argv) {
         o.native_rope = o.native_ple_postops = true;
         // Options defaults to FP16 KV. Honour an explicit --kv int8 instead of
         // silently replacing it when loading native safetensors.
-        if (o.kv != "fp16" && o.kv != "int8") {
-            std::fprintf(stderr,"--safetensors supports --kv fp16 or --kv int8\n"); return 2;
+        if (o.kv != "fp16" && o.kv != "int8" && !(bf16_kv_tc && o.kv == "bf16")) {
+            std::fprintf(stderr,"--safetensors supports --kv fp16/int8 or the opt-in BF16 KV build\n"); return 2;
         }
         o.gr_fp32_activations = true;
         o.pack.clear();
@@ -2439,9 +2463,24 @@ int strata_main(int argc, char** argv) {
             }
             o.mtp = o.safetensors;
         }
-        if (const char* mode = std::getenv("STRATA_PREFILL_NVFP4"); mode && std::strcmp(mode, "w4a8") != 0) {
-            std::fprintf(stderr, "--safetensors: this build retains only STRATA_PREFILL_NVFP4=w4a8\n");
+        if (const char* mode = std::getenv("STRATA_PREFILL_NVFP4"); mode && std::strcmp(mode, "w4a8") != 0 && !prefill_nvfp4_tc) {
+            std::fprintf(stderr, "--safetensors: use STRATA_PREFILL_NVFP4=w4a8 or the opt-in w4a4 prefill build\n");
             return 2;
+        }
+        if (prefill_nvfp4_tc) {
+            if (o.peer_device >= 0 || o.pipeline_windows > 0 ||
+                std::strcmp(std::getenv("STRATA_PREFILL_CPU_SHARE"), "0") != 0 ||
+                std::strcmp(std::getenv("STRATA_PREFILL_BF16X2"), "0") != 0) {
+                std::fprintf(stderr, "W4A4 prefill requires one GPU, no pipeline, STRATA_PREFILL_CPU_SHARE=0 "
+                                     "and STRATA_PREFILL_BF16X2=0; decode retains the original backend\n"); return 2;
+            }
+            int dev = 0; cudaDeviceProp prop{};
+            if (cudaGetDevice(&dev) != cudaSuccess || cudaGetDeviceProperties(&prop, dev) != cudaSuccess ||
+                prop.major != 12 || prop.minor != 0) {
+                std::fprintf(stderr, "W4A4 prefill requires a CUDA SM120 device\n"); return 2;
+            }
+            std::fprintf(stderr, "[prefill-only] NVFP4 Tensor Core experts and BF16 prefill projections; "
+                                 "original decode, MTP and KV attention retained\n");
         }
         o.mmap_experts = true; // reuse the resident ExpertSource and dispatch interface
         o.resident_cpu_experts = true; // fully resident at load; reuse the adaptive scheduler
@@ -2740,8 +2779,8 @@ int strata_main(int argc, char** argv) {
         return 2;
     }
     if (o.kv == "q4") o.kv = "q4_0";
-    if (o.kv != "fp16" && o.kv != "int8" && o.kv != "q4_0" && o.kv != "k8v4") {
-        std::fprintf(stderr, "strata generate: --kv must be fp16, int8, q4_0 or k8v4\n");
+    if (o.kv != "fp16" && o.kv != "int8" && o.kv != "q4_0" && o.kv != "k8v4" && !(bf16_kv_tc && o.kv == "bf16")) {
+        std::fprintf(stderr, "strata generate: --kv must be fp16, int8, q4_0, k8v4 or the opt-in bf16 mode\n");
         return 2;
     }
     strata::core::qsa_set_kv_int8(o.kv == "int8");
@@ -8464,6 +8503,10 @@ int strata_main(int argc, char** argv) {
                     const char* gpu_order = std::getenv("STRATA_NVFP4_F32_GPU_ORDER");
                     if (gpu_order && std::strcmp(gpu_order,"1")==0)
                         c.switches.emplace_back("native_nvfp4_cpu_gpu_order",1);
+                    if (prefill_nvfp4_tc)
+                        c.switches.emplace_back("native_nvfp4_prefill_only_w4a4_bf16",1);
+                    if (bf16_kv_tc)
+                        c.switches.emplace_back("native_bf16_kv_tc_qk_pv",1);
                     const char* one_commit = std::getenv("STRATA_ONE_TOKEN_COMMIT");
                     if (one_commit && std::atoi(one_commit)==0)
                         c.switches.emplace_back("native_one_token_self_commit",0);

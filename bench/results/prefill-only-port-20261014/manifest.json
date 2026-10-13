@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-14",
+  "repository_head": "29dbc9d2c9955844ecb8bfdbb32e82a2815c1c37",
+  "sources": {
+    "CMakeLists.txt": "a321bb61730023a8f927aabad0b9fbb9b67f9edf80971b6d9209d356e90a04f7",
+    "src/program/generate.cpp": "ec01d6aa5bf5d936f96fe6f54340c5be6b4b6c56562b2ed128d2ce8689cd91c6",
+    "src/prefill/prefill.cpp": "93f732d5e13ac6f3040086aa0a72dc110499369db8ba5a08419c346753a2d712",
+    "src/prefill/gemm.cu": "16728089f0ea47d06a9e2a6166458aebdb8255d3749a290a23874786a207bf9d",
+    "include/strata/kernels/native_prefill.hpp": "2668c51f00fff36f593f140e7d9cb3f7e3e8385e4df509e6c7304fe04fcecc81",
+    "include/strata/kernels/nvfp4_tensor.hpp": "0b810ea5e471b56b8f0d39bf057025835e62498d70a5af0472b6ad305a840c5b",
+    "include/strata/kernels/nvfp4_cutlass.hpp": "999b78fc80be7c2a3f69d22a03ed10e2f768d8d109e528ca2ae128ba8bc8bdcc",
+    "src/kernels/cuda/nvfp4_tensor.cu": "d96ce866cffebe4621afe28c7f175980634867f57593f0e133cadabaf724ce60",
+    "src/kernels/cuda/nvfp4_cutlass.cu": "e117cf56f4c40787347161a296d302862d6ab1fe7134b9cb9b6809ea0d31d98a",
+    "src/kernels/nvfp4_cutlass_test.cu": "adcbd6e0318d5b78e8c8d686d55840f2cc1c9bfa1fa0ee6f07060c34db92cda6",
+    "tests/kernels/native_prefill_policy_test.cpp": "3494cada26f1450e2165831b24bd300bbf035388d438ee745ad092b871744307",
+    "tools/build_prefill_tc.ps1": "ebc3fad37cfc8d620b66f58a73b08b5a784737e0de61977317330d5f48c405a1",
+    "tools/build_safetensors_engine.ps1": "4e9762d94f07b7eeefb1f9dd96528dd42dee649813c8830514f045d55793b4bd",
+    "tools/native_prefill_tc_bench.py": "0ca087e42564b97fd4a6f0a433dde812fb179b812b19d8cdb3fe8d8bf22c9947",
+    "config/native/rtx5090-262k-prefill-tc.json": "71c80e6350f3a0d1e3968be881a02b189c259d8a29b4907a02290b0e91fdbfdf",
+    "config/native/rtx5090-262k-prefill-tc-4k.json": "f3e8d373081970ef7249623a869be87ecc9dc3c24aef6497e1d728bbcd60d2de",
+    "START-NATIVE-262K-PREFILL-TC.bat": "f26d8f3ff00c200b82ec704dc315e08b8e5a17c03e45a807b567660e5f818e06",
+    "START-NATIVE-262K-PREFILL-TC-4K.bat": "9393ade7ee3ffabbdb7aad2b83df7e80f62dbe419c16089784a10110602a2477"
+  },
+  "unchanged_decode_sources": {
+    "src/core/verify.cpp": "47ba9ffbdf74057e934bce52a3b7dc2547ae646fbc7190dd96a6deaf222cccba",
+    "src/core/layer.cpp": "6d0bb34f3c193f343461cec7fe1d345a0839c85528fef462feb4c4e81103749b",
+    "src/core/mtp.cpp": "89aeee46e57dbb276d8fbe73538207c978675adcd3c5a7da79f00708a2ea7722",
+    "src/core/session.cpp": "31c262975ffe1c7a44a43d6684a6dbac9040170802b680e5751324225ddbe7c3",
+    "src/core/conversation_snapshot.cpp": "0db1469366f2c321961cba334dcf56e7e96866ff06f46f0c4122c24ff32d7fa1",
+    "src/kernels/cpu/expert_layout.cpp": "b72844e32807080848e1322825ac9fff2c22d236818612a02e9e68194f5a8a85",
+    "src/kernels/cpu/native_expert.cpp": "0b4fc3fcdf119e4d7bb55efe5135a69f4602f84be22d3dfe9e707f826e33a637",
+    "src/kernels/cuda/iq_kernels.cu": "bf06a3eebc096c67dac2ac5a5ba0f3f30c24ec502ba15762ec0b6e77bce5b9e3",
+    "src/kernels/cuda/mtp_fp8.cu": "896f463fa060a87cadfbfcd409781d6df72b59334f7429a6697db0f71a6fff48",
+    "src/kernels/cuda/native_bf16.cu": "800a80306e0f697dd731c1f6229acdda9f4fa8f5248bd1c59ffefa8701290c3a",
+    "src/kernels/cuda/qsa_decode_attn.cu": "52c37ca9013928a5aae13f977608ab085f6f06a2ffeeaf4537e7140857f065ee",
+    "src/kernels/cuda/kv_q8.cu": "811911b6cd7653414d9ff10aeef8e4933ec8a38a5c60b020996af24c5991b7ec"
+  },
+  "protected_desktop": {
+    "G:\\Strata\\Strata-Safetensors\\config\\native\\rtx5090-262k-prefill-overlap.json": "dfafd135e41ef804e1f6aba161d2f101d6b1d1b6520c3b8c95309691f43bfcb4",
+    "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-continuous-prefill.exe": "100c2e506b1f4a2d929328236bfad2591b0abd258ac73f1fac49503d9f69f120",
+    "G:\\Strata\\Strata-Safetensors\\START-NATIVE-262K-OVERLAP.bat": "675b66c8b20e8bd033fe1cdd2dc656397dc33b1a31314499ad13750c16997915",
+    "C:\\Users\\spideytznn\\Desktop\\Start-Strata-Safetensors-Parallel.bat": "61cfe798d652521d097190de839a2d4b6598e2ddd3a90e52883b83bb60c41607"
+  },
+  "exe_sha256": "6dec8b271c5ffe3b27970cdf2bdb3abc089c14b91e5c25c2ae53f666d5673212",
+  "cutlass_revision": "56ca28adb32ffadd097566545b8f7d83b652e998",
+  "checks": {
+    "cuda_sm120_cutlass_build": "passed",
+    "cpu_policy_tests": "7/7 passed",
+    "decode_source_vs_desktop_head": "12/12 identical",
+    "gpu_operator": "not run; user GPU occupied",
+    "full_model_parity_performance_quality": "not run; user GPU occupied",
+    "hip_sycl": "not built or validated"
+  }
+}

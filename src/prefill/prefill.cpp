@@ -24,6 +24,11 @@
 #include "strata/kernels/ple.hpp"
 #include "strata/kernels/native_ple_postops.hpp"
 #include "strata/kernels/iq_kernels.hpp"
+#include "strata/kernels/native_prefill.hpp"
+#include "strata/kernels/native_kv_bf16.hpp"
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+#include "strata/kernels/nvfp4_tensor.hpp"
+#endif
 #include "strata/kernels/cpu/expert_layout.hpp"
 #include "strata/kernels/qsa.hpp"
 #include "strata/kernels/kv_stream.hpp"
@@ -273,6 +278,7 @@ int64_t g_ring_small_max = 0;
 // 8192 to 6144, but more experts stay resident).  A native pack likewise when the native kernels (moe_fused_iq.hpp)
 // take any of its layers: IQ2_XS, 4K / 32K, their first version at 384 slots -3% / -6% against MMQ, at 512 +8% / 0%.
 inline bool fused_ring() {
+    if(strata::kernels::native_nvfp4_prefill_enabled()) return false;
     if (core::peer_portable()) return false;   // multi-GPU: --peer-device keeps the MMQ path and its buffer sizes
     const strata::kernels::cpu::ExpertLayout& lay = strata::kernels::cpu::expert_layout();
     // the Q2_0 pack: fused::enabled().  A native pack: native_supported() alone - it implies enabled() wherever the Q2_0
@@ -863,6 +869,7 @@ struct Prefill::Impl {
     // step 2b (MMQ): the activations quantized per layer, H in FP32 and its group's quantized rows, the identity
     // row map, the group bounds, the group buffers of gathered experts
     void *Xq = nullptr, *Hq = nullptr;
+    void* nvfp4_workspace = nullptr; // up to sixteen experts, at most 16*T rows; reused on m.cs
     float* H = nullptr;
     int32_t *ids_identity = nullptr, *bounds_dev = nullptr;
     uint8_t *grp_gu = nullptr, *grp_d = nullptr;
@@ -986,6 +993,7 @@ void take_stage(Alloc& o_borrowed, const core::SessionState& ss, const strata::k
 }
 strata::kernels::QsaAttnPools pools_of(const strata::kernels::KvHostPools& h, const int32_t* table) {
     strata::kernels::QsaAttnPools p;
+    p.bf16 = strata::kernels::native_bf16_kv_enabled();
     p.k_pool = h.k_pool; p.v_pool = h.v_pool; p.k_q = h.k_q; p.v_q = h.v_q; p.k_scale = h.k_scale; p.v_scale = h.v_scale;
     p.k_q4 = h.k_q4; p.v_q4 = h.v_q4;
     p.page_table = table;
@@ -1089,6 +1097,10 @@ const MmqPlan& mmq_plan() {
         const int64_t layers = lay.native ? (int64_t) lay.fmt.size() : lay.n_layers;
         p.layer.assign((size_t) std::max<int64_t>(layers, 0), 0);
         p.fo.assign(p.layer.size(), 0);
+        if(strata::kernels::native_nvfp4_prefill_enabled()) {
+            p.fallback=false; // own packed-weight path; no FP16 or W4A8 fallback
+            return p;
+        }
         p.fallback = !on || layers <= 0;
         for (int64_t l = 0; on && l < layers; ++l) {
             const int gt = lay.native ? lay.fmt[(size_t) l].gu_type : 42, dt = lay.native ? lay.fmt[(size_t) l].d_type : 42;
@@ -1146,6 +1158,10 @@ uint64_t moe_set_bytes(size_t T, int64_t n_expert, bool fused) {
         a.take<float>(T * K, ok); a.take<float>(T * K, ok); a.take<float>(MMQ_GROUP * 4, ok);
         a.take<float>(T * K, ok);
     }
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+    if(strata::kernels::native_nvfp4_prefill_enabled())
+        a.take<uint8_t>(strata::kernels::nvfp4_tensor_prefill_bytes(int64_t(T)),ok);
+#endif
     return a.used;
 }
 }
@@ -1381,6 +1397,10 @@ bool Prefill::carve(size_t T, void* alloc) {
             m.grp_tail = c.take<float>(MMQ_GROUP * 4, ok);
             m.row_sd = c.take<float>(T * K, ok);
         }
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+        if(strata::kernels::native_nvfp4_prefill_enabled())
+            m.nvfp4_workspace=c.take<uint8_t>(strata::kernels::nvfp4_tensor_prefill_bytes(int64_t(T)),ok);
+#endif
         if (base == nullptr) ok = false;
     }
     for (int i = 0; i < DQ; ++i) { m.dq_gu[i] = o.take<uint16_t>(1280 * 2560, ok); m.dq_d[i] = o.take<uint16_t>(2560 * 640, ok); }
@@ -3584,7 +3604,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                     return false;
                                 }
                             }
-                        } else {
+                        } else if (!strata::kernels::native_nvfp4_prefill_enabled()) {
                             gather_rows16(m.mixed_h, m.src_dev, m.Xs, T * K, N, m.cs);
                         }
                         // multi-GPU: the peer's share, enqueued before the primary's own experts so both cards work at once
@@ -3975,10 +3995,65 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                             gg_nslots = 0;
                             gg.first = gg.n;
                         };
+                        // Native FP4 groups retain ring slots until BOTH products finish.
+                        // The small staging walk batches half its ring and postpones
+                        // replenishment until the group's release event is recorded.
+                        bool native_grouped = false;
+                        int native_count = 0;
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+                        native_grouped = strata::kernels::native_nvfp4_prefill_enabled();
+                        const int native_group_limit = stream_all ? 16 : STAGE / 2;
+                        strata::kernels::Nvfp4PrefillGroup native_group;
+                        int native_slots[16], native_nslots = 0;
+                        auto flush_native = [&]() {
+                            if (!native_count) return;
+                            if (native_nslots) {
+                                pt.mark(kPfWaitCopy, cs);
+                                cudaStreamWaitEvent(m.cs, m.copied[native_slots[native_nslots - 1]], 0);
+                            }
+                            const auto& f = lay.fmt.at(size_t(l));
+                            auto L = strata::kernels::native_expert_layout(f.gu_type, f.d_type, f.n_embd, f.n_ff);
+                            L.layer = int(l); L.input_scale_gu = f.input_scale_gu; L.input_scale_down = f.input_scale_down;
+                            pt.mark(kPfGemmGU, cs);
+                            strata::kernels::nvfp4_tensor_prefill_group(L, native_group, m.src_dev, m.mixed,
+                                m.nvfp4_workspace, m.Dm, m.cs);
+                            if (native_nslots) {
+                                const int rel = native_slots[native_nslots - 1];
+                                cudaEventRecord(m.used[rel], m.cs);
+                                for (int i = 0; i < native_nslots; ++i) m.used_of[native_slots[i]] = rel;
+                            }
+                            native_group = {}; native_count = native_nslots = 0;
+                        };
+#else
+                        auto flush_native = []() {};
+#endif
                         // one expert's products from its blob on the device; `slot` (a ring slot, or -1 for a resident
                         // expert) is released once the blob is read
                         auto compute = [&](size_t j, const uint8_t* blob_dev, int slot) -> bool {
                             const int32_t e = order[j];
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+                            if(strata::kernels::native_nvfp4_prefill_enabled()) {
+                                if (native_grouped) {
+                                    native_group.weights[native_count] = blob_dev;
+                                    native_group.offsets[native_count] = m.off[size_t(e)];
+                                    native_group.rows[native_count] = m.cnt[size_t(e)];
+                                    native_group.count = ++native_count;
+                                    if (slot >= 0) native_slots[native_nslots++] = slot;
+                                    if (native_count == native_group_limit || j + 1 == order.size()) flush_native();
+                                    return true;
+                                }
+                                const auto& f=lay.fmt.at(size_t(l));
+                                auto L=strata::kernels::native_expert_layout(f.gu_type,f.d_type,f.n_embd,f.n_ff);
+                                L.layer=int(l); L.input_scale_gu=f.input_scale_gu; L.input_scale_down=f.input_scale_down;
+                                const int o0=m.off[size_t(e)], ne=m.cnt[size_t(e)];
+                                pt.mark(kPfGemmGU,cs);
+                                strata::kernels::nvfp4_tensor_prefill(L,blob_dev,m.src_dev+o0,ne,m.mixed,
+                                    m.nvfp4_workspace,m.Dm+size_t(o0)*N,m.cs);
+                                // Both products must finish reading the original packed blob before reuse.
+                                if(slot>=0) { cudaEventRecord(m.used[slot],m.cs); m.used_of[slot]=slot; }
+                                return true;
+                            }
+#endif
                             pt.mark(kPfDequant, cs);
                             if (use_mmq) {
                                 // gather the expert into its group slot (GGUF blocks, unchanged or converted)
@@ -4103,7 +4178,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                             for (size_t j = 0; j < order.size(); ++j) {
                                 // Resident experts occupy no staging slot. Keep STAGE actual transfers ahead,
                                 // rather than STAGE positions in the mixed resident/streamed order.
-                                while (staged < order.size() && (stream_ahead ? pending < STAGE : staged <= j + lookahead)) {
+                                while ((!native_grouped || native_count == 0) && staged < order.size() &&
+                                       (stream_ahead ? pending < STAGE : staged <= j + lookahead)) {
                                     if (!stage_one(staged)) return false;
                                     if (stage_of[staged] >= 0) ++pending;
                                     ++staged;
@@ -4126,6 +4202,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                             const size_t kend = seq_start[(size_t) l + 1];
                             auto release_to = [&](int32_t e_stop) {
                                 while (k < kend && seq[k].e < e_stop) {
+                                    // A skipped entry must not return an open FP4 group's slots early.
+                                    if (native_count) flush_native();
                                     // in place, the open group is not gathered for it: this slot goes back with the
                                     // group's after its products (unless that would hold back half the ring)
                                     const bool defer = in_place && gg_nslots > 0 && k + 1 - given_back < (size_t) m.ring / 2;
@@ -4143,13 +4221,14 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 if (k < kend && seq[k].e == e) {
                                     const int sl = (int) (k % (size_t) m.ring);
                                     wait_issued(k);
-                                    if (!group_gather) {
+                                    if (!group_gather && !native_grouped) {
                                         pt.mark(kPfWaitCopy, cs);
                                         cudaStreamWaitEvent(m.cs, m.copied[sl], 0);
                                     }
                                     if (!compute(j, m.stage_dev[sl], sl)) return false;
                                     consumed = ++k;
-                                    if (!group_gather || gg_nslots == 0) give_back(consumed);   // its group was gathered
+                                    if (native_grouped ? native_count == 0 : (!group_gather || gg_nslots == 0))
+                                        give_back(consumed);   // every returned slot has a recorded release
                                 } else {
                                     const bool r0 = m.host_res && m.cache && m.host_res[(size_t) l * m.g->n_expert + e] >= 0;
                                     const uint8_t* bp = r0 ? m.cache->device_slot(m.host_res[(size_t) l * m.g->n_expert + e])
@@ -4157,7 +4236,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                     if (bp == nullptr) { err = "prefill: an expert is neither resident, streamed nor on the peer"; return false; }
                                     ++stats_.experts_resident;
                                     if (!compute(j, bp, -1)) return false;
-                                    if (group_gather && gg_nslots == 0) give_back(consumed);
+                                    if (native_grouped ? native_count == 0 : (group_gather && gg_nslots == 0))
+                                        give_back(consumed);
                                 }
                             }
                             release_to(m.g->n_expert);
@@ -4235,7 +4315,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                         // (fused: GU and H hold the grouping tables and int8 rows, not floats)
                         // (the CPU's rows, the last rows_cpu of GU and H, are never written by the GPU: not checked)
                         const int64_t gpu_rows = T * K - rows_cpu;
-                        const int64_t bgu = fused_l ? 0 : bad(m.GU, gpu_rows * 1280), bdm = bad(m.Dm, T * K * N),
+                        const int64_t bgu = (fused_l || strata::kernels::native_nvfp4_prefill_enabled()) ? 0 : bad(m.GU, gpu_rows * 1280), bdm = bad(m.Dm, T * K * N),
                                       bbo = bad(m.bo, T * N);
                         const int64_t bh = m.H && !fused_l ? bad(m.H, gpu_rows * 640) : -1;
                         static int64_t reported = -1;

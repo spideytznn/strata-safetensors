@@ -2997,6 +2997,7 @@ class Service:
         self.api_monitor = False
         self.api_requests = collections.deque(maxlen=100)  # bounded I/O in memory; no headers or API keys
         self.request_trace = threading.local()
+        self.cache_diagnostics = None                    # opt-in fingerprints only; no prompt text
         self.history = collections.deque(maxlen=500)    # the last finished requests, newest last (GET /metrics)
         # since the server started (the Monitor's totals, issue #35)
         self.totals = {"since": time.time(), "requests": 0, "prompt_tokens": 0, "reused": 0, "output_tokens": 0,
@@ -3796,6 +3797,9 @@ class Service:
             write_temporary(combined, [p for p, _ in encoded])
         if req is not None and req.get("strata_prefix") is not None:
             req["strata_prefix"] = self.resolve_prefix(req["strata_prefix"], messages, tools, kwargs, ids, bool(images))
+        if self.cache_diagnostics is not None:
+            self.request_trace.cache_id = self.cache_diagnostics.prepare(
+                ids, messages, tools, kwargs, images, req, self.engine)
         return ids, kwargs.get("enable_thinking", True) is not False, max_new
 
     PREFIX_END = "\u0001strata-prefix-end\u0001"          # marks where a message's shared part ends in the rendered prompt
@@ -4372,6 +4376,10 @@ class Service:
         finally:
             if hasattr(self.engine, "bind_request_status"):
                 self.engine.bind_request_status(None)
+            if self.cache_diagnostics is not None:
+                self.cache_diagnostics.finish(getattr(self.request_trace, "cache_id", None),
+                                              request_stats(segments), finish, n, self.engine)
+                self.request_trace.cache_id = None
             if emb:
                 Path(emb).unlink(missing_ok=True)
         for ev in cut(parser.finish(finish)):
@@ -6594,6 +6602,14 @@ def main() -> int:
                   model_name=cfg.get("model_name", "qwen3.8-flash-next"), vision=vision,
                   sampling_defaults=sampling_defaults,
                   fit_max_tokens=a.fit_max_tokens or cfg.get("fit_max_tokens") is True)
+    if cfg.get("cache_diagnostics") is not None and not isinstance(cfg["cache_diagnostics"], bool):
+        raise SystemExit('config "cache_diagnostics" must be true or false')
+    if cfg.get("cache_diagnostics") is True:
+        from serve.cache_diagnostics import CacheDiagnostics
+        trace_path = Path(cfg.get("log") or "logs/strata.log").with_suffix(".cache-trace.jsonl")
+        turn_ids = tok.encode("<|im_start|>", parse_special=True)
+        svc.cache_diagnostics = CacheDiagnostics(trace_path, turn_ids[0] if len(turn_ids) == 1 else None)
+        print(f"[strata] cache diagnostics: {trace_path} (fingerprints only, 16 MiB + one rotated file)", flush=True)
     svc.reasoning_close_retry = cfg.get("reasoning_close_retry") is True    # #1053: opt-in, off by default
     if cfg.get("prevent_sleep") is not None and not isinstance(cfg["prevent_sleep"], bool):
         raise SystemExit(f"[strata] config \"prevent_sleep\" must be true or false, not {cfg['prevent_sleep']!r}")

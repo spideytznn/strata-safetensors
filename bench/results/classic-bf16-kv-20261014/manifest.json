@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-14",
+  "sources": {
+    "CMakeLists.txt": "39d04e35077984c2dfd2fa4084ce14a15eaa011e8eb658f5e529fc3fd51f60e8",
+    "include/strata/kernels/native_kv_bf16.hpp": "c5fdaeaf5012ff9bcfceb02dac281feda25adfaef82bbe361396647e134563ac",
+    "include/strata/kernels/kv_fp8_tc.hpp": "d8d54f218e40f2b9d9b4a0942c2e7e93b7d2dbffb777447247b5d507d5891dff",
+    "include/strata/core/layer.hpp": "1f94bcf537df5e7839ba407decf738cff039f74bceece563ef7faddc9a914abc",
+    "include/strata/kernels/qsa_decode_attn.hpp": "149f32ced8673078d1190bec6cef82530fe4a92038b01e49197d481a36758ae0",
+    "src/core/layer.cpp": "071b40762ed0e8dc5ddf17c2ae0ceb63efe5377275cac10776024b5c98a3f83c",
+    "src/core/conversation_snapshot.cpp": "e09554e4eadc7878c9d0bd59f857c053bb0057eb7a354883e64301769894c58d",
+    "src/core/conversation_snapshot_test.cpp": "d02ff5c422c1f6dbf9db890b1d3a73b41516dc4a90841feb31b017180f66d69c",
+    "src/kernels/cuda/kv_fp8_tc.cu": "ba8bdf671e299f3293a628e991f7c29af53fe5c52d5c790ac35299e4c2d2ca76",
+    "src/kernels/cuda/qsa.cu": "c3a78486228e87510daea6829f1cc7a1ef63ec5214c2f47402f2d90e91d7cdb2",
+    "src/kernels/cuda/qsa_decode_attn.cu": "6198d4bd07248ed610cee58b23ba0c46f8da27d6617614e21dae7eaaf5013d66",
+    "src/kernels/cuda/qsa_prompt_attn.cu": "ce0e389cb47cf8987925bc4ec4919afd8c1f7d8ccfef82ea21ddbdfd383281f1",
+    "src/prefill/kernels.cu": "a9504a06ed85397f9d065fa94238f4fcc6cad34858850c6bc54a7d95e88bcefb",
+    "src/prefill/prefill.cpp": "2ded7a5d1a7557d671096c75cde713ce5cdee8566784eeffd58ad9c2664bdd88",
+    "src/program/generate.cpp": "1170174017561d7170f2cf499c4858c793c2cf5e3f6330ce0d5ae63a4a3da3ed",
+    "tools/build_prefill_tc.ps1": "ada87dbeaf181358e9a3f2dbf3af730ce75bd44b6fc5d96990c66f954b67b0cb",
+    "tools/build_safetensors_engine.ps1": "096ea26d92c2387e32c8155a0d32daac2cf5d305b258d99bfedd886969247001",
+    "config/native/rtx5090-262k-bf16-kv.json": "b31c82b7bceac5ae36f82ca19aab2b5a4700e1192e0ac815c55007f8a4888f47",
+    "config/native/rtx5090-262k-prefill-tc-bf16.json": "b72e55abf847c0369115faef552cffbf13a9e8691e8f0160635bd800ec9b7033"
+  },
+  "exe_sha256": "790fe44c910b1c40050a48b069298f64cb66dc37643b023db2d6a3d173455f1a",
+  "unchanged_expert_decode_sources": [
+    "src/core/verify.cpp",
+    "src/core/mtp.cpp",
+    "src/core/session.cpp",
+    "src/kernels/cpu/expert_layout.cpp",
+    "src/kernels/cpu/native_expert.cpp",
+    "src/kernels/cuda/iq_kernels.cu",
+    "src/kernels/cuda/mtp_fp8.cu",
+    "src/kernels/cuda/native_bf16.cu",
+    "src/kernels/cuda/kv_q8.cu"
+  ],
+  "checks": {
+    "cuda_build": "passed",
+    "bf16_operator": "passed",
+    "snapshot_checks": 4237,
+    "memcheck_errors": 0,
+    "initcheck_errors": 0,
+    "prefill_policy_cpu": "7/7 passed",
+    "sass": "HMMA.16816.F32.BF16",
+    "frozen_int8_desktop_executables": "unchanged",
+    "full_model": "not run; no model service started",
+    "hip_sycl": "not built or validated"
+  }
+}
