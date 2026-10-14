@@ -1,5 +1,8 @@
 // src/core/verify.cpp - see include/strata/core/verify.hpp.
 #include "strata/core/batch_rows.hpp"
+#if !defined(STRATA_USE_HIP) && !defined(STRATA_HIP_GFX906) && !defined(STRATA_GPU_METAL)
+#include "strata/core/slot_commit.hpp"
+#endif
 #include "strata/kernels/gfx_arch.hpp"
 #include "strata/core/verify.hpp"
 #if !defined(STRATA_USE_HIP) && !defined(STRATA_HIP_GFX906)
@@ -2974,12 +2977,77 @@ bool Verifier::capture_commit_batch(const int* rows, int S, int hbase, std::stri
         return false;
     }
     bool ok = true;
+    std::vector<bool> gdn_batched((size_t) S, false), qsa_batched((size_t) S, false);
     try {
         for (int t = 0; t < S; ++t)
             if (t == 0 || rows[t] != rows[t - 1])
                 copy_i32_from_mapped(commitb_ + (size_t) rows[t] * CB, m_commitb_ + (size_t) rows[t] * CB, CB, cs_);
         int64_t qsa_index = 0, gdn_index = 0;
         for (int64_t l = 0; l < lb_; ++l) (is_qsa_layer(g, l) ? qsa_index : gdn_index) += 1;
+#if !defined(STRATA_USE_HIP) && !defined(STRATA_HIP_GFX906) && !defined(STRATA_GPU_METAL)
+        // Opt-in: each session's layer batches keep their own controls, raw-row offsets and image positions.
+        // The original loop remains the default and handles any part whose optimized kernel is ineligible.
+        static const bool slot_layers = [] {
+            const char* v = std::getenv("STRATA_SLOT_COMMIT_BATCH");
+            return v && v[0] == '1';
+        }();
+        if (slot_layers) {
+            int ng = 0;
+            for (int64_t l = lb_; l < le_; ++l)
+                if (!is_qsa_layer(g, l)) {
+                    if (!need(LayerView(*wt_, l), "ssm_norm.weight", err)) { ok = false; break; }
+                    ++ng;
+                }
+            for (int first = 0; first < S && ok;) {
+                int end = first + 1;
+                while (end < S && rows[end] == rows[first]) ++end;
+                const int slot = rows[first];
+                SessionState& sx = *slots_[(size_t) slot];
+                SlotCommitLayers a;
+                if (ng > 0) a.state = sx.gdn_state + (size_t) (gdn_index - sx.gdn_ord0) * gdn_floats;
+                a.state_stride = gdn_floats;
+                a.conv_offset = (int64_t) g.ssm_state_size * g.ssm_v_heads * g.ssm_state_size;
+                if (ng > 0) {
+                    a.qkv = qkv_L_ + (size_t) gdn_index * MT * C + (size_t) first * C;
+                    a.h = h_L_ + (size_t) gdn_index * MT * C + (size_t) first * C;
+                    a.gate = gate_L_ + (size_t) gdn_index * MT * HV + (size_t) first * HV;
+                    a.beta = beta_L_ + (size_t) gdn_index * MT * HV + (size_t) first * HV;
+                }
+                a.qkv_stride = a.h_stride = MT * C;
+                a.gate_stride = MT * HV;
+                a.conv_channels = (int) C; a.h_k = (int) g.ssm_k_heads; a.h_v = (int) HV;
+                a.steps = end - first; a.gdn_layers = ng;
+                a.control = commitb_ + (size_t) slot * CB;
+                a.index_stride = MT * ID; a.shapes = s; a.epsilon = EPS;
+                a.mrope = slot_mrope_.empty() ? mrope_table() : slot_mrope_[(size_t) slot];
+                bool fits = !g_no_batch_kv;
+                for (int64_t l = lb_, qi = qsa_index; l < le_ && fits; ++l) {
+                    if (!is_qsa_layer(g, l)) continue;
+                    const WeightRef* w = need(LayerView(*wt_, l), "indexer.k_norm.weight", err);
+                    if (!w) { ok = false; fits = false; break; }
+                    const QsaState& st = sx.qsa_states[qi];
+                    const int n = a.qsa_layers;
+                    if (n >= QsaIndexerLayers::kMax || (n > 0 && st.max_cells != a.max_cells)) {
+                        fits = false; break;
+                    }
+                    a.max_cells = st.max_cells;
+                    a.indexer.gamma[n] = (const float*) w->data;
+                    a.indexer.tail_src[n] = tail_snap_b_ + ((size_t) slot * nQ + qi) * TS;
+                    a.indexer.tail[n] = st.idx_tail; a.indexer.dead[n] = st.idx_dead;
+                    a.indexer.pooled[n] = st.idx_pooled; a.indexer.block_pos[n] = st.idx_block_pos;
+                    ++a.qsa_layers; ++qi;
+                }
+                if (!fits) a.qsa_layers = 0;
+                if (a.qsa_layers > 0)
+                    a.index_raw = idx_raw_L_ + (size_t) qsa_index * MT * ID + (size_t) first * ID;
+                if (!ok) break;
+                const SlotCommitResult r = commit_slot_layers(a, rope_scaling(), cs_);
+                gdn_batched[(size_t) first] = r.gdn;
+                qsa_batched[(size_t) first] = r.qsa;
+                first = end;
+            }
+        }
+#endif
         for (int64_t l = lb_; l < le_ && ok; ++l) {
             const LayerView v(*wt_, l);
             if (!is_qsa_layer(g, l)) {
@@ -2988,6 +3056,7 @@ bool Verifier::capture_commit_batch(const int* rows, int S, int hbase, std::stri
                 for (int t = 0; t < S;) {
                     const int first = t;
                     while (t < S && rows[t] == rows[first]) ++t;
+                    if (gdn_batched[(size_t) first]) continue;
                     SessionState& sx = *slots_[(size_t) rows[first]];
                     const int32_t* keep = commitb_ + (size_t) rows[first] * CB;
                     float* state = sx.gdn_state + (size_t) (gdn_index - sx.gdn_ord0) * gdn_floats;
@@ -3010,15 +3079,17 @@ bool Verifier::capture_commit_batch(const int* rows, int S, int hbase, std::stri
                     const int first = t;
                     while (t < S && rows[t] == rows[first]) ++t;
                     const QsaState& st = slots_[(size_t) rows[first]]->qsa_states[qsa_index];
-                    copy_from_mapped(st.idx_tail, tail_snap_b_ + ((size_t) rows[first] * nQ + qsa_index) * TS,
-                                     TS, cs_);
-                    const QsaIndexerBuffers ib{st.idx_tail, st.idx_dead, st.idx_pooled, st.idx_block_pos};
-                    const MropeScope positions(slot_mrope_.empty() ? mrope_table() : slot_mrope_[(size_t) rows[first]]);
-                    for (int u = first; u < t; ++u)
-                        native_qsa_indexer_append(idx_raw_L_ + (size_t) (qsa_index * MT + u) * ID,
-                                                  commitb_ + (size_t) rows[first] * CB + 2 + (u - first),
-                                                  0, (const float*) wikn->data, EPS, ib, s, st.max_cells,
-                                                  rope_scaling(), cs_);
+                    if (!qsa_batched[(size_t) first]) {
+                        copy_from_mapped(st.idx_tail, tail_snap_b_ + ((size_t) rows[first] * nQ + qsa_index) * TS,
+                                         TS, cs_);
+                        const QsaIndexerBuffers ib{st.idx_tail, st.idx_dead, st.idx_pooled, st.idx_block_pos};
+                        const MropeScope positions(slot_mrope_.empty() ? mrope_table() : slot_mrope_[(size_t) rows[first]]);
+                        for (int u = first; u < t; ++u)
+                            native_qsa_indexer_append(idx_raw_L_ + (size_t) (qsa_index * MT + u) * ID,
+                                                      commitb_ + (size_t) rows[first] * CB + 2 + (u - first),
+                                                      0, (const float*) wikn->data, EPS, ib, s, st.max_cells,
+                                                      rope_scaling(), cs_);
+                    }
                     static const bool canonical = [] {
                         const char* v = std::getenv("STRATA_SPEC_CANONICAL_STATE");
                         return v && std::atoi(v) != 0;
