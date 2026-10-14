@@ -7,16 +7,19 @@
 | `Start-Strata-Safetensors.bat` | `START-NATIVE-262K-PREFILL-TC-BF16.bat` | `config/native/rtx5090-262k-prefill-tc-bf16.json` |
 | `Start-Strata-Safetensors-Parallel.bat` | `START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat` | `config/native/rtx5090-262k-prefill-tc-bf16-parallel.json` |
 
-两者使用 `build-native-engine/strata-classic-bf16-kv-v0144.exe`，W4A4/CUTLASS prefill、
+两者使用 `build-native-engine/strata-classic-bf16-kv-slotcommit.exe`，W4A4/CUTLASS prefill、
 8192 行工作区、BF16 KV Tensor Core、262144 上下文、原专家 decode 和调度、视觉，
 监听 `127.0.0.1:8880`，模型名 `Qwen3.8-Flash-Next-NVFP4-Native`。
-单路 `parallel=1`；双路 `parallel=2`，额外开启 `--batch-mtp`。
+单路 `parallel=1`；双路 `parallel=2`，额外开启 `--batch-mtp` 和
+`STRATA_SLOT_COMMIT_BATCH=1`，按每路合并 GDN/QSA 层的状态提交。
+其通用默认仍关闭，单路未启用；实机输出对照、节点和吞吐测量见
+[双路提交验证](../bench/results/slot-commit-batch-20261014/README.md)。
 两者均为 `--mtp native --spec 3 --spec-min-p 0.5`，suffix drafting 关闭。
 并发 verifier 每路最多一枚 MTP 草稿；`spec=3` 不等于并发每路三枚草稿。
 
 已合并上游 0.1.44.1；两份配置均关闭 `STRATA_ROUTE_TAIL_SKIP`，计算全部路由专家。
 保留原始 MTP 权重并采用上游单路批量状态提交；arena 与 MTP 差别见
-[升级说明](UPSTREAM_0144.md)。正在运行的旧程序保持不变，下次启动使用新版。
+[升级说明](UPSTREAM_0144.md)。下次启动使用新版，验证结束后未留服务运行。
 
 ## 会话缓存：只按内存淘汰
 
@@ -29,7 +32,7 @@
 系统空闲内存底线仍为 2560 MiB，必要时会在缓存达到 12 GiB 之前回收冷会话。
 网页显示会话数量为 `当前数量 / ∞`，内存条继续显示预算使用率。
 通用默认仍为 4 槽；`--conversation-cache-slots 0` 仍表示禁用。
-新桌面入口使用单独编译的 cache 程序，CPU 保持每物理核一个线程，SMT 未启用。
+桌面程序包含上述缓存策略，CPU 保持每物理核一个线程，SMT 未启用。
 MTP、8192 prefill、BF16 KV、Host 不限制等其他配置不变；下次启动生效。
 
 预算随后从 8 GiB 调至 12 GiB；历史验证记录保留当时的 8 GiB 参数。

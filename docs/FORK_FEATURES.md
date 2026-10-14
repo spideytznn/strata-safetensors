@@ -36,7 +36,7 @@ v0.1.43.1 的槽位拒绝重试、工具结束符解析、取消图片准备、�
 | `Start-Strata-Safetensors.bat` | [single](../config/native/rtx5090-262k-prefill-tc-bf16.json) | native / spec 3 / min-p 0.5 | 1536 MiB | 0.7 |
 | `Start-Strata-Safetensors-Parallel.bat` | [parallel](../config/native/rtx5090-262k-prefill-tc-bf16-parallel.json) | native / batch-mtp / spec 3 / min-p 0.5 | 1536 MiB | 0.7 |
 
-均使用 `strata-classic-bf16-kv-v0144.exe`，262144 总窗口、8192 prefill、BF16 KV Tensor Core、
+均使用 `strata-classic-bf16-kv-slotcommit.exe`，262144 总窗口、8192 prefill、BF16 KV Tensor Core、
 GPU 视觉、会话缓存、Host 头不限及 `127.0.0.1:8880`。
 `STRATA_ROUTE_TAIL_SKIP=7` 是用户保留的桌面调度设置；通用默认仍为 0。
 PCIe share 为 0.25，保留交换重叠、连续 prefill 和会话分支保护。

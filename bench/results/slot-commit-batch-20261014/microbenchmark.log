@@ -1,0 +1,5 @@
+BENCH images=0 canonical=0 nodes=220->10 median_us=574.838->325.334 ratio=1.767
+BENCH images=0 canonical=1 nodes=244->34 median_us=595.254->346.320 ratio=1.719
+BENCH images=1 canonical=0 nodes=220->10 median_us=577.882->325.971 ratio=1.773
+BENCH images=1 canonical=1 nodes=244->34 median_us=598.973->347.373 ratio=1.724
+PASS: 16 graph replay cases, independent acceptance, inactive slot, guards, PLE, M-RoPE and canonical cleanup

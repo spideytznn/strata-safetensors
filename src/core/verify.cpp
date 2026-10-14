@@ -2978,6 +2978,7 @@ bool Verifier::capture_commit_batch(const int* rows, int S, int hbase, std::stri
     }
     bool ok = true;
     std::vector<bool> gdn_batched((size_t) S, false), qsa_batched((size_t) S, false);
+    bool slot_layers_enabled = false;
     try {
         for (int t = 0; t < S; ++t)
             if (t == 0 || rows[t] != rows[t - 1])
@@ -2992,6 +2993,7 @@ bool Verifier::capture_commit_batch(const int* rows, int S, int hbase, std::stri
             return v && v[0] == '1';
         }();
         if (slot_layers) {
+            slot_layers_enabled = true;
             int ng = 0;
             for (int64_t l = lb_; l < le_; ++l)
                 if (!is_qsa_layer(g, l)) {
@@ -3123,6 +3125,18 @@ bool Verifier::capture_commit_batch(const int* rows, int S, int hbase, std::stri
         if (graph) cudaGraphDestroy(graph);
         err = std::string("verify: batch commit capture: ") + cudaGetErrorString(ce);
         return false;
+    }
+    if (slot_layers_enabled) {
+        size_t nodes = 0;
+        if (cudaGraphGetNodes(graph, nullptr, &nodes) == cudaSuccess) {
+            int groups = 0, gb = 0, qb = 0;
+            for (int t = 0; t < S; ++t)
+                if (t == 0 || rows[t] != rows[t - 1]) {
+                    ++groups; gb += gdn_batched[(size_t) t]; qb += qsa_batched[(size_t) t];
+                }
+            std::fprintf(stderr, "strata verify: slot-layer commit graph: groups=%d gdn_batches=%d "
+                                 "qsa_batches=%d nodes=%zu\n", groups, gb, qb, nodes);
+        }
     }
     const bool made = instantiate_evicting(cex, graph, bkey(rows, S, hbase), "verify: batch commit instantiate: ", err);
     cudaGraphDestroy(graph);

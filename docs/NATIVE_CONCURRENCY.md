@@ -71,7 +71,10 @@ Use `START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat`, or the desktop
 `config/native/rtx5090-262k-prefill-tc-bf16-parallel.json`: BF16 KV Tensor Core,
 8192 W4A4/CUTLASS prefill, 262144 context, native/batch MTP, original expert
 scheduling, vision, continuous prefill and independent elastic KV. It uses
-`strata-classic-bf16-kv-v0144.exe` and localhost port 8880. See
+`strata-classic-bf16-kv-slotcommit.exe` and localhost port 8880. The desktop
+parallel profile enables `STRATA_SLOT_COMMIT_BATCH=1` to group GDN/QSA state
+commits within each slot. The generic default remains off; see the
+[correctness and paired measurements](SLOT_COMMIT_BATCH.md). See
 [current desktop scope](DESKTOP_SCOPE.md). Stop another server before starting it.
 
 The dated sections and commands below record earlier engines and configurations.

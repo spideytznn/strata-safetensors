@@ -78,7 +78,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 .\tools\build_safetensors_engine.ps1 -Jobs 2
 ```
 
-只保留两个原生启动入口，均使用 `build-native-engine/strata-classic-bf16-kv-v0144.exe`：
+只保留两个原生启动入口，均使用 `build-native-engine/strata-classic-bf16-kv-slotcommit.exe`：
 
 - 单路：`START-NATIVE-262K-PREFILL-TC-BF16.bat`，配置 [single](config/native/rtx5090-262k-prefill-tc-bf16.json)。
 - 两路：`START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat`，配置 [parallel](config/native/rtx5090-262k-prefill-tc-bf16-parallel.json)。

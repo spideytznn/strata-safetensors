@@ -1,6 +1,6 @@
 # BF16 KV with the original Safetensors expert backend
 
-The two maintained entries use `build-native-engine/strata-classic-bf16-kv-v0144.exe`:
+The two maintained entries use `build-native-engine/strata-classic-bf16-kv-slotcommit.exe`:
 
 * `START-NATIVE-262K-PREFILL-TC-BF16.bat`: W4A4/CUTLASS/8192 prefill,
   original expert decode, BF16 KV and native MTP; one request at a time.
@@ -8,7 +8,7 @@ The two maintained entries use `build-native-engine/strata-classic-bf16-kv-v0144
   two request slots and `--batch-mtp` enabled as well as native MTP.
 
 Both use `--spec 3 --spec-min-p 0.5 --suffix-draft 0`, 262144 context,
-vision, PCIe share 0.25, tail skip 7, original adaptation and conversation reuse.
+vision, PCIe share 0.25, tail skip 0 (all routed experts), original adaptation and conversation reuse.
 They are selected by the single/parallel desktop launchers, respectively.
 The endpoint is `http://127.0.0.1:8880`; run one server at a time.
 Old trial launchers/configurations were removed; see [desktop scope](DESKTOP_SCOPE.md).

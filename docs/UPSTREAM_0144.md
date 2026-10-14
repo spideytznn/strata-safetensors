@@ -27,6 +27,8 @@ MTP 的草稿、验证及回滚机制沿用 Strata；本分支主要区别是保
 完整输出头和原生并发适配。合入上游 GDN/QSA 批量状态提交、MTP 计时工具，
 保留原生图片 M-RoPE 和可选 canonical rollback 清理。
 单路批量提交与两路 slot commit 是不同路径；不能把单路提交优化外推到两路。
+随后增加独立的两路层合并开关，双路桌面配置已启用；正确性及实机测量见
+[slot commit](SLOT_COMMIT_BATCH.md)。
 本次不以张量精度推断端到端接受率或速度，也未证明与上游 MTP 的质量相同。
 
 上游 `ArenaExpertSource` 把专家集中加载到 RAM，并为搬运注册一部分页。
