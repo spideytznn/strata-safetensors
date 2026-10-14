@@ -1,17 +1,5 @@
 # 当前桌面维护范围：2026-10-14
 
-当前对照测试覆盖：按用户要求，双路入口已恢复为 `strata-classic-bf16-kv-v0144.exe`
-及层合并优化之前的完整配置，移除 `STRATA_SLOT_COMMIT_BATCH`（默认关闭）。
-单路继续使用 slotcommit 程序，但显式设置 `STRATA_COMMIT_BATCH=0`，关闭上游单路
-GDN/QSA 层合并提交，供用户对照测试；双路配置不受这个单路设置影响。
-以下层合并启用说明记录恢复前的部署，测量结果仍保留。
-未停止或重启正在运行的服务，双路入口下次重启生效。
-
-单路配置关闭 `STRATA_NATIVE_PREFILL_OVERLAP`：该功能需要并发独立 KV，
-单路无 batch slot，开启会在首次请求触发条件检查并退出。
-W4A4/CUTLASS prefill、8192 工作区、BF16 KV 和 MTP 保留。
-此配置修正需要重新启动 Python 服务，自动重载引擎仍使用原启动环境。
-
 桌面只保留两条 safetensors 启动链：
 
 | 桌面入口 | 仓库脚本 | 配置 |
@@ -19,19 +7,23 @@ W4A4/CUTLASS prefill、8192 工作区、BF16 KV 和 MTP 保留。
 | `Start-Strata-Safetensors.bat` | `START-NATIVE-262K-PREFILL-TC-BF16.bat` | `config/native/rtx5090-262k-prefill-tc-bf16.json` |
 | `Start-Strata-Safetensors-Parallel.bat` | `START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat` | `config/native/rtx5090-262k-prefill-tc-bf16-parallel.json` |
 
-两者使用 `build-native-engine/strata-classic-bf16-kv-slotcommit.exe`，W4A4/CUTLASS prefill、
+两者使用 W4A4/CUTLASS prefill、
 8192 行工作区、BF16 KV Tensor Core、262144 上下文、原专家 decode 和调度、视觉，
 监听 `127.0.0.1:8880`，模型名 `Qwen3.8-Flash-Next-NVFP4-Native`。
-单路 `parallel=1`；双路 `parallel=2`，额外开启 `--batch-mtp` 和
-`STRATA_SLOT_COMMIT_BATCH=1`，按每路合并 GDN/QSA 层的状态提交。
-其通用默认仍关闭，单路未启用；实机输出对照、节点和吞吐测量见
-[双路提交验证](../bench/results/slot-commit-batch-20261014/README.md)。
+单路使用 `strata-classic-bf16-kv-slotcommit.exe`，`parallel=1`，
+显式设置 `STRATA_COMMIT_BATCH=0`，关闭上游单路 GDN/QSA 层合并提交。
+双路使用恢复后的 `strata-classic-bf16-kv-v0144.exe`，`parallel=2`，
+额外开启 `--batch-mtp`；未设置 `STRATA_SLOT_COMMIT_BATCH`，不启用本地层合并提交。
+提交优化的历史测量见 [双路提交验证](../bench/results/slot-commit-batch-20261014/README.md)，
+不代表当前启用设置。
 两者均为 `--mtp native --spec 3 --spec-min-p 0.5`，suffix drafting 关闭。
 并发 verifier 每路最多一枚 MTP 草稿；`spec=3` 不等于并发每路三枚草稿。
 
 已合并上游 0.1.44.1；两份配置均关闭 `STRATA_ROUTE_TAIL_SKIP`，计算全部路由专家。
-保留原始 MTP 权重并采用上游单路批量状态提交；arena 与 MTP 差别见
-[升级说明](UPSTREAM_0144.md)。下次启动使用新版，验证结束后未留服务运行。
+保留原始 MTP 权重；arena 与 MTP 差别见 [升级说明](UPSTREAM_0144.md)。
+单路 `STRATA_NATIVE_PREFILL_OVERLAP=0`，因为该实现依赖并发独立 KV。
+双路保持 `STRATA_NATIVE_PREFILL_OVERLAP=1`，重叠 prefill 与已有请求的 decode。
+两者均保留 `STRATA_ADAPT_OVERLAP=1` 专家拷贝重叠，未选择独立的 `--adapt-async 1` 后台调度。
 
 ## 会话缓存：只按内存淘汰
 
@@ -56,6 +48,8 @@ MTP、8192 prefill、BF16 KV、Host 不限制等其他配置不变；下次启�
 
 ## 清理范围
 
+- 移除本次 W4A16 试验的 BF16 专家展开/GEMM 分支、模式选择、配置、启动脚本和专用测试。
+  专家 prefill 恢复为试验前的 W4A4 实现；试验源码和测量可从 Git 历史恢复。
 - 移除 6 个闲置原生启动脚本、6 个旧 JSON 配置和 2 个旧网页设置 sidecar。
 - 合并构建入口为 `tools/build_safetensors_engine.ps1`，默认构建当前桌面程序。
   CUTLASS 固定为 `56ca28adb32ffadd097566545b8f7d83b652e998`，自动获取到忽略目录
@@ -83,7 +77,8 @@ MTP、8192 prefill、BF16 KV、Host 不限制等其他配置不变；下次启�
 正在运行同名引擎时构建脚本会拒绝覆盖。可用 `-OutputName strata-cleanup-check`
 编译独立候选；不会修改桌面配置或启动模型。
 
-本次清理验证记录见 [cleanup validation](../bench/results/desktop-prefill-tc-cleanup-20261014/README.md)。
+W4A16 清理与当前入口核对见 [W4A4 cleanup](../bench/results/w4a4-final-cleanup-20261014/README.md)。
+此前桌面范围整理见 [cleanup validation](../bench/results/desktop-prefill-tc-cleanup-20261014/README.md)。
 此前 BF16 算子、快照与 sanitizer 记录见
 [BF16 KV](CLASSIC_BF16_KV.md)。全模型质量、清理前后长上下文输出一致性、
 HIP/SYCL/Linux 仍不能用 CPU 或编译检查代替。

@@ -12,7 +12,7 @@ namespace strata::prefill::mmq {
 
 /// This build has the MMQ path (the ggml sources were available to the build).
 bool built();
-/// MMQ covers this ggml type (the i-quants and Q2_0 the packs use, Q8_0, NVFP4 in w4a8/w4a4 modes, and with
+/// MMQ covers this ggml type (the i-quants and Q2_0 the packs use, Q8_0, NVFP4 unless fp16, and with
 /// STRATA_MMQ_KQUANTS the K-quants Q4_K / Q5_K / Q5_1 / Q6_K: Unsloth's UD-Q4_K_XL experts (CUDA), and the dense GGUF
 /// projections of the mixed-quant packs through Gemm::native's STRATA_DENSE_MMQ path (HIP); IQ1_M is not covered).
 bool supported(int ggml_type);
@@ -22,9 +22,8 @@ bool supported(int ggml_type);
 bool fits(int ggml_type, int64_t w_rows);
 /// NVFP4 prompt precision, STRATA_PREFILL_NVFP4: w4a8 (default) - int8 tensor cores, Q8_1 activations, what decode
 /// runs at; w4a4 - Blackwell's FP4 x FP4 MMA, activations rounded to NVFP4 (faster, first-token KL up to 0.03 vs
-/// fp16); fp16 - the dequantize + FP16 GEMM path (the reference); w4a16 - the separate native
-/// BF16 GEMM dispatcher, not an MMQ product.
-enum class Nvfp4Mode { W4A8, W4A4, FP16, W4A16 };
+/// fp16); fp16 - the dequantize + FP16 GEMM path (the reference).
+enum class Nvfp4Mode { W4A8, W4A4, FP16 };
 Nvfp4Mode nvfp4_mode();
 /// Bytes of one expert's gate+up ([2*n_ff, n_embd]) or down ([n_embd, n_ff]) weights in `ggml_type`.
 size_t matrix_bytes(int ggml_type, int64_t rows, int64_t cols);

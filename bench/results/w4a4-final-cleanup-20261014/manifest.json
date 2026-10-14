@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-14",
+  "hardware": "Windows, RTX 5090, Ryzen 9950X3D, 96 GB RAM, CUDA 13.0, MSVC 14.44",
+  "restored_source_commit": "9d9f56e9",
+  "restored_source_files": [
+    "CMakeLists.txt",
+    "include/strata/kernels/native_prefill.hpp",
+    "include/strata/prefill/gemm.hpp",
+    "include/strata/prefill/moe_mmq.hpp",
+    "src/kernels/cuda/nvfp4_tensor.cu",
+    "src/prefill/gemm.cu",
+    "src/prefill/moe_mmq.cu",
+    "src/prefill/prefill.cpp",
+    "src/program/generate.cpp",
+    "tools/build_safetensors_engine.ps1"
+  ],
+  "restored_source_git_diff_empty": true,
+  "active_launchers_and_profiles_unchanged": true,
+  "cuda_build": "pass",
+  "prefill_policy_tests": 7,
+  "prefill_policy_passed": 7,
+  "cutlass_custom_shapes": 31,
+  "cutlass_custom_max_relative_l2": 0,
+  "model_or_http_server_started": false,
+  "comparative_performance_or_quality_rerun": false,
+  "desktop": [
+    {
+      "profile": "config/native/rtx5090-262k-prefill-tc-bf16.json",
+      "profile_sha256": "3c397deab1606df5392cb4678d8af98ad82b538ef483eb638c95ab1ed4c0f059",
+      "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-slotcommit.exe",
+      "exe_sha256": "a925b2544fc538a0123fa86c0458d5da379c38eb742cc429f295c9b6701bea64",
+      "parallel": 1,
+      "prefill_decode_overlap": "0",
+      "commit_batch": "0",
+      "slot_commit_batch": "off",
+      "allowed_hosts": [
+        "*"
+      ]
+    },
+    {
+      "profile": "config/native/rtx5090-262k-prefill-tc-bf16-parallel.json",
+      "profile_sha256": "0215375c5c539ab18e6445e7fa8a238dd1d8edd99f248290adeecb6bbca33568",
+      "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-v0144.exe",
+      "exe_sha256": "ee7462e1d9efef6086267587be119b4a536e3eeddcd488355d1c41ad7b7261fc",
+      "parallel": 2,
+      "prefill_decode_overlap": "1",
+      "commit_batch": "default",
+      "slot_commit_batch": "off",
+      "allowed_hosts": [
+        "*"
+      ]
+    }
+  ],
+  "candidate_sha256": "d7989c9eed8e060b19c9e57ae972bdd6c16a12e6736ded6c7b308254d2f6fba9"
+}

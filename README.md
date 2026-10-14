@@ -4,8 +4,8 @@
 
 [中文说明](README.zh-CN.md) · [Runtime details](docs/SAFETENSORS_NATIVE.md) · [Measurements](bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/README.md) · [Upstream Strata](https://github.com/Niko1221/Strata)
 
-Upstream v0.1.43.1 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
-See [integration and validation scope](docs/UPSTREAM_V0143.md) and the
+Upstream v0.1.44.1 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
+See [integration and validation scope](docs/UPSTREAM_0144.md) and the
 [fork feature inventory / local profile snapshot](docs/FORK_FEATURES.md).
 
 strata-safetensors adapts Strata's forward pass, expert scheduler and session cache

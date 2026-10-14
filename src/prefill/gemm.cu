@@ -2,9 +2,6 @@
 #include "strata/prefill/gemm.hpp"
 #include "strata/kernels/native_prefill.hpp"
 #include "strata/kernels/dequant_bf16.hpp"
-#ifdef STRATA_NVFP4_PREFILL_BUILT
-#include "strata/kernels/nvfp4_w4a16.hpp"
-#endif
 #if defined(STRATA_PREFILL_MMQ) && defined(__HIPCC__)
 #include "strata/prefill/moe_mmq.hpp"
 #endif
@@ -1028,33 +1025,6 @@ void Gemm::bf16_f32(const float* X, const uint16_t* W, float* Y, int64_t T, int6
         bf16(lo + count, W, Y + t * ldy, n, N, K, ldy, 1.0f);
     }
 }
-
-#ifdef STRATA_NVFP4_PREFILL_BUILT
-void Gemm::nvfp4_w4a16(const kernels::NativeExpertLayout& L, kernels::Nvfp4PrefillGroup group,
-                       const int32_t* tokens, const float* input, void* workspace, float* output) {
-    if (group.count <= 0) return;
-    if (group.count > 16 || !tokens || !input || !workspace || !output ||
-        L.gu_type != 40 || L.d_type != 40 || L.n_embd != 2560 || L.n_ff != 640 || !L.tail_off)
-        throw std::invalid_argument("W4A16 prefill requires native NVFP4 2560/640 expert groups");
-    int rows = 0;
-    for (int i = 0; i < group.count; ++i) {
-        if (!group.weights[i] || group.rows[i] <= 0 || group.offsets[i] < 0)
-            throw std::invalid_argument("W4A16 prefill invalid expert or row span");
-        rows = std::max(rows, group.rows[i]);
-    }
-    const auto b = kernels::nvfp4_w4a16_buffers(workspace, rows);
-    for (int i = 0; i < group.count; ++i) {
-        const int n = group.rows[i], offset = group.offsets[i];
-        const auto* blob = group.weights[i];
-        kernels::nvfp4_w4a16_prepare(L, blob, tokens + offset, n, input, b, stream_);
-        bf16(b.input, b.gate_up, b.projected, n, 1280, 2560);
-        kernels::nvfp4_w4a16_hidden(L, blob, n, b, stream_);
-        float* y = output + size_t(offset) * 2560;
-        bf16(b.hidden, b.down, y, n, 2560, 640);
-        kernels::nvfp4_w4a16_finish(L, blob, n, y, stream_);
-    }
-}
-#endif
 
 void Gemm::native(const uint16_t* X, int ggml_type, const void* W_blocks, float* Y, int64_t T, int64_t N, int64_t K,
                   int64_t ldy, float beta, int64_t ldx) {

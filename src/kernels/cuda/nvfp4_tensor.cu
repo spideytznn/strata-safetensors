@@ -3,8 +3,6 @@
 // MMA register mapping/PTX follows llama.cpp ggml-cuda/mma.cuh (MIT,
 // third_party/ggml/LICENSE) and NVIDIA's warp-level block-scaling specification.
 #include "strata/kernels/nvfp4_tensor.hpp"
-#include "strata/kernels/native_prefill.hpp"
-#include "strata/kernels/nvfp4_w4a16.hpp"
 #ifdef STRATA_NVFP4_CUTLASS_BUILT
 #include "strata/kernels/nvfp4_cutlass.hpp"
 #endif
@@ -210,7 +208,6 @@ __global__ void set_prefill_group(PrefillMetadata* m,Nvfp4PrefillGroup g,
 }
 }
 size_t nvfp4_tensor_prefill_bytes(int64_t entries) {
-    if (native_nvfp4_prefill_w4a16()) return nvfp4_w4a16_prefill_bytes(entries);
     const size_t custom=256+2*aligned(size_t(entries)*16*sizeof(int32_t))+nvfp4_tensor_scratch_bytes(entries*16);
 #ifdef STRATA_NVFP4_CUTLASS_BUILT
     if(nvfp4_cutlass_enabled()) {
@@ -222,7 +219,6 @@ size_t nvfp4_tensor_prefill_bytes(int64_t entries) {
 }
 void nvfp4_tensor_prefill(const NativeExpertLayout& L,const uint8_t* blob,
     const int32_t* tokens,int entries,const float* x,void* scratch,float* out,void* stream) {
-    if (native_nvfp4_prefill_w4a16()) throw std::invalid_argument("W4A16 prefill must use its BF16 GEMM dispatcher");
     if(entries<=0) return;
     auto* g=static_cast<OneGroup*>(scratch);
     set_one_group<<<1,1,0,static_cast<cudaStream_t>(stream)>>>(g,blob,entries);
@@ -231,7 +227,6 @@ void nvfp4_tensor_prefill(const NativeExpertLayout& L,const uint8_t* blob,
 }
 void nvfp4_tensor_prefill_group(const NativeExpertLayout& L,Nvfp4PrefillGroup group,
     const int32_t* tokens,const float* x,void* scratch,float* out,void* stream) {
-    if (native_nvfp4_prefill_w4a16()) throw std::invalid_argument("W4A16 prefill must use its BF16 GEMM dispatcher");
 #ifdef STRATA_NVFP4_CUTLASS_BUILT
     if(nvfp4_cutlass_use_group(group)) { nvfp4_cutlass_prefill(L,group,tokens,x,scratch,out,stream); return; }
 #endif

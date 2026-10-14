@@ -4066,11 +4066,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                             auto L = strata::kernels::native_expert_layout(f.gu_type, f.d_type, f.n_embd, f.n_ff);
                             L.layer = int(l); L.input_scale_gu = f.input_scale_gu; L.input_scale_down = f.input_scale_down;
                             pt.mark(kPfGemmGU, cs);
-                            if (strata::kernels::native_nvfp4_prefill_w4a16())
-                                m.gemm.nvfp4_w4a16(L, native_group, m.src_dev, m.mixed, m.nvfp4_workspace, m.Dm);
-                            else
-                                strata::kernels::nvfp4_tensor_prefill_group(L, native_group, m.src_dev, m.mixed,
-                                    m.nvfp4_workspace, m.Dm, m.cs);
+                            strata::kernels::nvfp4_tensor_prefill_group(L, native_group, m.src_dev, m.mixed,
+                                m.nvfp4_workspace, m.Dm, m.cs);
                             if (native_nslots) {
                                 const int rel = native_slots[native_nslots - 1];
                                 cudaEventRecord(m.used[rel], m.cs);
@@ -4101,13 +4098,8 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 L.layer=int(l); L.input_scale_gu=f.input_scale_gu; L.input_scale_down=f.input_scale_down;
                                 const int o0=m.off[size_t(e)], ne=m.cnt[size_t(e)];
                                 pt.mark(kPfGemmGU,cs);
-                                if (strata::kernels::native_nvfp4_prefill_w4a16()) {
-                                    strata::kernels::Nvfp4PrefillGroup g;
-                                    g.count=1; g.weights[0]=blob_dev; g.rows[0]=ne; g.offsets[0]=int(o0);
-                                    m.gemm.nvfp4_w4a16(L,g,m.src_dev,m.mixed,m.nvfp4_workspace,m.Dm);
-                                } else
-                                    strata::kernels::nvfp4_tensor_prefill(L,blob_dev,m.src_dev+o0,ne,m.mixed,
-                                        m.nvfp4_workspace,m.Dm+size_t(o0)*N,m.cs);
+                                strata::kernels::nvfp4_tensor_prefill(L,blob_dev,m.src_dev+o0,ne,m.mixed,
+                                    m.nvfp4_workspace,m.Dm+size_t(o0)*N,m.cs);
                                 // Both products must finish reading the original packed blob before reuse.
                                 if(slot>=0) { cudaEventRecord(m.used[slot],m.cs); m.used_of[slot]=slot; }
                                 return true;

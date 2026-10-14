@@ -1,3 +1,0 @@
-========= COMPUTE-SANITIZER
-PASS W4A16: 3 reordered experts / 1,3,37 rows; all finite nonnegative E4M3 scale codes; exact BF16 preparation, FP64 oracle relative_l2=9.50811117e-06 max_abs=0.0484161377, inactive rows, workspace guards, graph replay, 8192-row zero oracle
-========= ERROR SUMMARY: 0 errors
