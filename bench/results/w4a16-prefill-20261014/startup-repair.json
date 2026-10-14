@@ -1,0 +1,92 @@
+{
+  "hardware": "RTX 5090, Ryzen 9950X3D, 96 GB RAM, Windows, CUDA 13.0",
+  "date": "2026-10-14",
+  "binary_sha256": "e58fdb43350487fafbabfc336934d57b8399cb80b569c5f47c7bc1b9608b68d5",
+  "passed": true,
+  "production_mmq_selector_cases": 5,
+  "unset_mmq_selector": "W4A8",
+  "operator_oracle_rerun": "pass",
+  "http_listener_started": false,
+  "desktop_profiles_changed": false,
+  "cases": [
+    {
+      "mode": "single",
+      "profile": "rtx5090-262k-prefill-tc-bf16-w4a16.json",
+      "profile_sha256": "baa86ac20e1a61da855c1b37461ddd6bc90c233a10f61d7afab213f6fe81f4a3",
+      "startup_s": 65.66217609999876,
+      "prompt_tokens": 8478,
+      "info": [
+        "INFO logit_bias=1 context=262144 kv=bf16 kv_resident=0 expert_slots=4314 expert_cache_mib=11375 expert_slots_primary=4314 expert_cache_primary_mib=11375 spec=3 mtp_max=0 lookup=0 vram_free_mib=1755 cvec=0 arena_mib=64800 pool_workers=15 pcie_frac=0.25 pcie_auto=0 pcie_balance=0 spec_min_p=0.50 conversation_cache_mib=12288 conversation_cache_slots=unlimited conversation_cache_min_free_mib=2560 conversation_cache_min_tokens=0 tail_role_token=-1 vram_elastic=0 route_tail_skip=0 engine=0.1.44.1",
+        "INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=67948118016 expert_cuda_pinned_bytes=67948118016 expert_os_locked_bytes=0 prefill_chunk=8192 prefill_workspace=dedicated native_vision_slots=0 native_batch_mtp=0",
+        "INFO conversation_branch_preserve=1 single_stage_only=1",
+        "INFO startup_ms=64524"
+      ],
+      "cold": {
+        "tokens": 31,
+        "token_ids_sha256": "516f6d92cf592f8fd9ccb4812884658c01b37ba254da864e5cd72a2d881344f9",
+        "done": "DONE 31 8478 4173.0 534.8 stop 16 27 0 10588 18412 8278 0 0.0 8478 1748",
+        "wall_s": 4.714213200000813
+      },
+      "warm": {
+        "tokens": 31,
+        "token_ids_sha256": "516f6d92cf592f8fd9ccb4812884658c01b37ba254da864e5cd72a2d881344f9",
+        "done": "DONE 31 8478 169.5 467.2 stop 16 27 8471 13205 18851 6638 0 0.0 7 1309",
+        "wall_s": 0.6443213000020478
+      },
+      "cold_warm_token_equal": true,
+      "post_residency_expert_source_bytes": 0,
+      "post_residency_mtp_source_bytes": 0,
+      "exit_code": 0
+    },
+    {
+      "mode": "parallel",
+      "profile": "rtx5090-262k-prefill-tc-bf16-parallel-w4a16.json",
+      "profile_sha256": "33def48020d43f581abb03e71c12828ce9c8b714cc25eaf37016573e6c551723",
+      "startup_s": 65.86908730000141,
+      "prompt_tokens": 8478,
+      "info": [
+        "INFO logit_bias=1 context=262144 kv=bf16 kv_resident=0 expert_slots=3525 expert_cache_mib=9295 expert_slots_primary=3525 expert_cache_primary_mib=9295 spec=3 mtp_max=0 lookup=0 vram_free_mib=1710 cvec=0 arena_mib=64800 pool_workers=15 pcie_frac=0.25 pcie_auto=0 pcie_balance=0 spec_min_p=0.50 conversation_cache_mib=12288 conversation_cache_slots=unlimited conversation_cache_min_free_mib=2560 conversation_cache_min_tokens=0 tail_role_token=-1 vram_elastic=0 route_tail_skip=0 batch_slots=2 slot_cache=1 batch_groups=1 engine=0.1.44.1",
+        "INFO weight_source=safetensors native_adapter=1 expert_ram_bytes=67948118016 expert_cuda_pinned_bytes=67948118016 expert_os_locked_bytes=0 prefill_chunk=8192 prefill_workspace=dedicated native_vision_slots=1 native_batch_mtp=1",
+        "INFO native_prefill_overlap=1 prefill_private_ple_cache_rows=65536",
+        "INFO conversation_branch_preserve=1 single_stage_only=1",
+        "INFO startup_ms=62627"
+      ],
+      "cold": {
+        "tokens": 31,
+        "token_ids_sha256": "516f6d92cf592f8fd9ccb4812884658c01b37ba254da864e5cd72a2d881344f9",
+        "done": "DONE 31 8478 4223.4 518.4 stop 16 27 0 9305 18145 9304 0 0.0 8478 2015",
+        "wall_s": 4.7485917000012705
+      },
+      "warm": {
+        "tokens": 31,
+        "token_ids_sha256": "516f6d92cf592f8fd9ccb4812884658c01b37ba254da864e5cd72a2d881344f9",
+        "done": "DONE 31 8478 181.1 454.5 stop 16 27 8471 12074 18612 7581 0 0.0 7 1548",
+        "wall_s": 0.6365426999982446
+      },
+      "cold_warm_token_equal": true,
+      "post_residency_expert_source_bytes": 0,
+      "post_residency_mtp_source_bytes": 0,
+      "exit_code": 0,
+      "batch_token_equal": true,
+      "overlapping_decode": true,
+      "batch_jobs": [
+        {
+          "tokens": 32,
+          "token_ids_sha256": "b3a263ddc711071498c4754e44f1e062859ba1c1bdc717f6056d777c175d69c4",
+          "done": "BDONE 0 32 length 866.8",
+          "wall_s": null
+        },
+        {
+          "tokens": 32,
+          "token_ids_sha256": "2b14403b7cef69e4c5213eccaec4d57c132ccb3fe58bb7afde5a7656a3c76536",
+          "done": "BDONE 1 32 length 590.5",
+          "wall_s": null
+        }
+      ],
+      "native_mtp": true,
+      "prefill_decode_overlap_selected": true,
+      "expert_copy_overlap_selected": true,
+      "upstream_adapt_async_selected": false
+    }
+  ]
+}

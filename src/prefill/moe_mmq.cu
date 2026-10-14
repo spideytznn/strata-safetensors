@@ -246,7 +246,8 @@ Nvfp4Mode nvfp4_mode() {
         if (e == nullptr || std::strcmp(e, "w4a8") == 0) return Nvfp4Mode::W4A8;
         if (std::strcmp(e, "w4a4") == 0) return Nvfp4Mode::W4A4;
         if (std::strcmp(e, "fp16") == 0) return Nvfp4Mode::FP16;
-        std::fprintf(stderr, "STRATA_PREFILL_NVFP4=%s: expected w4a8, w4a4 or fp16\n", e);
+        if (std::strcmp(e, "w4a16") == 0) return Nvfp4Mode::W4A16;
+        std::fprintf(stderr, "STRATA_PREFILL_NVFP4=%s: expected w4a8, w4a4, fp16 or w4a16\n", e);
         std::exit(1);
     }();
     return m;
@@ -269,7 +270,7 @@ bool supported(int t) {
 #endif
 #if !defined(GGML_USE_HIP)
         case GGML_TYPE_NVFP4:
-            return nvfp4_mode() != Nvfp4Mode::FP16;
+            return nvfp4_mode() == Nvfp4Mode::W4A8 || nvfp4_mode() == Nvfp4Mode::W4A4;
 #endif
         default:
             return false;

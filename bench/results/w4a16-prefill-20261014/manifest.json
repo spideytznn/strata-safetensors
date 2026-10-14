@@ -57,5 +57,19 @@
     "Profiler timings are not an end-to-end performance benchmark.",
     "HIP/SYCL/Metal/Linux/multi-GPU not validated.",
     "Existing user service was neither stopped nor restarted."
-  ]
+  ],
+  "startup_repair": {
+    "binary_sha256": "e58fdb43350487fafbabfc336934d57b8399cb80b569c5f47c7bc1b9608b68d5",
+    "full_model_started": true,
+    "single_and_parallel_passed": true,
+    "record": "startup-repair.json",
+    "original_manifest_fields": "The original binary, checks and profile hashes above describe the pre-repair operator-only run.",
+    "source_sha256": {
+      "src/prefill/moe_mmq.cu": "4bcd09157ea8773f672c5aa22c539e30f34d6d2ef58c65b8a0046f9ffcccf010",
+      "include/strata/prefill/moe_mmq.hpp": "ba1f2d16d9f7270ec72616199fb2fb94abf48ef51b2c0a34618367c1c288ad78",
+      "tests/prefill_mmq_mode_test.cpp": "7012b48e5143a5c66478402f12af8398849f88edf3a93a36f17f5a1f7572c952",
+      "tools/w4a16_startup_smoke.py": "d30c56561a66bf061e5ce9941a123596472cb01959d9d46ec189ffeeea411c1b",
+      "CMakeLists.txt": "931c05a649ded28397e58d00df81803533cf7899f6926aa67a5105448d895418"
+    }
+  }
 }
