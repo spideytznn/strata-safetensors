@@ -15,8 +15,10 @@
 - 端口 8880，Host 检查保持关闭，CPU 保持物理核布局。
 
 上游 `Split<40>`、UE4M3 位运算转换和 8-lane down 内核已合入。
-这些是 W4A8/q8_1 专家路径的优化；当前 safetensors 桌面专家 decode 使用
-`STRATA_NVFP4_F32=1`，不会因此改走 W4A8。原有 FP32 激活权重复用继续保留。
+UE4M3 位运算转换是共享函数，当前 FP32 激活专家 decode 的 `nvfp4_value`
+也调用它，因此会使用这项优化。`Split<40>` 和 8-lane down 属于 W4A8/q8_1
+专家路径；当前桌面使用 `STRATA_NVFP4_F32=1`，没有启用这两个分支。
+原有 FP32 激活权重复用继续保留。
 不能把上游 3060 的专家内核数字当成本机整机 decode 收益。
 
 ## MTP 和 arena
