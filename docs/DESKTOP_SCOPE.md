@@ -1,5 +1,17 @@
 # 当前桌面维护范围：2026-10-14
 
+当前对照测试覆盖：按用户要求，双路入口已恢复为 `strata-classic-bf16-kv-v0144.exe`
+及层合并优化之前的完整配置，移除 `STRATA_SLOT_COMMIT_BATCH`（默认关闭）。
+单路继续使用 slotcommit 程序，但显式设置 `STRATA_COMMIT_BATCH=0`，关闭上游单路
+GDN/QSA 层合并提交，供用户对照测试；双路配置不受这个单路设置影响。
+以下层合并启用说明记录恢复前的部署，测量结果仍保留。
+未停止或重启正在运行的服务，双路入口下次重启生效。
+
+单路配置关闭 `STRATA_NATIVE_PREFILL_OVERLAP`：该功能需要并发独立 KV，
+单路无 batch slot，开启会在首次请求触发条件检查并退出。
+W4A4/CUTLASS prefill、8192 工作区、BF16 KV 和 MTP 保留。
+此配置修正需要重新启动 Python 服务，自动重载引擎仍使用原启动环境。
+
 桌面只保留两条 safetensors 启动链：
 
 | 桌面入口 | 仓库脚本 | 配置 |

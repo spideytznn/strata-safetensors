@@ -1,5 +1,5 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-slotcommit.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-v0144.exe",
   "args": [
     "--model",
     "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
@@ -92,8 +92,7 @@
     "STRATA_CONVERSATION_BRANCH_PRESERVE": "1",
     "STRATA_NVFP4_PREFILL_BACKEND": "auto",
     "STRATA_NATIVE_PRECISION": "0",
-    "STRATA_KV_BF16_TC": "1",
-    "STRATA_SLOT_COMMIT_BATCH": "1"
+    "STRATA_KV_BF16_TC": "1"
   },
   "allowed_hosts": [
     "*"

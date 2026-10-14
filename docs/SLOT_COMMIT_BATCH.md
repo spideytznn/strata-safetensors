@@ -11,8 +11,11 @@ state-only 条件时合并层。调试/split 模式等不符合条件时回到�
 QSA 层数或容量不满足层合并条件、或关闭 batch KV 时，保留原 QSA 提交。
 原有 canonical spare 清理和 PLE 历史提交仍独立执行。
 
-桌面程序：`build-native-engine/strata-classic-bf16-kv-slotcommit.exe`。
-双路桌面配置启用该开关；单路不启用，沿用上游单路提交路径。
+优化程序：`build-native-engine/strata-classic-bf16-kv-slotcommit.exe`。
+完成验证后曾在双路桌面配置启用；用户反馈 decode 变慢，现已恢复双路旧程序
+`strata-classic-bf16-kv-v0144.exe` 及优化前完整配置，供用户对照测试。
+单路未启用该开关；另按用户要求设置 `STRATA_COMMIT_BATCH=0`，
+关闭上游单路层合并提交，保留逐层提交及 MTP。
 通用引擎默认仍关闭。设置为 `0` 可恢复双路原来的逐层提交。
 
 ## 验证入口
