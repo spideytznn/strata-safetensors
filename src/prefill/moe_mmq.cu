@@ -8,12 +8,34 @@
 #include "mmq.cuh"
 #include "quantize.cuh"
 
+#include "strata/prefill/mmq_kq_abi.hpp"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 namespace strata::prefill::mmq {
+#if defined(STRATA_KQ_DSO)
+namespace kq {
+int abi_args_size() { return (int) sizeof(mmq_args); }
+}  // namespace kq
+#endif
 namespace {
+#if defined(STRATA_MMQ_KQUANTS)
+// MODEL-UPDATE Phase 1: the K-quant products through MMQ are opt-in at run time (STRATA_MMQ_KQ=1); on CUDA their
+// kernels are the strata_kq library (mmq_kq_loader.cpp), opened only then
+bool kq_ok() {
+#if defined(STRATA_KQ_DSO)
+    return kq::available();
+#else
+    static const bool on = [] {
+        const char* v = std::getenv("STRATA_MMQ_KQ");
+        return v != nullptr && v[0] == '1';
+    }();
+    return on;
+#endif
+}
+#endif
 
 void ck(cudaError_t e, const char* what) {
     if (e != cudaSuccess) {
@@ -210,7 +232,25 @@ void run_nvfp4_w4a8(ggml_backend_cuda_context& ctx, const mmq_args& a, cudaStrea
                     int n = 0);
 // mmq_q8_0_xp.cu: Q8_0 with the experts where they lie (w non-null)
 void run_q8_0_xp(ggml_backend_cuda_context& ctx, const mmq_args& a, cudaStream_t s, const void* const* w, int n);
+// mmq_nvfp4_w4a4.cu (the one unit built for 12xa): FP4 x FP4 and its activation quantizer, if this card runs it
+bool w4a4_available();
+void run_nvfp4_w4a4(ggml_backend_cuda_context& ctx, const mmq_args& a, cudaStream_t s);
+void quantize_nvfp4_w4a4(const float* x, const int32_t* ids, void* xq, float* yscale, bool aligned, int64_t cols,
+                         int64_t ld, int64_t rows, int64_t padded, cudaStream_t s);
+
 bool built() { return true; }
+
+Nvfp4Mode nvfp4_mode() {
+    static const Nvfp4Mode m = [] {
+        const char* e = std::getenv("STRATA_PREFILL_NVFP4");
+        if (e == nullptr || std::strcmp(e, "w4a8") == 0) return Nvfp4Mode::W4A8;
+        if (std::strcmp(e, "w4a4") == 0) return Nvfp4Mode::W4A4;
+        if (std::strcmp(e, "fp16") == 0) return Nvfp4Mode::FP16;
+        std::fprintf(stderr, "STRATA_PREFILL_NVFP4=%s: expected w4a8, w4a4 or fp16\n", e);
+        std::exit(1);
+    }();
+    return m;
+}
 
 bool supported(int t) {
     switch ((ggml_type) t) {
@@ -221,16 +261,15 @@ bool supported(int t) {
         case GGML_TYPE_IQ2_XXS: case GGML_TYPE_IQ2_XS: case GGML_TYPE_IQ2_S:
         case GGML_TYPE_IQ3_XXS: case GGML_TYPE_IQ3_S: case GGML_TYPE_IQ4_NL: case GGML_TYPE_IQ4_XS:
         case GGML_TYPE_Q8_0:   // the draft layer's dense matrices (E-9)
-#ifdef STRATA_MMQ_KQUANTS
-        case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K: case GGML_TYPE_Q5_1:   // Unsloth's UD-Q4_K_XL experts (CUDA)
-#if defined(__HIPCC__) || defined(STRATA_Q6K_EXPERTS)
-        case GGML_TYPE_Q6_K:   // HIP: the dense GGUF projections (STRATA_DENSE_MMQ); CUDA: only the opt-in -DSTRATA_Q6K_EXPERTS=ON build
-#endif
-#endif
             return true;
+#ifdef STRATA_MMQ_KQUANTS
+        // Unsloth's UD-Q4/Q5/Q6_K_XL experts; on HIP also the dense GGUF projections (STRATA_DENSE_MMQ)
+        case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K: case GGML_TYPE_Q5_1: case GGML_TYPE_Q6_K:
+            return kq_ok();
+#endif
 #if !defined(GGML_USE_HIP)
         case GGML_TYPE_NVFP4:
-            return true;
+            return nvfp4_mode() != Nvfp4Mode::FP16;
 #endif
         default:
             return false;
@@ -294,6 +333,21 @@ __global__ void scale_down_rows_kernel(float* __restrict__ d, int64_t ld, const 
 }
 }  // namespace
 
+bool fp4_activations(int t) {
+#if defined(GGML_USE_HIP)   // no NVFP4 MMQ on HIP (and no W4A4 unit)
+    (void) t;
+    return false;
+#else
+    if (t != GGML_TYPE_NVFP4 || nvfp4_mode() != Nvfp4Mode::W4A4) return false;
+    static const bool on = [] {
+        const bool ok = w4a4_available();
+        if (!ok) std::fprintf(stderr, "prefill mmq: STRATA_PREFILL_NVFP4=w4a4 needs an sm_12x card in a 12x build; W4A8\n");
+        return ok;
+    }();
+    return on;
+#endif
+}
+
 void scale_gu_rows(float* gu, int64_t ld, int64_t n_ff, const int32_t* bounds, int n, const float* tails,
                    int64_t row0, int64_t nrows, void* stream) {
     if (nrows <= 0 || n <= 0) return;
@@ -310,6 +364,15 @@ void scale_down_rows(float* d, int64_t ld, const int32_t* bounds, int n, const f
 void quantize(const float* x, const int32_t* ids, void* xq, int t, int64_t cols, int64_t ld, int64_t rows, void* stream,
               float* yscale, const int32_t* slot, int k_used) {
     if (rows <= 0) return;
+#if !defined(GGML_USE_HIP)
+    if (fp4_activations(t)) {
+        if (yscale == nullptr) { std::fprintf(stderr, "prefill mmq: NVFP4 activations need a scale buffer\n"); std::exit(1); }
+        const bool aligned = ((uintptr_t) x % 32 == 0) && ((size_t) ld * sizeof(float)) % 32 == 0;
+        quantize_nvfp4_w4a4(x, ids, xq, yscale, aligned, cols, ld, rows, pad512(cols), (cudaStream_t) stream);
+        ck(cudaGetLastError(), "quantize");
+        return;
+    }
+#endif
     // a token's K rows are the same row of x: quantized once and scattered (the per-row gather did it K times)
     static const bool gather = [] { const char* e = std::getenv("STRATA_QUANT_GATHER"); return e != nullptr && std::atoi(e) != 0; }();
     const bool scatter = slot != nullptr && k_used > 0 && rows % k_used == 0 && !gather;
@@ -371,17 +434,25 @@ void Context::run(const Product& p, void* stream) {
         case GGML_TYPE_IQ4_NL: mul_mat_q_case<GGML_TYPE_IQ4_NL>(ctx, a, s); break;
         case GGML_TYPE_IQ4_XS: mul_mat_q_case<GGML_TYPE_IQ4_XS>(ctx, a, s); break;
         case GGML_TYPE_Q8_0: mul_mat_q_case<GGML_TYPE_Q8_0>(ctx, a, s); break;
-#ifdef STRATA_MMQ_KQUANTS
+#if defined(STRATA_MMQ_KQUANTS) && defined(STRATA_KQ_DSO)
+        case GGML_TYPE_Q4_K: case GGML_TYPE_Q5_K: case GGML_TYPE_Q6_K: case GGML_TYPE_Q5_1: {
+            const int e = kq::run((int) t, &a, s);
+            if (e != 0) {
+                std::fprintf(stderr, "prefill mmq: the K-quant library failed on type %d (error %d)\n", (int) t, e);
+                std::exit(1);
+            }
+            break;
+        }
+#elif defined(STRATA_MMQ_KQUANTS)
         case GGML_TYPE_Q4_K: mul_mat_q_case<GGML_TYPE_Q4_K>(ctx, a, s); break;
         case GGML_TYPE_Q5_K: mul_mat_q_case<GGML_TYPE_Q5_K>(ctx, a, s); break;
-#if defined(__HIPCC__) || defined(STRATA_Q6K_EXPERTS)
         case GGML_TYPE_Q6_K: mul_mat_q_case<GGML_TYPE_Q6_K>(ctx, a, s); break;
-#endif
         case GGML_TYPE_Q5_1: mul_mat_q_case<GGML_TYPE_Q5_1>(ctx, a, s); break;
 #endif
 #if !defined(GGML_USE_HIP)   // NVFP4: CUDA only (no HIP instance, no W4A8 unit)
         case GGML_TYPE_NVFP4:
-            run_nvfp4_w4a8(ctx, a, s);
+            if (fp4_activations(t)) run_nvfp4_w4a4(ctx, a, s);
+            else run_nvfp4_w4a8(ctx, a, s);
             break;
 #endif
         default:
@@ -457,12 +528,12 @@ bool direct_ok(int t) {
 #else
     // Q8_0 and NVFP4 W4A8 support the expert pointer table.
     if (t == GGML_TYPE_Q8_0) return true;
-    return t == GGML_TYPE_NVFP4;
+    return t == GGML_TYPE_NVFP4 && !fp4_activations(t);
 #endif
 }
 bool swiglu_quant_ok(int t) {
     // NVFP4 W4A8 uses Q8_1 D4 activation rows.
-    if (t == GGML_TYPE_NVFP4) return true;
+    if (t == GGML_TYPE_NVFP4) return !fp4_activations(t);
     return mmq_get_q8_1_ds_layout((ggml_type) t) == MMQ_Q8_1_DS_LAYOUT_D4;
 }
 void swiglu_quant(const float* gu, void* hq, int64_t rows, const int32_t* bounds, int n, const float* const* tails,

@@ -37,8 +37,7 @@ int main(int argc, char** argv) {
     for (int i = 2; i + 1 < argc; i += 2) { picks.push_back(std::atoi(argv[i])); picks.push_back(std::atoi(argv[i + 1])); }
     if (picks.empty()) picks = {0, 0, 0, 7, 12, 100, 24, 300, 40, 5, 47, 511};
     std::ifstream f(argv[1], std::ios::binary);
-    const char* seed=std::getenv("STRATA_PARITY_SEED");
-    std::mt19937 rng(seed?static_cast<unsigned>(std::strtoul(seed,nullptr,10)):9);
+    std::mt19937 rng(9);
     std::normal_distribution<float> nd(0.f, 1.f);
     const ggml_type_traits* tt = ggml_get_type_traits(GGML_TYPE_NVFP4);
     double worst = 0;
@@ -89,19 +88,10 @@ int main(int argc, char** argv) {
         ck(cudaMalloc(&ddst, 4 * T), "d"); ck(cudaMemcpy(ddst, ids, 4 * T, cudaMemcpyHostToDevice), "d");
         ck(cudaMalloc(&dtok, 4 * T), "t"); ck(cudaMemcpy(dtok, ids, 4 * T, cudaMemcpyHostToDevice), "t");
         k::quantize_q8_1_rows(dx, T, N, dxq, nullptr);
-        k::native_expert_grouped(L, dptr, dstart, dng, ddst, dtok, 1, T, dxq, scr, dout, nullptr, 0, dx);
+        k::native_expert_grouped(L, dptr, dstart, dng, ddst, dtok, 1, T, dxq, scr, dout, nullptr);
         ck(cudaDeviceSynchronize(), "run");
         std::vector<float> got((size_t) T * N);
         ck(cudaMemcpy(got.data(), dout, got.size() * 4, cudaMemcpyDeviceToHost), "out");
-        if(const char* path=std::getenv("STRATA_PARITY_DUMP")) {
-            const size_t fa=(size_t(T)*FF*sizeof(float)+255)&~size_t(255);
-            std::vector<float> hidden(size_t(T)*FF);
-            ck(cudaMemcpy(hidden.data(),static_cast<uint8_t*>(scr)+2*fa,hidden.size()*sizeof(float),cudaMemcpyDeviceToHost),"hidden");
-            std::ofstream dump(path,std::ios::binary);
-            dump.write(reinterpret_cast<const char*>(hidden.data()),hidden.size()*sizeof(float));
-            dump.write(reinterpret_cast<const char*>(got.data()),got.size()*sizeof(float));
-            if(!dump) {std::fprintf(stderr,"cannot write parity dump\n");return 2;}
-        }
         for (void* p : {(void*) db, (void*) dx, dxq, (void*) dout, scr, (void*) dptr, (void*) dstart, (void*) dng,
                         (void*) ddst, (void*) dtok})
             cudaFree(p);
@@ -109,9 +99,9 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < got.size(); ++i) { num += (got[i] - ref[i]) * (got[i] - ref[i]); den += ref[i] * ref[i]; }
         const double rel = std::sqrt(num / den);
         worst = std::fmax(worst, rel);
-        std::printf("layer %2d expert %3d: s_gate %.3g s_up %.3g s_down %.3g -> expert output rel. error %.6f%%\n", layer,
+        std::printf("layer %2d expert %3d: s_gate %.3g s_up %.3g s_down %.3g -> expert output rel. error %.3f%%\n", layer,
                     e, tail[0], tail[1], tail[2], 100 * rel);
     }
-    std::printf("RESULT: %s (worst %.6f%%)\n", worst < (std::getenv("STRATA_NVFP4_F32") ? 1e-4 : 0.03) ? "ok" : "TOO FAR", 100 * worst);
-    return worst < (std::getenv("STRATA_NVFP4_F32") ? 1e-4 : 0.03) ? 0 : 1;
+    std::printf("RESULT: %s (worst %.3f%%)\n", worst < 0.03 ? "ok" : "TOO FAR", 100 * worst);
+    return worst < 0.03 ? 0 : 1;
 }

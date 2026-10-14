@@ -35,6 +35,7 @@
 #include "strata/kernels/cvec.hpp"
 #include "strata/kernels/kv_q4.hpp"
 #include "strata/core/layer.hpp"
+#include "strata/core/native_dense.hpp"
 #include "strata/core/native_head.hpp"
 #include "strata/kernels/verify_kernels.hpp"
 #include "strata/kernels/qsa_decode_attn.hpp"
@@ -73,6 +74,7 @@ bool fits(int, int64_t) { return false; }
 size_t matrix_bytes(int, int64_t, int64_t) { return 0; }
 size_t q8_bytes(int64_t, int64_t) { return 0; }
 void quantize(const float*, const int32_t*, void*, int, int64_t, int64_t, int64_t, void*, float*, const int32_t*, int) {}
+bool fp4_activations(int) { return false; }
 Context::Context() {}
 Context::~Context() {}
 void Context::run(const Product&, void*) {}
@@ -106,6 +108,16 @@ void quantize_act_native(const float*, int64_t, int64_t, void*, void*) {}
 void experts_native(const Batch&, const NativeGeom&, int, int64_t, const void*, const void*, const int32_t*, void*,
                     float*, void*) {}
 }  // namespace strata::prefill::fused
+#endif
+
+#if defined(STRATA_GPU_METAL)
+// The Metal backend reads a prompt through its decode window (metal/src/engine/window.cpp): init keeps the chunk, run
+// hands over, draft_kv declines (the MTP hook reads the window's rows itself).
+namespace strata::metal_engine {
+bool window_ensure(const strata::core::ModelGeometry& g, strata::core::SessionState& ss, int64_t max_cells, std::string& err);
+bool prompt_run(const int64_t* tokens, int64_t n, int64_t pos0, const float* const* embd_rows,
+                const std::function<bool(const float*, int64_t, int64_t, std::string&)>& on_chunk, std::string& err);
+}  // namespace strata::metal_engine
 #endif
 
 namespace strata::prefill {
@@ -461,6 +473,7 @@ struct Alloc {
     bool count_only = false;
     bool touch_owned = false;
     cudaStream_t touch_stream = nullptr;
+    bool spill = false, spilled = false;
     std::vector<void*>* owned = nullptr;
     template <typename T> T* take(size_t n, bool& ok) {
         uint64_t bytes = ((uint64_t) n * sizeof(T) + 256 + 255) & ~255ull;
@@ -469,14 +482,15 @@ struct Alloc {
             used += bytes;
             return nullptr;
         }
-        if (base != nullptr) {
-            if (used + bytes > cap) { ok = false; failed_bytes = bytes; return nullptr; }
+        if (base != nullptr && !spilled && used + bytes <= cap) {
             T* p = (T*) (base + used);
             used += bytes;
             return p;
         }
+        if (base != nullptr && !spill) { ok = false; failed_bytes = bytes; return nullptr; }
         void* p = nullptr;
         if (cudaMalloc(&p, bytes) != cudaSuccess) { ok = false; failed_bytes = bytes; return nullptr; }
+        spilled = true;
         owned->push_back(p);
         used += bytes;
         if (touch_owned && cudaMemsetAsync(p, 0, bytes, touch_stream) != cudaSuccess) {
@@ -834,7 +848,7 @@ struct Prefill::Impl {
     const core::ExpertCache* cache = nullptr;
     const int32_t* host_res = nullptr;
     int64_t T = 0, T_max = 0;
-    bool borrowed = false;
+    bool borrowed = false, borrow_spill = false;
     cudaStream_t cs = nullptr, copy = nullptr;
     Gemm gemm;
     std::vector<void*> owned;
@@ -873,7 +887,7 @@ struct Prefill::Impl {
     float* H = nullptr;
     int32_t *ids_identity = nullptr, *bounds_dev = nullptr;
     uint8_t *grp_gu = nullptr, *grp_d = nullptr;
-    float* grp_tail = nullptr;   // NVFP4 expert tails
+    float *Xscale = nullptr, *Hscale = nullptr, *grp_tail = nullptr;   // NVFP4: activation scales, expert tails
     float* row_sd = nullptr;          // NVFP4 in MMQ: each Dm row's s_down, applied by the combine as it reads the row
     std::vector<int32_t> bounds_host;
     std::unique_ptr<mmq::Context> mmq_ctx;
@@ -882,7 +896,7 @@ struct Prefill::Impl {
     // (Dm's tail, in Dm's row order), ones for row_sd (the CPU's rows carry s_down already), all pinned; and the
     // pool's per-token activations and jobs.
     float *cpu_x = nullptr, *cpu_rows = nullptr, *cpu_ones = nullptr;
-    size_t cpu_x_n = 0, cpu_rows_n = 0;
+    size_t cpu_x_n = 0, cpu_rows_n = 0, cpu_ones_n = 0;
     bool cpu_dead = false;   // a pinned buffer of the share could not be had (host memory is short): the GPU does it all
     std::vector<uint8_t> cpu_nact;
     std::vector<kernels::cpu::ActQ> cpu_actq;   // a Q2_0 layer's activations (the pool's Q2_0 kernels read ActQ)
@@ -1135,8 +1149,8 @@ struct MoeBufs { size_t gu, h, xq, hq; };
 MoeBufs moe_bufs(size_t T, int64_t n_expert, bool fused) {
     if (!fused) return {T * K * 1280, T * K * 640, mmq::q8_bytes((int64_t) (T * K), N), mmq::q8_bytes((int64_t) (T * K), 640)};
     const size_t ts = (size_t) std::min<int64_t>((int64_t) T, stream_all_min() - 1);   // MMQ's last small chunk
-    return {std::max(ts * K * 1280, (fused::group_bytes((int64_t) (T * K), (int) n_expert) + 3) / 4),
-            std::max(ts * K * 640, (fused::act_bytes((int64_t) (T * K), 640) + 3) / 4),
+    return {std::max<size_t>(ts * K * 1280, (fused::group_bytes((int64_t) (T * K), (int) n_expert) + 3) / 4),
+            std::max<size_t>(ts * K * 640, (fused::act_bytes((int64_t) (T * K), 640) + 3) / 4),
             std::max(mmq::q8_bytes((int64_t) (ts * K), N), fused::act_bytes((int64_t) T, N)),
             mmq::q8_bytes((int64_t) (ts * K), 640)};
 }
@@ -1168,8 +1182,14 @@ uint64_t moe_set_bytes(size_t T, int64_t n_expert, bool fused) {
 
 bool Prefill::init(const core::WeightTable& wt, const core::ModelGeometry& g, core::SessionState& ss,
                    core::ExpertSource* src, const core::ExpertCache* cache, const int32_t* host_res, int64_t chunk,
-                   void* stream, std::string& err, void* borrow, uint64_t borrow_bytes, bool touch_owned) {
+                   void* stream, std::string& err, void* borrow, uint64_t borrow_bytes, bool touch_owned, bool borrow_spill) {
     Impl& m = *impl_;
+#if defined(STRATA_GPU_METAL)
+    (void) wt; (void) src; (void) cache; (void) host_res; (void) stream; (void) borrow;
+    (void) borrow_bytes;
+    m.T = chunk > 0 ? chunk : 1;
+    return strata::metal_engine::window_ensure(g, ss, ss.qsa_states[ss.qsa_primary()].max_cells, err);
+#endif
     m.wt = &wt; m.g = &g; m.ss = &ss; m.src = src; m.cache = cache; m.host_res = host_res;
     m.T = chunk; m.cs = (cudaStream_t) stream; m.stats = &stats_;
     if (g.n_embd != N || g.hc != HC || g.hc_lr != LR || g.n_expert < 1 || ss.k != K) {
@@ -1205,6 +1225,7 @@ bool Prefill::init(const core::WeightTable& wt, const core::ModelGeometry& g, co
     const size_t T = (size_t) chunk;
     m.T_max = chunk;
     m.borrowed = borrow != nullptr;
+    m.borrow_spill = m.borrowed && borrow_spill;
     bool ok = true;
     // one-time: events, the stager, the host buffers (for the largest chunk), the identity page table
     for (int i = 0; i < ring_cap(); ++i) {
@@ -1294,6 +1315,7 @@ bool Prefill::init(const core::WeightTable& wt, const core::ModelGeometry& g, co
     Alloc o;
     o.base = (uint8_t*) borrow;
     o.cap = borrow_bytes;
+    o.spill = m.borrow_spill;
     o.owned = &m.owned;
     o.touch_owned = touch_owned;
     o.touch_stream = m.cs;
@@ -1351,9 +1373,7 @@ bool Prefill::carve(size_t T, void* alloc) {
     if (bf16x2_hc(m.f16_io)) { m.xn16_lo = o.take<uint16_t>(T * D, ok); m.lo16_lo = o.take<uint16_t>(T * LR, ok); }
     if (bf16x2(m.f16_io)) m.mixed_bf_lo = o.take<uint16_t>(T * N, ok);
     m.steps_dev = o.take<int32_t>(T * strata::kernels::kStepCount, ok);
-    strata::kernels::QsaShapes s = strata::kernels::qsa_real_shapes();
-    s.n_head = g.n_head; s.n_head_kv = g.n_head_kv; s.head_dim = g.head_dim; s.idx_n_head = g.idx_q_heads;
-    s.idx_dim = g.idx_key_dim;
+    strata::kernels::QsaShapes s = core::qsa_shapes(g);
     m.cap = strata::kernels::qsa_selection_width(strata::kernels::kTopkMaxCells, s);
     m.max_blocks = ss.qsa_states[ss.qsa_primary()].max_cells / s.idx_block + 2;
     {
@@ -1394,6 +1414,7 @@ bool Prefill::carve(size_t T, void* alloc) {
             m.Xq = c.take<uint8_t>(mb.xq, ok);
             m.H = c.take<float>(mb.h, ok);
             m.Hq = c.take<uint8_t>(mb.hq, ok);
+            m.Xscale = c.take<float>(T * K, ok); m.Hscale = c.take<float>(T * K, ok);
             m.grp_tail = c.take<float>(MMQ_GROUP * 4, ok);
             m.row_sd = c.take<float>(T * K, ok);
         }
@@ -1441,6 +1462,10 @@ bool Prefill::carve(size_t T, void* alloc) {
 
 bool Prefill::relayout(int64_t chunk, void* borrow, uint64_t borrow_bytes, std::string& err) {
     Impl& m = *impl_;
+    if (m.borrow_spill) {
+        err = "prefill: a hybrid borrowed/owned layout cannot be changed between requests";
+        return false;
+    }
     if (!m.borrowed || borrow == nullptr || chunk <= 0 || chunk > m.T_max) {
         err = "prefill: relayout needs borrowed buffers and a chunk of at most " + std::to_string(m.T_max);
         return false;
@@ -1476,6 +1501,11 @@ int64_t Prefill::chunk() const { return impl_->T; }
 bool Prefill::draft_kv(core::MtpDrafter& mtp, const float* R_rows, const int32_t* next_tokens, int64_t n, int64_t cell0,
                        std::string& err, const char** why) {
     Impl& m = *impl_;
+#if defined(STRATA_GPU_METAL)
+    (void) m; (void) mtp; (void) R_rows; (void) next_tokens; (void) n; (void) cell0; (void) err;
+    if (why) *why = "the Metal window feeds the draft layer itself";
+    return false;
+#endif
     const core::OnDevice on_device(m.device);   // the stage's own GPU current (a layer split's drafter: the last stage)
     auto decline = [&](const char* reason) { if (why != nullptr) *why = reason; return false; };
     static const bool off = [] { const char* v = std::getenv("STRATA_MTP_BATCH"); return v != nullptr && v[0] == '0'; }();
@@ -1556,9 +1586,7 @@ bool Prefill::draft_kv(core::MtpDrafter& mtp, const float* R_rows, const int32_t
     if (!mtp.idle(err)) return false;   // the drafter's own stream (its graph uploads) before this writes its K/V
     const double ms_idle = ms_since(ti0);
     const auto tl0 = Clock::now();
-    strata::kernels::QsaShapes s = strata::kernels::qsa_real_shapes();
-    s.n_head = g.n_head; s.n_head_kv = g.n_head_kv; s.head_dim = g.head_dim; s.idx_n_head = g.idx_q_heads;
-    s.idx_dim = g.idx_key_dim;
+    strata::kernels::QsaShapes s = core::qsa_shapes(g);
     std::vector<int32_t> tk((size_t) B);
     if (q8) {
         if (!m.mmq_ctx) m.mmq_ctx = std::make_unique<mmq::Context>();
@@ -1998,9 +2026,7 @@ uint64_t Prefill::bytes_needed_impl(const core::ModelGeometry& g, const core::Se
     if (bf16x2_hc(f16_io)) { o.take<uint16_t>(T * D, ok); o.take<uint16_t>(T * LR, ok); }
     if (bf16x2(f16_io)) o.take<uint16_t>(T * N, ok);
     o.take<int32_t>(T * strata::kernels::kStepCount, ok);
-    strata::kernels::QsaShapes s = strata::kernels::qsa_real_shapes();
-    s.n_head = g.n_head; s.n_head_kv = g.n_head_kv; s.head_dim = g.head_dim; s.idx_n_head = g.idx_q_heads;
-    s.idx_dim = g.idx_key_dim;
+    strata::kernels::QsaShapes s = core::qsa_shapes(g);
     const int64_t cap = strata::kernels::qsa_selection_width(strata::kernels::kTopkMaxCells, s);
     const int64_t max_blocks = ss.qsa_states[ss.qsa_primary()].max_cells / s.idx_block + 2;
     o.take<uint8_t>((size_t) std::max({gdn_set_bytes(T), qsa_set_bytes(T, cap, max_blocks, 256, 32, s),
@@ -2199,9 +2225,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
     // The direct successor's future lives on the Prefill object. Intermediate
     // stages therefore do not drain the complete remaining GPU chain here.
     double host_sync_ms = 0, host_chunk_ms = 0, host_setup_ms = 0;   // STRATA_PREFILL_TIMING: the host's share
-    strata::kernels::QsaShapes s = strata::kernels::qsa_real_shapes();
-    s.n_head = g.n_head; s.n_head_kv = g.n_head_kv; s.head_dim = g.head_dim; s.idx_n_head = g.idx_q_heads;
-    s.idx_dim = g.idx_key_dim;
+    strata::kernels::QsaShapes s = core::qsa_shapes(g);
     // read once (STRATA_KV_PREFETCH=1/0: the next streamed layer's KV prefix is staged on its own stream)
     static const bool kv_prefetch_on = [] {
         const char* e = std::getenv("STRATA_KV_PREFETCH");
@@ -2724,6 +2748,15 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                 const core::WeightRef *wn = need(v, sn.c_str(), err), *wd = need(v, sd.c_str(), err),
                                       *wu = need(v, su.c_str(), err), *wi = need(v, si.c_str(), err);
                 if (!wn || !wd || !wu || !wi) return false;
+                // STRATA_HC_Q8 without a bf16 copy: this path's GEMMs read bf16, so the matrices are dequantized per half
+                core::WeightRef wd_q8, wu_q8;
+                if (!wd->data && wd->hc_q8 && !wu->data && wu->hc_q8) {
+                    wd_q8 = *wd; wu_q8 = *wu;
+                    wd_q8.data = core::NativeDense::hc_bf16_view(*wd, m.cs, 0, 0);
+                    wu_q8.data = core::NativeDense::hc_bf16_view(*wu, m.cs, 1, 0);
+                    if (!wd_q8.data || !wu_q8.data) { err = "prefill: the Q8_0 hyper-connection projections could not be dequantized"; return false; }
+                    wd = &wd_q8; wu = &wu_q8;
+                }
                 pt.mark(kPfHc, cs);
                 // the xn16 token stride of this chunk (the writers of both halves and of the fused write-backs use it)
                 const int64_t ldx = hc_pad() && T >= std::max<int64_t>(pf_switch_min_t(), 64) && !gr_unfused() &&
@@ -2787,6 +2820,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                              m.mixed_bf_lo);
                 }
 
+                if (wd_q8.data) {   // the HC GEMMs that read the scratch are enqueued: the next user waits for them
+                    core::NativeDense::hc_bf16_release(m.cs, 0, 0);
+                    core::NativeDense::hc_bf16_release(m.cs, 1, 0);
+                }
                 if (half == 0 && !core::is_qsa_layer(g, l)) {
                     // ======================= GDN =======================
                     const core::WeightRef *wqkv = need(v, "attn_qkv.weight", err), *wg = need(v, "attn_gate.weight", err),
@@ -3535,6 +3572,20 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 std::fill(m.cpu_ones, m.cpu_ones + cap_rows, 1.0f);
                                 m.cpu_rows_n = cap_rows * N;
                             }
+                            // this fork (NVFP4): row_sd 1 for the CPU's rows, which carry s_down already - sized on its
+                            // own, as the rows buffer is now taken once at its largest above (0.1.42)
+                            if (m.cpu_ones_n < (size_t) rows_cpu) {
+                                if (m.cpu_ones) cudaFreeHost(m.cpu_ones);
+                                m.cpu_ones = nullptr;
+                                m.cpu_ones_n = 0;
+                                const size_t n1 = std::max<size_t>((size_t) rows_cpu * 2, m.cpu_rows_n / N);
+                                if (cudaHostAlloc((void**) &m.cpu_ones, n1 * sizeof(float), cudaHostAllocDefault) != cudaSuccess) {
+                                    err = "prefill: cannot allocate the CPU experts' row scales";
+                                    return false;
+                                }
+                                std::fill(m.cpu_ones, m.cpu_ones + n1, 1.0f);
+                                m.cpu_ones_n = n1;
+                            }
                             const int64_t r0c = T * K - rows_cpu;
                             const strata::kernels::cpu::NativeFmt& cf = lay.fmt[(size_t) l];
                             if (cpu_share_env() < 0.0) {
@@ -3583,7 +3634,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                         pt.mark(kPfGather, cs);
                         if (use_mmq) {
                             // Quantize each token once and scatter its Q8_1 rows to the routed experts.
-                            mmq::quantize(m.mixed, m.src_dev, m.Xq, mmq_gt, N, N, T * K, m.cs, nullptr, m.slot_dev, (int) K);
+                            mmq::quantize(m.mixed, m.src_dev, m.Xq, mmq_gt, N, N, T * K, m.cs, m.Xscale, m.slot_dev, (int) K);
                             // each group's rows: absolute bounds (gate/up reads the layer's rows), relative ones (down
                             // reads the group's own quantized H)
                             const size_t n = order.size(), ng = (n + MMQ_GROUP - 1) / MMQ_GROUP;
@@ -4118,6 +4169,7 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 gu.n = ngx; gu.xq = m.Xq; gu.bounds = m.bounds_dev + j0; gu.ids = m.ids_identity;
                                 gu.total_rows = T * K; gu.max_rows = maxr; gu.dst = m.GU; gu.ld_dst = 1280;
                                 gu.w_ptrs = in_place ? gu_at : nullptr;
+                                gu.y_scale = mmq::fp4_activations(mmq_gt) ? m.Xscale : nullptr;
                                 m.mmq_ctx->run(gu, m.cs);
                                 if (sq)
                                     mmq::swiglu_quant(m.GU + r0 * 1280, m.Hq, nr, m.bounds_dev + j0, ngx, tail_at, r0,
@@ -4128,13 +4180,14 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 else
                                     mmq::swiglu(m.GU + r0 * 1280, m.H + r0 * 640, nr, 640, !lay.native, m.cs);
                                 pt.mark(kPfGemmD, cs);
-                                if (!sq) mmq::quantize(m.H + r0 * 640, nullptr, m.Hq, mmq_dt, 640, 640, nr, m.cs);
+                                if (!sq) mmq::quantize(m.H + r0 * 640, nullptr, m.Hq, mmq_dt, 640, 640, nr, m.cs, m.Hscale);
                                 mmq::Product dn;
                                 dn.w = m.grp_d; dn.type = mmq_dt; dn.w_rows = N; dn.w_cols = 640; dn.expert_bytes = mmq_db;
                                 dn.n = ngx; dn.xq = m.Hq; dn.bounds = m.bounds_dev + n + 1 + g * (MMQ_GROUP + 1);
                                 dn.ids = m.ids_identity; dn.total_rows = nr; dn.max_rows = maxr; dn.dst = m.Dm + r0 * N;
                                 dn.ld_dst = N;
                                 dn.w_ptrs = in_place ? d_at : nullptr;
+                                dn.y_scale = mmq::fp4_activations(mmq_dt) ? m.Hscale : nullptr;
                                 m.mmq_ctx->run(dn, m.cs);
                                 if (scaled && !sq)   // s_down: applied by the combine
                                     mmq::down_row_scales(m.row_sd + r0, dn.bounds, ngx, m.grp_tail, nr, m.cs);
@@ -4602,6 +4655,16 @@ bool Prefill::drain_pipeline(std::string& err) {
 }
 
 bool Prefill::run(const int64_t* tokens, int64_t n, int64_t pos0, std::string& err) {
+#if defined(STRATA_GPU_METAL)
+    {
+        const auto t0 = std::chrono::steady_clock::now();
+        const bool ok = strata::metal_engine::prompt_run(tokens, n, pos0, embd_rows, on_chunk, err);
+        stats_.tokens += n;
+        stats_.chunks += 1;
+        stats_.ms_total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        return ok;
+    }
+#endif
     const bool body_ok = run_impl(tokens, n, pos0, err);
 
     std::string drain_err;

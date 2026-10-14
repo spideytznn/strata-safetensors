@@ -1,5 +1,5 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-cache.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-v0144.exe",
   "args": [
     "--model",
     "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
@@ -80,8 +80,9 @@
     "STRATA_NATIVE_WARM_WEIGHTS": "1",
     "STRATA_NATIVE_KV_INDEPENDENT": "1",
     "STRATA_NATIVE_SLOT_COPY": "1",
-    "STRATA_ROUTE_TAIL_SKIP": "7",
+    "STRATA_ROUTE_TAIL_SKIP": "0",
     "STRATA_ADAPT_OVERLAP": "1",
+    "STRATA_ADAPT_SIGNAL": "copy",
     "STRATA_ADAPT_OVERLAP_RESIDENT": "1",
     "STRATA_ADAPT_NOWAIT": "0",
     "STRATA_ADAPT_LAG": "1",

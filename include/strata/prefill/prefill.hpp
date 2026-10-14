@@ -71,7 +71,7 @@ public:
     bool init(const core::WeightTable& wt, const core::ModelGeometry& g, core::SessionState& ss,
               core::ExpertSource* src, const core::ExpertCache* cache, const int32_t* host_res, int64_t chunk,
               void* stream, std::string& err, void* borrow = nullptr, uint64_t borrow_bytes = 0,
-              bool touch_owned = false);
+              bool touch_owned = false, bool borrow_spill = false);
 
     /// Startup only, before run(): attach the completed residency table to a prompt path whose owned buffers
     /// were allocated before the expert cache. No buffers are allocated and no model state is changed.

@@ -1,9 +1,10 @@
 // src/prefill/mmq_expert_bench.cpp - the prompt path's routed-expert products (MMQ) timed at the engine's shapes.
 //
-//     [STRATA_PREFILL_NVFP4=w4a8] mmq_expert_bench [rows per expert ...]
+//     [STRATA_PREFILL_NVFP4=w4a8|w4a4] mmq_expert_bench [rows per expert ...]
 //
 // One MMQ group as the prompt path launches it: 16 experts, R rows each, in one activation array in expert order.
-// gate/up [1280 x 2560] and down [2560 x 640] in NVFP4, and down in Q8_0 (the GPTQ + Q8_0-down pack's 27 layers).
+// gate/up [1280 x 2560] and down [2560 x 640] in NVFP4, down in Q8_0 (the GPTQ + Q8_0-down pack's 27 layers), and
+// UD-IQ4_XS's IQ3_S gate/up and IQ4_NL down for comparison.
 // Synthetic weights of the right format (valid scales), random activations of row-varying magnitude.  Per product:
 // the median of 25 runs, and the rate in int8-equivalent TOPS (2 x rows x out x in).  Default R: 12 (a 600-token
 // chunk: 600 x 10 / 512), 160 (8K), 626 (32K).
@@ -38,7 +39,7 @@ std::vector<uint8_t> weights(ggml_type t, int64_t rows, int64_t cols, int expert
     const size_t bs = ggml_type_size(t), nblk = (size_t) experts * per / bs;
     for (size_t i = 0; i < nblk; ++i) {
         uint8_t* blk = w.data() + i * bs;
-        if (t == GGML_TYPE_Q8_0) {
+        if (t != GGML_TYPE_NVFP4) {                                   // Q8_0, IQ3_S, IQ4_NL: an f16 d leads the block
             const uint16_t d = 0x2000 + (uint16_t) byte(rng);         // f16 ~ 0.0078..0.016
             std::memcpy(blk, &d, 2);
         } else {                                                      // NVFP4: the scales lead the block
@@ -67,26 +68,22 @@ double run_case(const Case& c, int R, std::mt19937& rng, float* ms_out) {
     std::vector<int32_t> bounds(E + 1);
     for (int e = 0; e <= E; ++e) bounds[e] = e * R;
 
-    uint8_t* dw; float *dx, *dd; void* dq; int32_t *dids, *db;
+    uint8_t* dw; float *dx, *dd, *dys; void* dq; int32_t *dids, *db;
     ck(cudaMalloc(&dw, w.size()), "w"); ck(cudaMemcpy(dw, w.data(), w.size(), cudaMemcpyHostToDevice), "w");
     ck(cudaMalloc(&dx, x.size() * 4), "x"); ck(cudaMemcpy(dx, x.data(), x.size() * 4, cudaMemcpyHostToDevice), "x");
     ck(cudaMalloc(&dq, mmq::q8_bytes(T, c.cols)), "xq");
+    ck(cudaMalloc(&dys, (size_t) T * 4), "ys");
     ck(cudaMalloc(&dd, (size_t) T * c.rows * 4), "dst");
     ck(cudaMalloc(&dids, (size_t) T * 4), "ids");
     ck(cudaMalloc(&db, (E + 1) * 4), "bounds");
     ck(cudaMemcpy(db, bounds.data(), (E + 1) * 4, cudaMemcpyHostToDevice), "bounds");
     mmq::iota(dids, T, nullptr);
-    mmq::quantize(dx, nullptr, dq, c.t, c.cols, c.cols, T, nullptr);
+    mmq::quantize(dx, nullptr, dq, c.t, c.cols, c.cols, T, nullptr, dys);
     mmq::Context ctx;
     mmq::Product p;
     p.w = dw; p.type = c.t; p.w_rows = c.rows; p.w_cols = c.cols; p.expert_bytes = per; p.n = E;
     p.xq = dq; p.bounds = db; p.ids = dids; p.total_rows = T; p.max_rows = R; p.dst = dd; p.ld_dst = c.rows;
-    // STRATA_BENCH_IN_PLACE=1: the experts through a pointer each (Product::w_ptrs), as the prompt path reads them;
-    static const int in_place_mode = [] { const char* v = std::getenv("STRATA_BENCH_IN_PLACE"); return v ? std::atoi(v) : 0; }();
-    const bool in_place = in_place_mode >= 1;
-    std::vector<const void*> wp(E);
-    for (int e = 0; e < E; ++e) wp[e] = dw + (size_t) e * per;
-    if (in_place && mmq::direct_ok(c.t)) p.w_ptrs = wp.data();
+    p.y_scale = mmq::fp4_activations(c.t) ? dys : nullptr;
     cudaEvent_t e0, e1;
     cudaEventCreate(&e0); cudaEventCreate(&e1);
     std::vector<float> ts;
@@ -101,7 +98,7 @@ double run_case(const Case& c, int R, std::mt19937& rng, float* ms_out) {
     std::sort(ts.begin(), ts.end());
     const float ms = ts[ts.size() / 2];
     if (ms_out) *ms_out = ms;
-    cudaFree(dw); cudaFree(dx); cudaFree(dq); cudaFree(dd); cudaFree(dids); cudaFree(db);
+    cudaFree(dw); cudaFree(dx); cudaFree(dq); cudaFree(dys); cudaFree(dd); cudaFree(dids); cudaFree(db);
     cudaEventDestroy(e0); cudaEventDestroy(e1);
     return 2.0 * T * (double) c.rows * c.cols / (ms * 1e9);
 }
@@ -112,10 +109,14 @@ int main(int argc, char** argv) {
     std::vector<int> Rs;
     for (int i = 1; i < argc; ++i) Rs.push_back(std::atoi(argv[i]));
     if (Rs.empty()) Rs = {12, 160, 626};
-    std::printf("mmq_expert_bench: mode w4a8, 16 experts a launch, medians of 25\n");
+    const char* mode = std::getenv("STRATA_PREFILL_NVFP4");
+    std::printf("mmq_expert_bench: mode %s (FP4 activations: %s), 16 experts a launch, medians of 25\n",
+                mode ? mode : "w4a8", mmq::fp4_activations(GGML_TYPE_NVFP4) ? "yes" : "no");
     const Case cases[] = {{"nvfp4 gate/up", GGML_TYPE_NVFP4, 1280, 2560},
                           {"nvfp4 down", GGML_TYPE_NVFP4, 2560, 640},
-                          {"q8_0 down", GGML_TYPE_Q8_0, 2560, 640}};
+                          {"q8_0 down", GGML_TYPE_Q8_0, 2560, 640},
+                          {"iq3_s gate/up", GGML_TYPE_IQ3_S, 1280, 2560},
+                          {"iq4_nl down", GGML_TYPE_IQ4_NL, 2560, 640}};
     std::mt19937 rng(7);
     for (int R : Rs)
         for (const Case& c : cases) {

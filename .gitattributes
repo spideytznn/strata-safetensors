@@ -13,3 +13,6 @@ bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/** -text -whitespa
 tests/data/native_experts/** -text
 release/windows/*.cmd text eol=crlf
 release/*.cmd text eol=crlf
+
+# the quant yardstick's text set: tokenized byte for byte (set.ids.json), never convert its line endings
+data/quant_quality/** -text

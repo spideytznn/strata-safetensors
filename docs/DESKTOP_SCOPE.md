@@ -7,12 +7,16 @@
 | `Start-Strata-Safetensors.bat` | `START-NATIVE-262K-PREFILL-TC-BF16.bat` | `config/native/rtx5090-262k-prefill-tc-bf16.json` |
 | `Start-Strata-Safetensors-Parallel.bat` | `START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat` | `config/native/rtx5090-262k-prefill-tc-bf16-parallel.json` |
 
-两者使用 `build-native-engine/strata-classic-bf16-kv-cache.exe`，W4A4/CUTLASS prefill、
+两者使用 `build-native-engine/strata-classic-bf16-kv-v0144.exe`，W4A4/CUTLASS prefill、
 8192 行工作区、BF16 KV Tensor Core、262144 上下文、原专家 decode 和调度、视觉，
 监听 `127.0.0.1:8880`，模型名 `Qwen3.8-Flash-Next-NVFP4-Native`。
 单路 `parallel=1`；双路 `parallel=2`，额外开启 `--batch-mtp`。
 两者均为 `--mtp native --spec 3 --spec-min-p 0.5`，suffix drafting 关闭。
 并发 verifier 每路最多一枚 MTP 草稿；`spec=3` 不等于并发每路三枚草稿。
+
+已合并上游 0.1.44.1；两份配置均关闭 `STRATA_ROUTE_TAIL_SKIP`，计算全部路由专家。
+保留原始 MTP 权重并采用上游单路批量状态提交；arena 与 MTP 差别见
+[升级说明](UPSTREAM_0144.md)。正在运行的旧程序保持不变，下次启动使用新版。
 
 ## 会话缓存：只按内存淘汰
 
