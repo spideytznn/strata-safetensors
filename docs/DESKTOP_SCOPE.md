@@ -7,12 +7,33 @@
 | `Start-Strata-Safetensors.bat` | `START-NATIVE-262K-PREFILL-TC-BF16.bat` | `config/native/rtx5090-262k-prefill-tc-bf16.json` |
 | `Start-Strata-Safetensors-Parallel.bat` | `START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat` | `config/native/rtx5090-262k-prefill-tc-bf16-parallel.json` |
 
-两者使用 `build-native-engine/strata-classic-bf16-kv.exe`，W4A4/CUTLASS prefill、
+两者使用 `build-native-engine/strata-classic-bf16-kv-cache.exe`，W4A4/CUTLASS prefill、
 8192 行工作区、BF16 KV Tensor Core、262144 上下文、原专家 decode 和调度、视觉，
 监听 `127.0.0.1:8880`，模型名 `Qwen3.8-Flash-Next-NVFP4-Native`。
 单路 `parallel=1`；双路 `parallel=2`，额外开启 `--batch-mtp`。
 两者均为 `--mtp native --spec 3 --spec-min-p 0.5`，suffix drafting 关闭。
 并发 verifier 每路最多一枚 MTP 草稿；`spec=3` 不等于并发每路三枚草稿。
+
+## 会话缓存：只按内存淘汰
+
+两个桌面配置均选择 `--conversation-cache-slots unlimited`，取消原先 4 个停放会话的上限。
+`--conversation-cache-mib 12288`，停放快照和保留的 KV 共用 12 GiB 系统内存预算。
+缓存满时淘汰最久未使用的普通会话（LRU），恢复后重新停放的会话排到最新位置。
+超过预算的单个快照不入缓存；交换中仍存活的快照也计入预算。
+显式 pin 的共享前缀继续受保护，无法腾出足够空间时拒绝新快照，不超预算。
+
+系统空闲内存底线仍为 2560 MiB，必要时会在缓存达到 12 GiB 之前回收冷会话。
+网页显示会话数量为 `当前数量 / ∞`，内存条继续显示预算使用率。
+通用默认仍为 4 槽；`--conversation-cache-slots 0` 仍表示禁用。
+新桌面入口使用单独编译的 cache 程序，CPU 保持每物理核一个线程，SMT 未启用。
+MTP、8192 prefill、BF16 KV、Host 不限制等其他配置不变；下次启动生效。
+
+预算随后从 8 GiB 调至 12 GiB；历史验证记录保留当时的 8 GiB 参数。
+2026-10-14 的一次运行采样：95.61 GiB 可见物理内存、11.53 GiB 系统可用、
+最近日志停放缓存 3.72 GiB，扣除 2.5 GiB 底线后的缓存总空间粗估 12.75 GiB。
+这些读数非原子采样，也不是长上下文峰值容量保证；运行时仍重新采样可用内存。
+
+验证见 [memory-only cache](../bench/results/conversation-cache-memory-only-20261014/README.md)。
 
 ## 清理范围
 

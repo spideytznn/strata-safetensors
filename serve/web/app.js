@@ -207,9 +207,10 @@ function renderConvCache(c) {
   if (!c) return;                                  // an older server
   const pct = (a, b) => (b ? `${Math.min(100, (100 * a) / b)}%` : "0%");
   $("cc-bars").hidden = !c.enabled;
+  const unlimitedSlots = c.slots === "unlimited";
   if (c.enabled) {
-    $("cc-slots-text").textContent = `${fmt(c.parked)} / ${fmt(c.slots)}`;
-    $("cc-slots-bar").style.width = pct(c.parked, c.slots);
+    $("cc-slots-text").textContent = `${fmt(c.parked)} / ${unlimitedSlots ? "∞" : fmt(c.slots)}`;
+    $("cc-slots-bar").style.width = unlimitedSlots ? "0%" : pct(c.parked, c.slots);
     const budget = c.budget_mib * 1048576;
     $("cc-mem-text").textContent = `${gb(c.bytes)} / ${gb(budget)} GB`;
     $("cc-mem-bar").style.width = pct(c.bytes, budget);
@@ -224,7 +225,9 @@ function renderConvCache(c) {
     ["Last switch", c.enabled ? event : null],
   ]);
   $("cc-note").textContent = c.enabled
-    ? "A request that continues a parked conversation gets its state back instead of reading it again; the oldest goes when the slots or the memory are full."
+    ? (unlimitedSlots
+      ? "Conversation count is unlimited. The least recently used conversation leaves when the memory budget or available RAM requires it."
+      : "A request that continues a parked conversation gets its state back instead of reading it again; the oldest goes when the slots or the memory are full.")
     : "The engine keeps the last conversation's state, so a follow-up reads only what is new. To keep several conversations (agents taking turns), add \"--conversation-cache-mib\", \"8192\" to the run config's args (docs/DETAILS.md).";
 }
 

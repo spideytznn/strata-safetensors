@@ -244,9 +244,11 @@ public:
         bool live = false;
     };
 
+    static constexpr size_t kUnlimitedSlots = size_t(-1);
     ConversationCache(size_t budget, size_t slots, int64_t min_tokens = 0)
         : budget_(budget), slots_(slots), min_tokens_(min_tokens) {}
     bool enabled() const { return budget_ != 0 && slots_ != 0; }
+    bool slot_limited() const { return slots_ != kUnlimitedSlots; }
     /// `--conversation-cache-min-tokens`: whether a conversation of this length is worth one of `slots`.  Every
     /// parked conversation costs a whole slot whatever its length, so a client that interleaves short side requests
     /// with one long conversation spends the cache on the side requests and evicts the long one (oldest first) -
@@ -281,7 +283,7 @@ public:
     size_t retained_bytes() const { return reuse_.bytes(); }
     bool can_fit(size_t incoming, size_t held = 0) const {
         return enabled() && held <= budget_ && incoming <= budget_ - held &&
-               entries_.size() < slots_ && bytes() <= budget_ - held - incoming;
+               (!slot_limited() || entries_.size() < slots_) && bytes() <= budget_ - held - incoming;
     }
 
     template<class Token>
@@ -314,7 +316,7 @@ public:
     bool make_room(size_t incoming, size_t held = 0) {
         if (!enabled() || held > budget_ || incoming > budget_ - held) return false;
         if (bytes() > budget_ - held - incoming) reuse_ = {};
-        while (!entries_.empty() && (entries_.size() >= slots_ || bytes_ > budget_ - held - incoming)) {
+        while (!entries_.empty() && ((slot_limited() && entries_.size() >= slots_) || bytes_ > budget_ - held - incoming)) {
             // the oldest entry that does not hold a pinned shared prefix leaves; with only pinned ones left the new
             // image does not fit (the caller skips parking it - the pinned prefix is what the queries come back to)
             if (!evict_oldest()) return false;
@@ -347,7 +349,7 @@ public:
         return n;
     }
 
-    // The slot count, so a caller that evicts in a loop has a bound it did not invent.
+    // Explicit count limit, or kUnlimitedSlots for a memory-only budget.
     size_t slots() const { return slots_; }
 
     // #342: drop the parked entries an outgoing conversation (its live tokens and checkpoint chain) supersedes:

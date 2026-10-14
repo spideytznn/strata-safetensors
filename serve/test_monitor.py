@@ -232,6 +232,13 @@ class ConversationCacheCard(unittest.TestCase):
         try:
             with urllib.request.urlopen(base + "/metrics", timeout=10) as r:
                 c = json.loads(r.read())["conversation_cache"]
+            engine.info["conversation_cache_slots"] = "unlimited"
+            with urllib.request.urlopen(base + "/metrics", timeout=10) as r:
+                unlimited = json.loads(r.read())["conversation_cache"]
+            self.assertTrue(unlimited["enabled"])
+            self.assertEqual(unlimited["slots"], "unlimited")
+            self.assertEqual(unlimited["budget_mib"], 8192)
+            engine.info["conversation_cache_slots"] = 4
             self.assertEqual((c["enabled"], c["budget_mib"], c["slots"], c["parked"], c["requests"]),
                              (True, 8192, 4, 0, 0))
             req = urllib.request.Request(base + "/v1/chat/completions", headers={"Content-Type": "application/json"},

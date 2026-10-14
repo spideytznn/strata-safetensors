@@ -98,7 +98,7 @@ python -m venv .venv-native
 .\tools\build_safetensors_engine.ps1 -Jobs 2
 ```
 
-The helper builds `build-native-engine/strata-classic-bf16-kv.exe` with W4A4
+The helper builds `build-native-engine/strata-classic-bf16-kv-cache.exe` with W4A4
 prefill, pinned CUTLASS and BF16 KV. It fetches CUTLASS into `build-deps/cutlass`;
 CMake fetches its pinned ggml unless `-GgmlDir` is supplied. It refuses to overwrite
 a running engine; use `-OutputName` to build a separate candidate.

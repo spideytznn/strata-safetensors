@@ -8,13 +8,19 @@ The sidecar uses the engine log's name with `.cache-trace.jsonl` in place of
 `.log`. For the desktop native parallel profile it is:
 
 ```text
-logs/native-262k-parallel.cache-trace.jsonl
+logs/rtx5090-262k-prefill-tc-bf16-parallel.cache-trace.jsonl
 ```
 
 It rotates at 16 MiB, retaining one `.jsonl.1` file. A logging failure disables
 diagnostics and leaves inference running. Prompt text, token IDs, tool schemas,
 image bytes, client identifiers and credentials are not written. Fingerprints
 use a random key for each server instance; compare them within that run only.
+
+The current desktop profiles use 12 GiB with `--conversation-cache-slots unlimited`:
+no count-based eviction, oldest-unused unpinned conversations leave when the byte
+budget or physical-RAM floor requires it. `engine_cache_reset.slots` is the string
+`"unlimited"` in this mode. Generic numeric limits and `0` (disabled) retain their
+previous behavior. See [desktop scope](DESKTOP_SCOPE.md).
 
 ## Reading a repeat-prefill report
 

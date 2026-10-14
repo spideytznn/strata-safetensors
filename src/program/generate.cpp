@@ -634,7 +634,7 @@ struct Options {
     /// the PLE history (~118 MB of host RAM); the KV cache itself is positional and stays where it is.
     int prompt_cache = 6;
     int64_t conversation_cache_mib = 0; // opt-in host RAM for independent conversations
-    int conversation_cache_slots = 4;
+    int conversation_cache_slots = 4; // -1: explicit "unlimited", eviction by bytes/RAM only
     int64_t conversation_cache_min_free_mib = 2560;
     /// --serve: park only conversations of at least this many tokens.  Every parked conversation costs one of
     /// conversation_cache_slots whatever its length, so without it a client that interleaves short side requests
@@ -788,7 +788,8 @@ void usage() {
                  "  --prompt-cache N     --serve: keep N conversation checkpoints between requests (default 6, ~118 MB\n"
                  "                       of RAM each; 0 = read every prompt from the start)\n"
                  "  --conversation-cache-mib N  --serve: RAM budget for parked conversations (default 0 = off)\n"
-                 "  --conversation-cache-slots N  --serve: at most N parked conversations (default 4)\n"
+                 "  --conversation-cache-slots N  --serve: at most N parked conversations (default 4);\n"
+                 "                               unlimited: evict by memory budget only; 0: disabled\n"
                  "  --conversation-cache-min-free-mib N  --serve: RAM floor (under MemAvailable, the cgroup limits and\n"
                  "                       --memory-limit-mib) when parking, saving or restoring a session (default 2560)\n"
                  "  --memory-limit-mib N  --serve: the total RAM (MiB) this engine's container or cgroup may use, when\n"
@@ -2177,6 +2178,10 @@ int strata_main(int argc, char** argv) {
                  a == "--conversation-cache-min-free-mib" || a == "--conversation-cache-min-tokens" ||
                  a == "--session-min-free-mib" || a == "--memory-limit-mib") {
             const std::string value = next(a.c_str());
+            if (a == "--conversation-cache-slots" && value == "unlimited") {
+                o.conversation_cache_slots = -1;
+                continue;
+            }
             int64_t number = 0;
             const auto result = std::from_chars(value.data(), value.data() + value.size(), number);
             const int64_t limit = (a == "--conversation-cache-slots" || a == "--conversation-cache-min-tokens")
@@ -2564,7 +2569,7 @@ int strata_main(int argc, char** argv) {
             for (int d = 1; d < n_dev && (split_auto || split_devs.size() < split_at.size()); ++d) split_devs.push_back(d);
         if (ok && !split_auto && split_devs.empty() && split_at.size() == 1) split_devs.push_back(0);   // one GPU
         split_same = ok && split_devs.size() == 1 && split_devs[0] == 0 && !split_auto;
-        if (split_same && o.conversation_cache_mib > 0 && o.conversation_cache_slots > 0 && o.prompt_cache > 0) {
+        if (split_same && o.conversation_cache_mib > 0 && o.conversation_cache_slots != 0 && o.prompt_cache > 0) {
             std::fprintf(stderr, "strata serve: conversation parking does not support a layer split on one GPU "
                                  "(--split-device 0); disable parking with --conversation-cache-mib 0\n");
             return 2;
@@ -8411,7 +8416,8 @@ int strata_main(int argc, char** argv) {
         // (the snapshots accept a null draft)
         strata::core::ConversationCache conversations(
             o.prompt_cache > 0 ? (size_t) o.conversation_cache_mib * 1024 * 1024 : 0,
-            (size_t) o.conversation_cache_slots, o.conversation_cache_min_tokens);
+            o.conversation_cache_slots < 0 ? strata::core::ConversationCache::kUnlimitedSlots :
+                (size_t) o.conversation_cache_slots, o.conversation_cache_min_tokens);
         // Disk sessions: what a session file is bound to.  The model fingerprint samples every model input this
         // engine loaded, by role (conversation_file.hpp), once; the config fingerprint covers the RESOLVED settings
         // that change what the saved bytes mean - the rope (K is cached post-RoPE), the loaded control vector, the
@@ -8626,17 +8632,18 @@ int strata_main(int argc, char** argv) {
                 // Evict the least recently active parked conversations until it fits, or until none are
                 // left.  Each ConversationBuffer is a list of 16 MiB segments, each segment its own
                 // allocation, so an evicted entry is back with the kernel before the next check reads
-                // /proc/meminfo; no waiting is needed.  slots() bounds the loop, and the two lines
+                // /proc/meminfo; no waiting is needed. The current entry count bounds the loop, and the two lines
                 // below say what it did either way.  The reading is the guard's (MemAvailable, the cgroup
                 // limits above the engine, --memory-limit-mib); `mem` keeps the last one for the refusal line.
                 size_t evicted = 0;
+                const size_t eviction_limit = conversations.size();
                 std::optional<strata::core::HostMemoryReading> mem;
                 auto admit = [&] {
                     mem = strata::core::sample_host_memory();
                     return strata::core::conversation_memory_admit(
                         mem ? std::optional<uint64_t>(mem->available) : std::nullopt, additional, floor);
                 };
-                while (!admit() && conversations.size() > 0 && evicted < conversations.slots() &&
+                while (!admit() && conversations.size() > 0 && evicted < eviction_limit &&
                        conversations.evict_oldest())
                     ++evicted;
                 if (!admit()) {
@@ -10035,11 +10042,12 @@ int strata_main(int argc, char** argv) {
                     slots_all += remote_experts[(size_t) r].resident();
                     mib_all += (int64_t) (remote_experts[(size_t) r].gib() * 1024.0);
                 }
+            const std::string conversation_slots_label = o.conversation_cache_slots < 0 ? "unlimited" : std::to_string(o.conversation_cache_slots);
             std::printf("INFO logit_bias=1 context=%lld kv=%s kv_resident=%lld expert_slots=%lld expert_cache_mib=%lld "
                         "expert_slots_primary=%lld expert_cache_primary_mib=%lld spec=%d "
                         "mtp_max=%d lookup=%d vram_free_mib=%lld cvec=%s arena_mib=%lld pool_workers=%d pcie_frac=%.2f "
                         "pcie_auto=%d pcie_balance=%d "
-                        "spec_min_p=%.2f conversation_cache_mib=%lld conversation_cache_slots=%d "
+                        "spec_min_p=%.2f conversation_cache_mib=%lld conversation_cache_slots=%s "
                         "conversation_cache_min_free_mib=%lld conversation_cache_min_tokens=%lld "
                         "tail_role_token=%lld vram_elastic=%d route_tail_skip=%d%s engine=" STRATA_VERSION "\n",
                         (long long) o.max_context, o.kv.c_str(),
@@ -10051,7 +10059,7 @@ int strata_main(int argc, char** argv) {
                         o.suffix_draft, (long long) (free_b >> 20), cvec_summary.c_str(),
                         (long long) ((o.mmap_experts ? src.resident_bytes() : strata::kernels::cpu::expert_layout().total) >> 20),
                         pool.workers(), o.pcie_frac, pcie_auto.on ? 1 : 0, ver.pcie_balance_on() ? 1 : 0,
-                        o.spec_min_p, (long long) o.conversation_cache_mib, o.conversation_cache_slots,
+                        o.spec_min_p, (long long) o.conversation_cache_mib, conversation_slots_label.c_str(),
                         (long long) o.conversation_cache_min_free_mib, (long long) o.conversation_cache_min_tokens,
                         (long long) o.tail_role_token, xcache.segmented() ? 1 : 0, strata::core::tail_skip_rank(),
                         o.batch > 0 ? (" batch_slots=" + std::to_string(o.batch) +

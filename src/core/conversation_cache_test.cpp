@@ -83,6 +83,37 @@ int main() {
               "pressure drops retained storage before evicting parked conversations");
     }
     const std::vector<int64_t> a = {1, 2, 3, 4}, b = {9, 8, 7, 6};
+    {   // No count ceiling: retain far more than four independent conversations until bytes fill up.
+        const size_t one = image({1, 2, 3}).bytes();
+        ConversationCache cache(one * 64, ConversationCache::kUnlimitedSlots);
+        check(cache.enabled() && !cache.slot_limited(), "memory-only cache is enabled without a slot limit");
+        for (int i = 1; i <= 64; ++i)
+            check(cache.put(image({i, i + 100, i + 200})), "all 64 independent conversations fit by bytes");
+        check(cache.size() == 64 && cache.evictions() == 0, "no premature count-based eviction");
+        check(cache.bytes() == one * 64 && !cache.can_fit(one), "byte budget remains binding without a count cap");
+        auto found = cache.best(std::vector<int32_t>{1, 101, 201, 999}, {}, true);
+        auto touched = cache.take(found.index);
+        check(found.tokens == 3 && cache.put(std::move(touched)), "restored conversation becomes most recently used");
+        check(cache.put(image({65, 165, 265})), "memory pressure admits a new conversation");
+        check(cache.size() == 64 && cache.bytes() <= one * 64 && cache.evictions() == 1,
+              "memory-only insertion evicts exactly enough bytes");
+        check(cache.best(std::vector<int32_t>{1, 101, 201, 999}, {}, true).tokens == 3 &&
+              cache.best(std::vector<int32_t>{2, 102, 202, 999}, {}, true).tokens == 0,
+              "byte eviction removes the coldest conversation, not the recently restored one");
+        check(!cache.make_room(SIZE_MAX) && cache.evictions() == 1,
+              "oversized memory-only reservation does not destroy useful cache");
+        ConversationCache off(0, ConversationCache::kUnlimitedSlots);
+        check(!off.enabled() && !off.put(image({1, 2, 3})), "zero byte budget still disables unlimited mode");
+    }
+    {   // A snapshot being exchanged still counts against the memory-only budget.
+        const size_t one = image({1, 2, 3}).bytes();
+        ConversationCache cache(one * 2, ConversationCache::kUnlimitedSlots);
+        check(cache.put(image({1, 2, 3})) && cache.put(image({9, 8, 7})), "memory-only exchange starts full");
+        auto held = cache.take(0);
+        check(cache.make_room(one, held.bytes()) && cache.size() == 0 && cache.evictions() == 1,
+              "in-flight image is charged before admitting another snapshot");
+        check(!cache.make_room(one + 1, held.bytes()), "memory-only exchange cannot exceed byte budget");
+    }
     {
         ConversationCache cache(1024, 2);
         check(cache.put(image({1, 2, 3})), "park A");

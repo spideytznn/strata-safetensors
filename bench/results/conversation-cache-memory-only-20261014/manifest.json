@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-14",
+  "hardware": "Windows / RTX 5090 / Ryzen 9950X3D / CUDA 13.0 / MSVC 14.44",
+  "profiles": [
+    {
+      "config": "rtx5090-262k-prefill-tc-bf16.json",
+      "concurrent_requests": 1,
+      "cache_slots": "unlimited",
+      "cache_mib": 8192,
+      "ram_floor_mib": 2560
+    },
+    {
+      "config": "rtx5090-262k-prefill-tc-bf16-parallel.json",
+      "concurrent_requests": 2,
+      "cache_slots": "unlimited",
+      "cache_mib": 8192,
+      "ram_floor_mib": 2560
+    }
+  ],
+  "exe_sha256": "086070bbc600c0a5d586594f13b71ff2342a4618f25e083bcfe43ae200998ce6",
+  "checks": {
+    "cuda_build": "passed",
+    "conversation_cache_checks": 4311,
+    "conversation_memory_checks": 25,
+    "conversation_snapshot_checks": 4237,
+    "server_monitor_and_diagnostics_tests": 18,
+    "monitor_render": "unlimited and numeric modes, byte utilization retained",
+    "cli": "unlimited accepted",
+    "retention": "64 conversations retained without count-based eviction; byte budget LRU eviction passed",
+    "desktop_profiles": "only executable and slot setting changed",
+    "cpu_smt": "disabled; original physical-core pool source unchanged",
+    "running_old_binary": "unchanged"
+  },
+  "limitations": [
+    "No model service started, stopped or restarted. Changes apply on next desktop launch.",
+    "No full-model throughput or long-running agent replay.",
+    "HIP/SYCL/Linux not built or validated."
+  ]
+}

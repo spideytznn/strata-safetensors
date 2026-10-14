@@ -1,5 +1,5 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-cache.exe",
   "args": [
     "--model",
     "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",
@@ -31,9 +31,9 @@
     "--adapt-swaps",
     "96",
     "--conversation-cache-mib",
-    "8192",
+    "12288",
     "--conversation-cache-slots",
-    "4",
+    "unlimited",
     "--prompt-cache",
     "6",
     "--stats",
