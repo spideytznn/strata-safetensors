@@ -2544,8 +2544,12 @@ int strata_main(int argc, char** argv) {
                 prop.major != 12 || prop.minor != 0) {
                 std::fprintf(stderr, "W4A4 prefill requires a CUDA SM120 device\n"); return 2;
             }
-            std::fprintf(stderr, "[prefill-only] NVFP4 Tensor Core experts and BF16 prefill projections; "
-                                 "original decode, MTP and KV attention retained\n");
+            if (strata::kernels::native_nvfp4_prefill_w4a16())
+                std::fprintf(stderr, "[prefill-only] W4A16: temporary BF16 expert weights and activations, "
+                                     "cuBLAS BF16 Tensor Core GEMM with FP32 accumulation; original decode/MTP/KV retained\n");
+            else
+                std::fprintf(stderr, "[prefill-only] NVFP4 Tensor Core experts and BF16 prefill projections; "
+                                     "original decode, MTP and KV attention retained\n");
         }
         o.mmap_experts = true; // reuse the resident ExpertSource and dispatch interface
         o.resident_cpu_experts = true; // fully resident at load; reuse the adaptive scheduler
@@ -8933,7 +8937,8 @@ int strata_main(int argc, char** argv) {
                     if (gpu_order && std::strcmp(gpu_order,"1")==0)
                         c.switches.emplace_back("native_nvfp4_cpu_gpu_order",1);
                     if (prefill_nvfp4_tc)
-                        c.switches.emplace_back("native_nvfp4_prefill_only_w4a4_bf16",1);
+                        c.switches.emplace_back(strata::kernels::native_nvfp4_prefill_w4a16() ?
+                            "native_nvfp4_prefill_only_w4a16_bf16" : "native_nvfp4_prefill_only_w4a4_bf16",1);
                     if (bf16_kv_tc)
                         c.switches.emplace_back("native_bf16_kv_tc_qk_pv",1);
                     const char* one_commit = std::getenv("STRATA_ONE_TOKEN_COMMIT");

@@ -19,17 +19,24 @@ inline Nvfp4PrefillBackend nvfp4_prefill_backend() {
     }();
     return backend;
 }
+inline bool native_nvfp4_prefill_w4a16() {
+    static const bool enabled = [] {
+        const char* v = std::getenv("STRATA_PREFILL_NVFP4");
+        return v && std::strcmp(v, "w4a16") == 0;
+    }();
+    return enabled;
+}
 // This selector is consumed ONLY by prefill and its startup/session identity.
 // It never changes the CPU expert format, decode, MTP or KV attention dispatch.
 // Immutable for graph/workspace lifetimes. Unset and w4a8 keep the old path.
 inline bool native_nvfp4_prefill_enabled() {
     static const bool enabled = [] {
         const char* v = std::getenv("STRATA_PREFILL_NVFP4");
-        if (!v || std::strcmp(v, "w4a4") != 0) return false;
+        if (!v || (std::strcmp(v, "w4a4") != 0 && std::strcmp(v, "w4a16") != 0)) return false;
 #if !defined(STRATA_NVFP4_PREFILL_BUILT) || defined(STRATA_USE_HIP)
-        throw std::runtime_error("W4A4 prefill needs -DSTRATA_NVFP4_PREFILL=ON on CUDA SM120");
+        throw std::runtime_error("W4A4/W4A16 prefill needs -DSTRATA_NVFP4_PREFILL=ON on CUDA SM120");
 #else
-        (void) nvfp4_prefill_backend();
+        if (!native_nvfp4_prefill_w4a16()) (void) nvfp4_prefill_backend();
         return true;
 #endif
     }();

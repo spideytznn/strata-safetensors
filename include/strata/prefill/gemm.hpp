@@ -9,6 +9,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+#include "strata/kernels/nvfp4_tensor.hpp"
+#endif
 
 namespace strata::prefill {
 
@@ -39,6 +42,11 @@ public:
     /// BF16 weights, FP32 activations split into three BF16 components; no weight narrowing.
     void bf16_f32(const float* X, const uint16_t* W, float* Y, int64_t T, int64_t N, int64_t K,
                   int64_t ldy = 0);
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+    /// W4A16 expert prefill: temporary BF16 expansion, BF16 activations, FP32 GEMM output.
+    void nvfp4_w4a16(const kernels::NativeExpertLayout& layout, kernels::Nvfp4PrefillGroup group,
+                    const int32_t* tokens, const float* input, void* workspace, float* output);
+#endif
 
     /// Y = X . W^T with both in FP16 (bits).
     void f16(const uint16_t* X, const uint16_t* W, float* Y, int64_t T, int64_t N, int64_t K, int64_t ldy = 0,
