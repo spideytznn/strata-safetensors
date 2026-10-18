@@ -1,7 +1,7 @@
 param(
     [int]$Jobs = 2,
     [string[]]$Targets = @('strata', 'nvfp4_cutlass_test', 'native_bf16_attention_test', 'conversation_cache_test', 'conversation_memory_test', 'conversation_snapshot_test', 'native_prefill_policy_test', 'native_prefill_policy_unbuilt_test', 'slot_commit_layers_test'),
-    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$OutputName = 'strata-classic-bf16-kv-slotcommit',
+    [ValidatePattern('^[A-Za-z0-9_-]+$')][string]$OutputName = 'strata-classic-bf16-kv-v0145',
     [string]$ToolDir = '',
     [string]$GgmlDir = '',
     [string]$CutlassDir = '',

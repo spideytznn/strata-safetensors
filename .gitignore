@@ -82,3 +82,5 @@ bench/results/2026-10-11-upstream-v0142/serial-mtp/**/session.bin
 /bench/results/classic-bf16-kv-20261014/*-prepared/
 /bench/results/prefill-only-port-20261014/*-prepared/
 /bench/results/desktop-prefill-tc-cleanup-20261014/server-tests.txt
+# local Windows HIP packaging output
+dist-hip/

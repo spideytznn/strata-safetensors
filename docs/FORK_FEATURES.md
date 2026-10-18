@@ -1,8 +1,8 @@
 # 当前分支与官方的维护边界
 
-核对日期：2026-10-14。官方基线为 v0.1.44.1（`296b59d2`）。
+核对日期：2026-10-18。官方基线为 v0.1.45（`477ac13c`）。
 维护分支为 `main`；当前仅保留新版 prefill / BF16 KV 单路与双路桌面入口。
-已合并上游 0.1.44.1，保留原始权重路径，尾部专家跳过关闭；见 [升级说明](UPSTREAM_0144.md)。
+已合并上游 0.1.45，保留原始权重路径，尾部专家跳过关闭；见 [升级说明](UPSTREAM_0145.md)。
 此次以桌面实际使用的两个入口为范围，清理未使用的分支扩展；
 官方原有功能继续保留。具体删除与验收见 [桌面范围整理](DESKTOP_SCOPE.md)。
 
@@ -32,11 +32,11 @@ v0.1.43.1 的槽位拒绝重试、工具结束符解析、取消图片准备、�
 
 | 桌面入口 | 配置 | MTP | 显存预留 | 文件温度 |
 |---|---|---|---|---|
-| `Start-Strata-Safetensors.bat` | [single](../config/native/rtx5090-262k-prefill-tc-bf16.json) | native / spec 3 / min-p 0.5 | 1536 MiB | 0.7 |
-| `Start-Strata-Safetensors-Parallel.bat` | [parallel](../config/native/rtx5090-262k-prefill-tc-bf16-parallel.json) | native / batch-mtp / spec 3 / min-p 0.5 | 1536 MiB | 0.7 |
+| `Start-Strata-Safetensors.bat` | [single](../config/native/rtx5090-262k-prefill-tc-bf16.json) | native / spec 3 / min-p 0.5 | 1536 MiB | 1.0 |
+| `Start-Strata-Safetensors-Parallel.bat` | [parallel](../config/native/rtx5090-262k-prefill-tc-bf16-parallel.json) | native / batch-mtp / spec 3 / min-p 0.5 | 1536 MiB | 1.0 |
 
-单路使用 `strata-classic-bf16-kv-slotcommit.exe`，`STRATA_COMMIT_BATCH=0`；
-双路使用恢复后的 `strata-classic-bf16-kv-v0144.exe`，未启用 `STRATA_SLOT_COMMIT_BATCH`。
+单路使用 `strata-classic-bf16-kv-v0145.exe`，`STRATA_COMMIT_BATCH=0`；
+双路使用 `strata-classic-bf16-kv-v0145.exe`，未启用 `STRATA_SLOT_COMMIT_BATCH`。
 均为 262144 总窗口、8192 prefill、BF16 KV Tensor Core、GPU 视觉、会话缓存、
 Host 头不限及 `127.0.0.1:8880`。
 两份桌面配置均为 `STRATA_ROUTE_TAIL_SKIP=0`，通用默认也为 0。
@@ -49,7 +49,7 @@ PCIe share 为 0.25，保留交换重叠、连续 prefill 和会话分支保护�
   Q8 MTP 投影、精简 draft 词表和旧试验配置不在当前维护路径。
   原生双路 MTP 后按用户要求重新适配官方 slot verifier：共享权重、独立 KV 与图片位置，
   每路最多一枚草稿，支持逐请求置信度截断及可选异步草稿提交；
-  桌面双路根据本日温度 0.7 / 思考模式对照启用共享 MTP，异步草稿默认不开。
+  桌面双路根据先前温度 0.7 / 思考模式对照启用共享 MTP，异步草稿默认不开。
 - 移除本分支旧 NVFP4 GGUF 转换、重数量化、便携包发布/更新代码及闲置配置/入口。
   官方安装器、打包工具及对应测试/词表恢复官方版本。
 - 连续批处理、共享前缀页、ragged prefill 和统一调度实验此前已回退，此次未重新加入。

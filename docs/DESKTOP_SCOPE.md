@@ -1,4 +1,4 @@
-# 当前桌面维护范围：2026-10-14
+# 当前桌面维护范围：2026-10-18
 
 桌面只保留两条 safetensors 启动链：
 
@@ -10,17 +10,17 @@
 两者使用 W4A4/CUTLASS prefill、
 8192 行工作区、BF16 KV Tensor Core、262144 上下文、原专家 decode 和调度、视觉，
 监听 `127.0.0.1:8880`，模型名 `Qwen3.8-Flash-Next-NVFP4-Native`。
-单路使用 `strata-classic-bf16-kv-slotcommit.exe`，`parallel=1`，
+单路使用 `strata-classic-bf16-kv-v0145.exe`，`parallel=1`，
 显式设置 `STRATA_COMMIT_BATCH=0`，关闭上游单路 GDN/QSA 层合并提交。
-双路使用恢复后的 `strata-classic-bf16-kv-v0144.exe`，`parallel=2`，
+双路使用 `strata-classic-bf16-kv-v0145.exe`，`parallel=2`，
 额外开启 `--batch-mtp`；未设置 `STRATA_SLOT_COMMIT_BATCH`，不启用本地层合并提交。
 提交优化的历史测量见 [双路提交验证](../bench/results/slot-commit-batch-20261014/README.md)，
 不代表当前启用设置。
 两者均为 `--mtp native --spec 3 --spec-min-p 0.5`，suffix drafting 关闭。
 并发 verifier 每路最多一枚 MTP 草稿；`spec=3` 不等于并发每路三枚草稿。
 
-已合并上游 0.1.44.1；两份配置均关闭 `STRATA_ROUTE_TAIL_SKIP`，计算全部路由专家。
-保留原始 MTP 权重；arena 与 MTP 差别见 [升级说明](UPSTREAM_0144.md)。
+已合并上游 0.1.45；两份配置均关闭 `STRATA_ROUTE_TAIL_SKIP`，计算全部路由专家。
+保留原始 MTP 权重；arena 与 MTP 差别见 [升级说明](UPSTREAM_0145.md)。
 单路 `STRATA_NATIVE_PREFILL_OVERLAP=0`，因为该实现依赖并发独立 KV。
 双路保持 `STRATA_NATIVE_PREFILL_OVERLAP=1`，重叠 prefill 与已有请求的 decode。
 两者均保留 `STRATA_ADAPT_OVERLAP=1` 专家拷贝重叠，未选择独立的 `--adapt-async 1` 后台调度。

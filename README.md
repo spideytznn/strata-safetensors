@@ -4,8 +4,8 @@
 
 [中文说明](README.zh-CN.md) · [Runtime details](docs/SAFETENSORS_NATIVE.md) · [Measurements](bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/README.md) · [Upstream Strata](https://github.com/Niko1221/Strata)
 
-Upstream v0.1.44.1 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
-See [integration and validation scope](docs/UPSTREAM_0144.md) and the
+Upstream v0.1.45 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
+See [integration and validation scope](docs/UPSTREAM_0145.md) and the
 [fork feature inventory / local profile snapshot](docs/FORK_FEATURES.md).
 
 strata-safetensors adapts Strata's forward pass, expert scheduler and session cache
@@ -98,7 +98,7 @@ python -m venv .venv-native
 .\tools\build_safetensors_engine.ps1 -Jobs 2
 ```
 
-The helper builds `build-native-engine/strata-classic-bf16-kv-slotcommit.exe` with W4A4
+The helper builds `build-native-engine/strata-classic-bf16-kv-v0145.exe` with W4A4
 prefill, pinned CUTLASS and BF16 KV. It fetches CUTLASS into `build-deps/cutlass`;
 CMake fetches its pinned ggml unless `-GgmlDir` is supplied. It refuses to overwrite
 a running engine; use `-OutputName` to build a separate candidate.
@@ -123,7 +123,7 @@ Start one entry at a time. Open **http://127.0.0.1:8880** for chat; API clients 
 Ctrl+C stops the foreground server. Check `/health` and `/v1/models` for readiness.
 The runner binds localhost; configure an API key before exposing it externally.
 
-Both files default to temperature 0.7, top_p 0.95, top_k 20. Requests and persisted
+The local desktop configs currently use temperature 1.0, top_p 0.95, top_k 20. Requests and persisted
 web settings can override sampling. The template is Froggeric v22.5; output
 budget fitting is enabled. Model inputs are read-only. The measured expert RAM
 arena alone occupies **63.282 GiB**, excluding other weights, sessions and OS;

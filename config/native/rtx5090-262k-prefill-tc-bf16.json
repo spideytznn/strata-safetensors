@@ -1,5 +1,5 @@
 {
-  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-slotcommit.exe",
+  "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-classic-bf16-kv-v0145.exe",
   "args": [
     "--model",
     "G:\\moemodels\\Qwen3.8-flash-next-nvfp4",

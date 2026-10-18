@@ -1,8 +1,9 @@
 // src/prefill/gr_upmix_parity.cu - the hyper-connection read's fused up projection + mix (gr_upmix, STRATA_HC_UPMIX=1)
 // against the default pair (Gemm::bf16 - cuBLAS - writing `gated`, then gr_mix_r), on synthetic inputs of the model's
-// shapes (N = 2560, 4 streams, K = 320).  The fused GEMM sums K in another order than cuBLAS, so the outputs agree to
-// FP32 rounding, not bitwise: the check bounds max |diff| / max |value| of `mixed`, counts the BF16 images that differ,
-// and measures both against an FP64 reference on sampled tokens (the fused one must be as close to it as cuBLAS).
+// shapes (N = 2560, 4 streams, K = 320).  Where cuBLAS's kernel sums K in the fused kernel's order the outputs are the
+// same bits (CUDA 13.3 on an RTX 5090 from 33 tokens - the prompt path's default there); elsewhere FP32 rounding: the
+// check bounds max |diff| / max |value| of `mixed`, counts the BF16 / FP16 images that differ, and measures both
+// against an FP64 reference on sampled tokens (the fused one must be as close to it as cuBLAS).
 //   gr_upmix_parity            the checks (T = 1 .. 32768)
 //   gr_upmix_parity --bench    and the timings of the pair and the fused kernel at T = 2048 / 8192 / 32768
 #include "strata/prefill/gemm.hpp"
@@ -80,14 +81,13 @@ struct Inputs {
 
 struct Outputs {
     float* mixed;
-    uint16_t *bf, *lo, *h;
+    uint16_t *bf, *h;
     explicit Outputs(int64_t T) {
         mixed = dalloc<float>((size_t) T * N);
         bf = dalloc<uint16_t>((size_t) T * N);
-        lo = dalloc<uint16_t>((size_t) T * N);
         h = dalloc<uint16_t>((size_t) T * N);
     }
-    ~Outputs() { cudaFree(mixed); cudaFree(bf); cudaFree(lo); cudaFree(h); }
+    ~Outputs() { cudaFree(mixed); cudaFree(bf); cudaFree(h); }
 };
 
 // mixed[t][d] in FP64 from the same BF16 inputs (the exact result both GPU paths round)
@@ -108,26 +108,30 @@ int check(strata::prefill::Gemm& gm, cudaStream_t st, float* gated, int64_t T, u
     Inputs in(T, seed);
     Outputs ref(T), got(T);
     gm.bf16(in.d_lo16, in.d_wu, gated, T, D, LR);
-    strata::prefill::gr_mix_r(in.d_R, in.d_rs, in.d_w, gated, ref.mixed, ref.bf, T, st, ref.h, ref.lo);
-    if (!strata::prefill::gr_upmix(in.d_lo16, in.d_wu, in.d_R, in.d_rs, in.d_w, got.mixed, got.bf, got.h, T, st, got.lo)) {
+    strata::prefill::gr_mix_r(in.d_R, in.d_rs, in.d_w, gated, ref.mixed, ref.bf, T, st, ref.h);
+    if (!strata::prefill::gr_upmix(in.d_lo16, in.d_wu, in.d_R, in.d_rs, in.d_w, got.mixed, got.bf, got.h, T, st)) {
         std::printf("FAIL T=%lld: gr_upmix refused (needs CUDA sm_80+)\n", (long long) T);
         return 1;
     }
     if (!ck(cudaStreamSynchronize(st), "run")) return 1;
     const size_t n = (size_t) T * N;
     std::vector<float> a(n), b(n);
-    std::vector<uint16_t> abf(n), bbf(n);
+    std::vector<uint16_t> abf(n), bbf(n), ah(n), bh(n);
     cudaMemcpy(a.data(), ref.mixed, n * 4, cudaMemcpyDeviceToHost);
     cudaMemcpy(b.data(), got.mixed, n * 4, cudaMemcpyDeviceToHost);
     cudaMemcpy(abf.data(), ref.bf, n * 2, cudaMemcpyDeviceToHost);
     cudaMemcpy(bbf.data(), got.bf, n * 2, cudaMemcpyDeviceToHost);
+    cudaMemcpy(ah.data(), ref.h, n * 2, cudaMemcpyDeviceToHost);
+    cudaMemcpy(bh.data(), got.h, n * 2, cudaMemcpyDeviceToHost);
     double md = 0, mv = 0;
-    size_t bf_diff = 0, nonfinite = 0;
+    size_t bf_diff = 0, h_diff = 0, bit_diff = 0, nonfinite = 0;
     for (size_t i = 0; i < n; ++i) {
         if (!std::isfinite(b[i])) ++nonfinite;
         md = std::max(md, (double) std::fabs(a[i] - b[i]));
         mv = std::max(mv, (double) std::fabs(a[i]));
         bf_diff += abf[i] != bbf[i];
+        h_diff += ah[i] != bh[i];
+        bit_diff += std::memcmp(&a[i], &b[i], 4) != 0;
     }
     // FP64 on sampled tokens: each path's max |error| / max |value|
     std::mt19937 g(seed ^ 0x5a5a);
@@ -144,9 +148,10 @@ int check(strata::prefill::Gemm& gm, cudaStream_t st, float* gated, int64_t T, u
     }
     const double rel = md / std::max(mv, 1e-30);
     const bool bad = nonfinite != 0 || rel > 1e-5 || eb > 2.0 * ea + 1e-6 * ev;
-    std::printf("%s T=%-6lld mixed max |diff| / max |value| %.2e, BF16 images differing %.4f%%; vs FP64 (sampled): "
-                "cuBLAS + mix %.2e, fused %.2e\n", bad ? "FAIL" : "ok  ", (long long) T, rel,
-                100.0 * (double) bf_diff / (double) n, ea / ev, eb / ev);
+    std::printf("%s T=%-6lld %s mixed max |diff| / max |value| %.2e, BF16 / FP16 images differing %.4f%% / %.4f%%; "
+                "vs FP64 (sampled): cuBLAS + mix %.2e, fused %.2e\n", bad ? "FAIL" : "ok  ", (long long) T,
+                bit_diff == 0 && bf_diff == 0 && h_diff == 0 ? "bitwise " : "        ", rel,
+                100.0 * (double) bf_diff / (double) n, 100.0 * (double) h_diff / (double) n, ea / ev, eb / ev);
     return bad ? 1 : 0;
 }
 
@@ -167,7 +172,7 @@ void bench(strata::prefill::Gemm& gm, cudaStream_t st, float* gated, int64_t T) 
         for (int k = 0; k < 2; ++k) {
             if ((k == 0) == fused_first) {
                 cudaEventRecord(e0, st);
-                strata::prefill::gr_upmix(in.d_lo16, in.d_wu, in.d_R, in.d_rs, in.d_w, o.mixed, o.bf, o.h, T, st, o.lo);
+                strata::prefill::gr_upmix(in.d_lo16, in.d_wu, in.d_R, in.d_rs, in.d_w, o.mixed, o.bf, o.h, T, st);
                 cudaEventRecord(e1, st);
                 cudaEventSynchronize(e1);
                 float ms;
@@ -179,7 +184,7 @@ void bench(strata::prefill::Gemm& gm, cudaStream_t st, float* gated, int64_t T) 
                 cudaEventRecord(e0, st);
                 gm.bf16(in.d_lo16, in.d_wu, gated, T, D, LR);
                 cudaEventRecord(em, st);
-                strata::prefill::gr_mix_r(in.d_R, in.d_rs, in.d_w, gated, o.mixed, o.bf, T, st, o.h, o.lo);
+                strata::prefill::gr_mix_r(in.d_R, in.d_rs, in.d_w, gated, o.mixed, o.bf, T, st, o.h);
                 cudaEventRecord(e1, st);
                 cudaEventSynchronize(e1);
                 float ms, msg;
@@ -203,6 +208,14 @@ void bench(strata::prefill::Gemm& gm, cudaStream_t st, float* gated, int64_t T) 
 }  // namespace
 
 int main(int argc, char** argv) {
+    {   // the fused read is sm_80+ (cp.async, BF16 mma): an older card has nothing to compare
+        int dev = 0, major = 0;
+        if (cudaGetDevice(&dev) != cudaSuccess || cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev) != cudaSuccess) {
+            std::printf("gr_upmix_parity: no CUDA device, skipped\n");
+            return 77;
+        }
+        if (major < 8) { std::printf("gr_upmix_parity: sm_%d0, the fused read needs sm_80+: skipped\n", major); return 77; }
+    }
     const bool do_bench = argc > 1 && std::string(argv[1]) == "--bench";
     cudaStream_t st = nullptr;
     if (!ck(cudaStreamCreate(&st), "stream")) return 1;

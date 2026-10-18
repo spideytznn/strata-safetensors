@@ -157,7 +157,7 @@ void full_session(int fmt, int mode, int experts) {
         target.alloc(target.state.idx_tail, sizes.tail); target.alloc(target.state.idx_dead, sizes.dead);
         target.alloc(target.state.idx_block_pos, sizes.block_pos);
         target.fill(91);
-        check(conversation_checkpoint_copy(ss, dst, g, ids, err), "direct running-state copy");
+        check(conversation_checkpoint_copy(ss, dst, ids, g, err, true), "direct running-state copy");
         check(conversation_kv_copy(main.state, target.state, g, ids.size(), true, err), "direct session K/V copy");
         cuda_check(cudaDeviceSynchronize());
         ConversationCheckpoint got;
@@ -215,6 +215,37 @@ void full_session(int fmt, int mode, int experts) {
           restored.live.dead==a.live.dead && restored.live.block_pos==a.live.block_pos &&
           equal(restored.kv[0],a.kv[0]) && equal(restored.kv[1],a.kv[1]),"whole-session A/B/A exactness including spare key");
     check(ss.ple_prev[0]==64 && ss.ple_prev[1]==65,"PLE token window reconstructed");
+    {
+        // a borrowed prefix (ConversationCache::borrows): the K/V of A's first tokens and A's checkpoint there, A
+        // untouched - the same bytes as restoring A whole and rewinding to that checkpoint
+        const int64_t at = (int64_t) a.checkpoints[0].ids.size();
+        check(conversation_snapshot_restore(a,ss,g,draft.state,err)==ConversationRestore::restored,"restore A whole");
+        check(conversation_checkpoint_restore(a.checkpoints[0],ss,g,err),"rewind it to its checkpoint");
+        ConversationKv want_main,want_draft,got_main,got_draft;
+        ConversationCheckpoint want_state,got_state;
+        want_state.ids=got_state.ids=a.checkpoints[0].ids;
+        check(conversation_kv_save(want_main,main.state,g,at,true,err) &&
+              conversation_kv_save(want_draft,draft.state,g,at,false,err) &&
+              conversation_checkpoint_save(want_state,ss,g,err),"capture the rewound prefix");
+        fill(201);   // another conversation in the session
+        const SavedConversation untouched=a;
+        check(conversation_snapshot_restore_prefix(a,(int64_t)a.live.ids.size()+1,ss,g,draft.state,err)==
+                  ConversationRestore::invalid &&
+              conversation_snapshot_restore_prefix(a,0,ss,g,draft.state,err)==ConversationRestore::invalid,
+              "a prefix outside the image is refused");
+        check(conversation_snapshot_restore_prefix(a,at,ss,g,draft.state,err)==ConversationRestore::restored,
+              "restore A's prefix only");
+        check(conversation_checkpoint_restore(a.checkpoints[0],ss,g,err),"mount the checkpoint over it");
+        check(conversation_kv_save(got_main,main.state,g,at,true,err) &&
+              conversation_kv_save(got_draft,draft.state,g,at,false,err) &&
+              conversation_checkpoint_save(got_state,ss,g,err),"capture the borrowed prefix");
+        check(equal(got_main,want_main) && equal(got_draft,want_draft),
+              "borrowed K/V equals the whole restore's prefix");
+        check(got_state.gdn==want_state.gdn && got_state.ple==want_state.ple && got_state.tails==want_state.tails &&
+              got_state.dead==want_state.dead && got_state.block_pos==want_state.block_pos,"the same running state");
+        check(untouched.live.ids==a.live.ids && equal(untouched.kv[0],a.kv[0]) && equal(untouched.kv[1],a.kv[1]),
+              "the parked image is unchanged");
+    }
     for (int64_t dirty : {65, 3, 0}) {
         check(conversation_snapshot_restore(a,ss,g,draft.state,err)==ConversationRestore::restored,"restore growth fixture base");
         ConversationKvReuse reuse{a.kv,65,dirty};

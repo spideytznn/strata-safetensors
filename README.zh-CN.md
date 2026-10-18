@@ -1,7 +1,7 @@
 # strata-safetensors
 
-已合入上游 v0.1.44.1，`STRATA_ROUTE_TAIL_SKIP` **默认关闭**，保留所有路由专家的贡献。
-合并取舍与验证范围见[集成说明](docs/UPSTREAM_0144.md)。
+已合入上游 v0.1.45，`STRATA_ROUTE_TAIL_SKIP` **默认关闭**，保留所有路由专家的贡献。
+合并取舍与验证范围见[集成说明](docs/UPSTREAM_0145.md)。
 
 **在单张 GPU 和系统内存上，直接运行原始 NVIDIA NVFP4 safetensors 格式的 Qwen3.8-Flash-Next。**
 
@@ -78,14 +78,14 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 .\tools\build_safetensors_engine.ps1 -Jobs 2
 ```
 
-只保留两个原生启动入口，均使用 `build-native-engine/strata-classic-bf16-kv-slotcommit.exe`：
+只保留两个原生启动入口，均使用 `build-native-engine/strata-classic-bf16-kv-v0145.exe`：
 
 - 单路：`START-NATIVE-262K-PREFILL-TC-BF16.bat`，配置 [single](config/native/rtx5090-262k-prefill-tc-bf16.json)。
 - 两路：`START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat`，配置 [parallel](config/native/rtx5090-262k-prefill-tc-bf16-parallel.json)。
 
 两者均为 262144 上下文、8192 prefill、BF16 KV、native MTP / spec 3 / min-p 0.5，
 1536 MiB 显存预留、视觉及原专家调度。双路额外启用 `--batch-mtp`，每路最多一枚草稿。
-两份文件的温度均为 0.7，top_p 0.95、top_k 20；客户端参数和网页设置可以覆盖默认值。
+本机两份文件的温度均为 1.0，top_p 0.95、top_k 20；客户端参数和网页设置可以覆盖默认值。
 桌面单路/多路脚本分别调用上述入口。旧试验入口已删除。
 
 配置含本机路径，其他机器需要修改模型、程序、tokenizer、模板及视觉资源路径。
