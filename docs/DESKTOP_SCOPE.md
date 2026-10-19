@@ -1,4 +1,25 @@
-# 当前桌面维护范围：2026-10-18
+# 当前桌面维护范围：2026-10-19
+
+现役桌面仅保留以下两个入口，两者监听 `127.0.0.1:8880`：
+
+| 桌面入口 | 仓库脚本 | 配置 |
+|---|---|---|
+| `Start-Strata-FP4Local-Parallel.bat` | `START-FP4LOCAL-PARALLEL.bat` | `config/native/rtx5090-fp4local-parallel.json` |
+| `Start-Strata-FP4Local-NVIDIA-W4A4.bat` | `START-FP4LOCAL-NVIDIA-W4A4.bat` | `config/native/rtx5090-fp4local-nvidia-w4a4.json` |
+
+两者为双路、MTP spec/max-t 3、8192 prefill、BF16 KV、自动专家缓存、
+冷热专家换入 4/96 和 PCIe fraction 0。停放会话预算为 2048 MiB、4 槽。
+稳定入口与 W4A4 实验入口使用独立程序；W4A4 尚未完成质量评估，
+CPU/GPU 专家分配改变贪心输出的限制仍保留。参见
+[稳定版](FP4_LOCAL_STABLE.md)与[实验版](FP4_LOCAL_NVIDIA_W4A4.md)。
+
+本机已删除旧 NVFP4 单路/双路桌面及仓库启动脚本、Windows Infernix 框架和
+`G:/moeModel` 中的 Infernix 模型。保留原始 safetensors 权重、旧 NVFP4 配置和程序、
+视觉文件、共享开发依赖以及 `outputs/` 中的实验验收和未解决状态差异证据。
+清理了未跟踪的历史二进制快照、旧 exe/PDB 和不再供当前配置使用的转换数据；
+本机逐文件清单保存在忽略目录 `outputs/storage-audit-20261019/`。
+
+## 2026-10-18 维护记录（旧桌面入口已退役）
 
 桌面只保留两条 safetensors 启动链：
 

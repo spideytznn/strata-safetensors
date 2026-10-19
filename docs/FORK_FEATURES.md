@@ -1,5 +1,11 @@
 # 当前分支与官方的维护边界
 
+2026-10-19 桌面整理：当前入口为 `Start-Strata-FP4Local-Parallel.bat` 与
+`Start-Strata-FP4Local-NVIDIA-W4A4.bat`；下文 2026-10-18 的旧桌面入口已移除。
+现役参数与稳定/实验边界以 [DESKTOP_SCOPE.md](DESKTOP_SCOPE.md)、
+[FP4_LOCAL_STABLE.md](FP4_LOCAL_STABLE.md) 和
+[FP4_LOCAL_NVIDIA_W4A4.md](FP4_LOCAL_NVIDIA_W4A4.md) 为准。
+
 核对日期：2026-10-18。官方基线为 v0.1.45（`477ac13c`）。
 维护分支为 `main`；当前仅保留新版 prefill / BF16 KV 单路与双路桌面入口。
 已合并上游 0.1.45，保留原始权重路径，尾部专家跳过关闭；见 [升级说明](UPSTREAM_0145.md)。

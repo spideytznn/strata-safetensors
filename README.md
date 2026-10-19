@@ -107,19 +107,25 @@ a running engine; use `-OutputName` to build a separate candidate.
 
 | Entry | Config | Slots |
 |---|---|---:|
-| `START-NATIVE-262K-PREFILL-TC-BF16.bat` | [single](config/native/rtx5090-262k-prefill-tc-bf16.json) | 1 |
-| `START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat` | [parallel](config/native/rtx5090-262k-prefill-tc-bf16-parallel.json) | 2 |
+| `START-FP4LOCAL-PARALLEL.bat` | [stable FP4-Local](config/native/rtx5090-fp4local-parallel.json) | 2 |
+| `START-FP4LOCAL-NVIDIA-W4A4.bat` | [experimental W4A4](config/native/rtx5090-fp4local-nvidia-w4a4.json) | 2 |
 
 These deployment-specific configs contain Windows paths; adapt model, executable,
-tokenizer, template and vision asset paths on another PC. Both select 262144
+tokenizer and template paths on another PC. Both select 262144
 context, 8192 prefill, BF16 KV, native MTP (`spec=3`, confidence 0.5), 1536 MiB
-VRAM reserve, vision and original expert scheduling. The two-slot config also
-sets `--batch-mtp`; each concurrent slot can propose one MTP draft.
-The single and parallel desktop BAT files call these entries. Old trial entries
-were removed. Upstream generic setup and the config generator remain available.
+VRAM reserve, automatic expert caching and adaptive promotion. Both set
+`--batch-mtp` and PCIe fraction 0. The stable entry uses FP32 expert decode;
+the experiment enables FP4 activations on CPU and GPU. These FP4-Local profiles
+do not enable vision. Old single/parallel NVFP4 desktop launchers were retired
+on 2026-10-19; their configurations and executable remain for developer use.
+Upstream generic setup and the config generator remain available.
+
+The experiment has not completed a model-quality evaluation, and greedy output
+can change with CPU/GPU expert placement. See the [stable baseline](docs/FP4_LOCAL_STABLE.md)
+and [experimental limitations](docs/FP4_LOCAL_NVIDIA_W4A4.md).
 
 Start one entry at a time. Open **http://127.0.0.1:8880** for chat; API clients use
-**http://127.0.0.1:8880/v1**, model `Qwen3.8-Flash-Next-NVFP4-Native`.
+**http://127.0.0.1:8880/v1**, model `Qwen3.8-Flash-Next-FP4-Local`.
 Ctrl+C stops the foreground server. Check `/health` and `/v1/models` for readiness.
 The runner binds localhost; configure an API key before exposing it externally.
 
