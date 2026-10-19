@@ -115,8 +115,10 @@ tokenizer and template paths on another PC. Both select 262144
 context, 8192 prefill, BF16 KV, native MTP (`spec=3`, confidence 0.5), 1536 MiB
 VRAM reserve, automatic expert caching and adaptive promotion. Both set
 `--batch-mtp` and PCIe fraction 0. The stable entry uses FP32 expert decode;
-the experiment enables FP4 activations on CPU and GPU. These FP4-Local profiles
-do not enable vision. Old single/parallel NVFP4 desktop launchers were retired
+the experiment enables FP4 activations on CPU and GPU. Both FP4-Local profiles
+enable the existing GPU BF16 image encoder, with up to 1024 tokens per picture.
+The encoder starts before the engine sizes its expert cache. FP4-Local's own
+quantized vision tensors are not used. Old single/parallel NVFP4 desktop launchers were retired
 on 2026-10-19; their configurations and executable remain for developer use.
 Upstream generic setup and the config generator remain available.
 

@@ -2,6 +2,7 @@
 title Strata FP4-Local - EXPERIMENTAL NVIDIA W4A4 - 8880
 echo EXPERIMENTAL: FP4 Tensor Core expert decode; 2 concurrent requests; prefill 8192.
 echo CPU AVX512 W4A4 for cold experts; GPU FP4 Tensor Cores for hot experts. Experimental.
+echo GPU vision: ON, BF16 encoder, image token cap 1024.
 echo Experimental: greedy output can change when experts move between CPU and GPU.
 echo Stop the stable server before starting this one.
 echo Web UI: http://127.0.0.1:8880

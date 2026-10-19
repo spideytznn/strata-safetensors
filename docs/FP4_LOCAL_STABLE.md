@@ -9,6 +9,11 @@ batch MTP, spec/max-t 3, confidence 0.5, prefill 8192, BF16 KV, automatic
 expert cache, adaptive exchange every 4 windows with up to 96 promotions,
 and PCIe fraction 0. The profile contains this machine's absolute paths.
 
+The current local profile additionally enables the existing GPU BF16 vision
+encoder (`--vision`, 1024 tokens per picture). This deployment change is newer
+than the frozen tag; the stable executable is unchanged. The FP4-Local
+checkpoint's quantized vision tensors are not executed.
+
 Validated engine SHA256:
 `7e955d7d7c67fee0a5b922b99d87bf29c419e38a304f4e9babdfe870efa4bc62`.
 The executable and model weights are local build/deployment artifacts, not

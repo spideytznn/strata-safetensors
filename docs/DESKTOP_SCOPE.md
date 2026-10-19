@@ -9,6 +9,8 @@
 
 两者为双路、MTP spec/max-t 3、8192 prefill、BF16 KV、自动专家缓存、
 冷热专家换入 4/96 和 PCIe fraction 0。停放会话预算为 2048 MiB、4 槽。
+两个入口均开启 GPU BF16 视觉编码器，每张图片最多 1024 tokens；
+编码器先常驻，再为语言模型计算自动专家缓存容量。
 稳定入口与 W4A4 实验入口使用独立程序；W4A4 尚未完成质量评估，
 CPU/GPU 专家分配改变贪心输出的限制仍保留。参见
 [稳定版](FP4_LOCAL_STABLE.md)与[实验版](FP4_LOCAL_NVIDIA_W4A4.md)。

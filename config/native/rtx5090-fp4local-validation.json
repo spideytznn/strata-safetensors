@@ -43,7 +43,8 @@
     "--pool-tasks",
     "40",
     "--mtp-max-t",
-    "3"
+    "3",
+    "--vision"
   ],
   "cwd": "G:\\Strata\\Strata-Safetensors",
   "log": "logs/fp4local-validation.log",
@@ -107,5 +108,13 @@
     "presence_penalty": 0.0,
     "repetition_penalty": 1.0
   },
-  "parallel": 1
+  "parallel": 1,
+  "vision": {
+    "exe": "G:\\Strata\\Strata-Safetensors\\build-native-engine\\strata-vision.exe",
+    "mmproj": "G:\\Strata\\Strata-data\\vision\\mmproj-Qwen3.8-Flash-Next-BF16.gguf",
+    "model": "G:\\Strata\\Strata-data\\vision\\qwen3.8-flash-next-vision-vocab.gguf",
+    "gpu": true,
+    "max_tokens": 1024,
+    "threads": 16
+  }
 }

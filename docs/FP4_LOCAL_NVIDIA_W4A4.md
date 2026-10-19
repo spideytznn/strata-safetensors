@@ -73,6 +73,9 @@ Entry: `START-FP4LOCAL-NVIDIA-W4A4.bat`, localhost port 8880. Stop the
 stable service before using the experimental entry.
 The stable launcher and executable remain available separately. The profile
 uses two slots, MTP spec/max-t 3, prefill 8192 and adaptive exchange 4/96.
+The profile also enables the existing GPU BF16 vision encoder, with at most
+1024 tokens per picture. It starts before automatic expert-cache sizing;
+the main-model W4A4 experiment does not change the image encoder arithmetic.
 
 ## CPU/GPU kernel validation
 

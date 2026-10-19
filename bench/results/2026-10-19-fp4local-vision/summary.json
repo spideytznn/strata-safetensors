@@ -1,0 +1,170 @@
+{
+  "scope": "Functional image-input checks, not model-quality or throughput evaluation. Existing native_vision_smoke.py, with the desktop engine_args including --batch 2; private stdin, not HTTP. GPU vision loads before expert-cache sizing.",
+  "hardware": "Windows CUDA, RTX 5090 32GB, Ryzen 9950X3D, 96GB RAM",
+  "encoder": "Existing external BF16 encoder; FP4-Local quantized vision tensors are not executed.",
+  "profiles": {
+    "stable": {
+      "status": "pass",
+      "executable_sha256": "7e955d7d7c67fee0a5b922b99d87bf29c419e38a304f4e9babdfe870efa4bc62",
+      "requests": 8,
+      "batch_slots": 2,
+      "native_vision_slots": 1,
+      "expert_slots": 3629,
+      "expert_cache_mib": 9569,
+      "startup_free_vram_mib": 1665,
+      "prefill": 8192,
+      "results": [
+        {
+          "name": "red-cold-or-return",
+          "text": " red<|im_end|>",
+          "image_tokens": 49,
+          "reused": 0,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "red-warm",
+          "text": " red<|im_end|>",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "blue-cold-or-return",
+          "text": " blue<|im_end|>",
+          "image_tokens": 49,
+          "reused": 0,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "blue-warm",
+          "text": " blue<|im_end|>",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "red-cold-or-return",
+          "text": " red<|im_end|>",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "red-warm",
+          "text": " red<|im_end|>",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "text-after-images",
+          "text": "ZEBRA-417<|im_end|>",
+          "image_tokens": 0,
+          "reused": 0,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-official-thinking-sampling",
+          "text": "The user wants the single color word for the solid background. The image is uniformly bright red. I need to provide just one English color word, no extra text",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        }
+      ],
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      }
+    },
+    "w4a4": {
+      "status": "pass",
+      "executable_sha256": "29ca0b5b0bf3a7eff78f14d1079e018d8569c09923e93d1cb007994dd7d17f43",
+      "requests": 8,
+      "batch_slots": 2,
+      "native_vision_slots": 1,
+      "expert_slots": 3629,
+      "expert_cache_mib": 9569,
+      "startup_free_vram_mib": 1665,
+      "prefill": 8192,
+      "results": [
+        {
+          "name": "red-cold-or-return",
+          "text": " red<|im_end|>",
+          "image_tokens": 49,
+          "reused": 0,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "red-warm",
+          "text": " red<|im_end|>",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "blue-cold-or-return",
+          "text": " Blue<|im_end|>",
+          "image_tokens": 49,
+          "reused": 0,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "blue-warm",
+          "text": " Blue<|im_end|>",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "red-cold-or-return",
+          "text": " red<|im_end|>",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "red-warm",
+          "text": " red<|im_end|>",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "text-after-images",
+          "text": "ZEBRA-417<|im_end|>",
+          "image_tokens": 0,
+          "reused": 0,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        },
+        {
+          "name": "image-official-thinking-sampling",
+          "text": "The user wants the single dominant background color of the image. The image is a uniform fill. Looking at the pixels, they are saturated red (RGB around ",
+          "image_tokens": 49,
+          "reused": 71,
+          "file_blobs": 0,
+          "file_mb": 0.0
+        }
+      ],
+      "post_residency_source_bytes": {
+        "expert": 0,
+        "MTP": 0
+      }
+    }
+  },
+  "all_fp4local_configs_vision_enabled": true
+}

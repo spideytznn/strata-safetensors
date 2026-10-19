@@ -270,7 +270,19 @@ Only Windows/MSVC/CUDA was built here. HIP, SYCL and Metal toolchains were
 unavailable; shared PLE source lists include the added host reader.
 
 Vision continues to use the existing external BF16 encoder. This work does
-not execute the FP4-Local quantized vision tensors. NVFP4 PLE supports the
+not execute the FP4-Local quantized vision tensors. All four FP4-Local profiles
+(single, parallel, W4A4 experiment and validation) enable this GPU encoder with
+`--vision` and a 1024-token image limit. The encoder loads before automatic
+expert-cache sizing, so enabling images can reduce the resident expert count.
+Both desktop executables passed eight generated-image functional cases with
+their full 8192-prefill, two-slot arguments: red/blue recognition, warm image
+reuse, A/B/A image replacement, return to text and thinking-mode sampling.
+Both reported `native_vision_slots=1`, 3629 cached experts and 1665 MiB free
+VRAM at startup on this machine. This is not a peak-memory measurement or
+model-quality evaluation, and simultaneous image requests were not tested by
+this sequential smoke run. See
+[the recorded checks](../bench/results/2026-10-19-fp4local-vision/summary.json).
+NVFP4 PLE supports the
 split issue/collect and batch gather APIs; speculative row prefetch, SSD
 keepalive and the old per-file batch-reader tuning are not yet implemented
 for the new multi-file path. Its latency and memory use need measurement on
