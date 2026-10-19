@@ -4,9 +4,16 @@
 
 [中文说明](README.zh-CN.md) · [Runtime details](docs/SAFETENSORS_NATIVE.md) · [Measurements](bench/results/2026-10-10-safetensors-runtime/p16-speed-tuning/README.md) · [Upstream Strata](https://github.com/Niko1221/Strata)
 
-Upstream v0.1.45 is integrated with `STRATA_ROUTE_TAIL_SKIP` **off by default**.
-See [integration and validation scope](docs/UPSTREAM_0145.md) and the
-[fork feature inventory / local profile snapshot](docs/FORK_FEATURES.md).
+Upstream **v0.2.0-beta (engine 0.1.45.3)** is integrated. Original safetensors,
+BF16 KV, W4A4 prefill, two request slots and GPU vision are retained.
+`STRATA_ROUTE_TAIL_SKIP` stays off. See [upgrade notes and validation](docs/UPSTREAM_020_BETA.md).
+
+Run `START-APP-SAFETENSORS.bat` for the new application UI at
+**http://127.0.0.1:8891**. Its Models page includes the prepared stable and
+experimental FP4-Local profiles. Existing API/web launchers retain port 8880.
+The current local profiles temporarily disable MTP (`--spec 0`); this upgrade
+preserves that choice. The generic installer and automatic updater still target
+upstream GGUF packages; build this native engine from this fork.
 
 strata-safetensors adapts Strata's forward pass, expert scheduler and session cache
 to the original Hugging Face checkpoint. It keeps the checkpoint's expert codes
@@ -18,8 +25,7 @@ The validated deployment is **Windows + RTX 5090 32 GB + Ryzen 9950X3D + 96 GB R
 The maintained stable line is `main`; the executable and CLI retain the name `strata`.
 The current desktop deployment uses W4A4/CUTLASS prefill at 8192 tokens,
 BF16 KV Tensor Core attention and the original expert decode/scheduling backend.
-Both single-request and two-request entries enable native MTP; the latter also
-enables batch MTP. See [desktop scope](docs/DESKTOP_SCOPE.md),
+Native MTP remains available; the current two-request profiles keep it temporarily disabled. See [desktop scope](docs/DESKTOP_SCOPE.md),
 [prefill](docs/NVFP4_PREFILL_ONLY.md) and [BF16 KV](docs/CLASSIC_BF16_KV.md).
 Earlier validation records describe their own builds and settings.
 
@@ -98,7 +104,7 @@ python -m venv .venv-native
 .\tools\build_safetensors_engine.ps1 -Jobs 2
 ```
 
-The helper builds `build-native-engine/strata-classic-bf16-kv-v0145.exe` with W4A4
+The helper builds `build-native-engine/strata-safetensors-v020beta.exe` with W4A4
 prefill, pinned CUTLASS and BF16 KV. It fetches CUTLASS into `build-deps/cutlass`;
 CMake fetches its pinned ggml unless `-GgmlDir` is supplied. It refuses to overwrite
 a running engine; use `-OutputName` to build a separate candidate.
@@ -107,14 +113,14 @@ a running engine; use `-OutputName` to build a separate candidate.
 
 | Entry | Config | Slots |
 |---|---|---:|
-| `START-FP4LOCAL-PARALLEL.bat` | [stable FP4-Local](config/native/rtx5090-fp4local-parallel.json) | 2 |
-| `START-FP4LOCAL-NVIDIA-W4A4.bat` | [experimental W4A4](config/native/rtx5090-fp4local-nvidia-w4a4.json) | 2 |
+| `START-FP4LOCAL-PARALLEL.bat` | [stable FP4-Local](strata-fp4local-native.json) | 2 |
+| `START-FP4LOCAL-NVIDIA-W4A4.bat` | [experimental W4A4](strata-fp4local-w4a4-native.json) | 2 |
 
 These deployment-specific configs contain Windows paths; adapt model, executable,
 tokenizer and template paths on another PC. Both select 262144
-context, 8192 prefill, BF16 KV, native MTP (`spec=3`, confidence 0.5), 1536 MiB
-VRAM reserve, automatic expert caching and adaptive promotion. Both set
-`--batch-mtp` and PCIe fraction 0. The stable entry uses FP32 expert decode;
+context, 8192 prefill, BF16 KV, 1536 MiB VRAM reserve, automatic expert caching,
+adaptive promotion and PCIe fraction 0. The saved deployment currently uses
+`--spec 0` and `STRATA_BATCH_MTP=0`. The stable entry uses FP32 expert decode;
 the experiment enables FP4 activations on CPU and GPU. Both FP4-Local profiles
 enable the existing GPU BF16 image encoder, with up to 1024 tokens per picture.
 The encoder starts before the engine sizes its expert cache. FP4-Local's own

@@ -1,10 +1,13 @@
+Current deployment was upgraded on 2026-10-20; see [0.2.0-beta integration](UPSTREAM_020_BETA.md).
+The local profile keeps MTP temporarily off. The binary hashes and validation below describe the archived baseline.
+
 # FP4-Local stable checkpoint: 2026-10-19
 
 Tag: `fp4local-stable-20261019`. This freezes the user's accepted Windows
 RTX 5090 implementation before experimental NVIDIA-style decode work.
 
 Desktop entry: `START-FP4LOCAL-PARALLEL.bat`, localhost port 8880.
-Profile: `config/native/rtx5090-fp4local-parallel.json`; two slots, native
+Profile: `strata-fp4local-native.json`; two slots, native
 batch MTP, spec/max-t 3, confidence 0.5, prefill 8192, BF16 KV, automatic
 expert cache, adaptive exchange every 4 windows with up to 96 promotions,
 and PCIe fraction 0. The profile contains this machine's absolute paths.

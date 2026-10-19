@@ -1,11 +1,24 @@
+# 0.2.0-beta 升级：2026-10-20
+
+当前引擎：`build-native-engine/strata-safetensors-v020beta.exe`。
+稳定配置 `strata-fp4local-native.json`；实验配置 `strata-fp4local-w4a4-native.json`。
+原桌面两个 BAT 调用上述配置，仍监听 localhost:8880；新增
+`START-APP-SAFETENSORS.bat` 打开同版新界面的本地服务 localhost:8891。
+新界面加载模型时使用自己的受保护 API 端口，外部应用接旧 8880 入口或界面显示的地址。
+
+两份现役本机配置保持升级前的 `--spec 0`、`STRATA_BATCH_MTP=0`，MTP 暂时关闭；
+保留 8192 prefill、262144 配置窗口、BF16 KV、双路、GPU BF16 视觉及原采样参数。
+旧程序和升级前配置已保留以供回退。下面是历史维护记录；本次配置与验证以
+[升级说明](UPSTREAM_020_BETA.md)为准。
+
 # 当前桌面维护范围：2026-10-19
 
 现役桌面仅保留以下两个入口，两者监听 `127.0.0.1:8880`：
 
 | 桌面入口 | 仓库脚本 | 配置 |
 |---|---|---|
-| `Start-Strata-FP4Local-Parallel.bat` | `START-FP4LOCAL-PARALLEL.bat` | `config/native/rtx5090-fp4local-parallel.json` |
-| `Start-Strata-FP4Local-NVIDIA-W4A4.bat` | `START-FP4LOCAL-NVIDIA-W4A4.bat` | `config/native/rtx5090-fp4local-nvidia-w4a4.json` |
+| `Start-Strata-FP4Local-Parallel.bat` | `START-FP4LOCAL-PARALLEL.bat` | `strata-fp4local-native.json` |
+| `Start-Strata-FP4Local-NVIDIA-W4A4.bat` | `START-FP4LOCAL-NVIDIA-W4A4.bat` | `strata-fp4local-w4a4-native.json` |
 
 两者为双路、MTP spec/max-t 3、8192 prefill、BF16 KV、自动专家缓存、
 冷热专家换入 4/96 和 PCIe fraction 0。停放会话预算为 2048 MiB、4 槽。

@@ -1,7 +1,13 @@
 # strata-safetensors
 
-已合入上游 v0.1.45，`STRATA_ROUTE_TAIL_SKIP` **默认关闭**，保留所有路由专家的贡献。
-合并取舍与验证范围见[集成说明](docs/UPSTREAM_0145.md)。
+已合入上游 **v0.2.0-beta（引擎 0.1.45.3）**。保留原始 safetensors、BF16 KV、
+W4A4 prefill、双路请求与 GPU 视觉，`STRATA_ROUTE_TAIL_SKIP` 继续关闭。
+取舍与验证范围见[本次升级说明](docs/UPSTREAM_020_BETA.md)。
+
+新应用入口：`START-APP-SAFETENSORS.bat`，界面地址 **http://127.0.0.1:8891**；
+模型页可选已安装的稳定版和 W4A4 实验版。原桌面 API/网页入口继续使用 8880。
+本机配置暂时关闭 MTP（`--spec 0`），此次保留这个选择。通用安装器和自动更新器仍服务于
+官方 GGUF 包；原生引擎从本仓库构建。
 
 **在单张 GPU 和系统内存上，直接运行原始 NVIDIA NVFP4 safetensors 格式的 Qwen3.8-Flash-Next。**
 
@@ -15,8 +21,8 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 维护稳定线为 `main`，引擎程序和命令仍叫 `strata`。
 
 当前桌面使用 W4A4/CUTLASS 新版 prefill、8192 batch、BF16 KV Tensor Core，
-保留原专家 decode 与调度。单路和双路都启用 native MTP，双路另启用 batch MTP。
-只维护这两条入口，见[桌面维护范围](docs/DESKTOP_SCOPE.md)、
+保留原专家 decode 与调度。native MTP 功能保留，当前两份本机配置暂时关闭。
+当前入口见[桌面维护范围](docs/DESKTOP_SCOPE.md)、
 [prefill](docs/NVFP4_PREFILL_ONLY.md)及[BF16 KV](docs/CLASSIC_BF16_KV.md)。
 历史测试记录对应各自当时的程序和配置。
 
@@ -78,7 +84,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 .\tools\build_safetensors_engine.ps1 -Jobs 2
 ```
 
-只保留两个原生启动入口，均使用 `build-native-engine/strata-classic-bf16-kv-v0145.exe`：
+只保留两个原生启动入口，均使用 `build-native-engine/strata-safetensors-v020beta.exe`：
 
 - 单路：`START-NATIVE-262K-PREFILL-TC-BF16.bat`，配置 [single](config/native/rtx5090-262k-prefill-tc-bf16.json)。
 - 两路：`START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat`，配置 [parallel](config/native/rtx5090-262k-prefill-tc-bf16-parallel.json)。

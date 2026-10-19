@@ -1,3 +1,6 @@
+Current deployment was upgraded on 2026-10-20; see [0.2.0-beta integration](UPSTREAM_020_BETA.md).
+The local profile keeps MTP temporarily off. The binary hashes and validation below describe the archived baseline.
+
 # Experimental NVIDIA-style NVFP4 expert decode
 
 Stable baseline: tag `fp4local-stable-20261019` (`6fe2aca4`).
@@ -68,7 +71,7 @@ Build with the existing script and a separate output name:
 .\tools\build_safetensors_engine.ps1 -Targets strata,nvfp4_cutlass_test -OutputName strata-fp4local-w4a4-cpu
 ```
 
-Profile: `config/native/rtx5090-fp4local-nvidia-w4a4.json`.
+Profile: `strata-fp4local-w4a4-native.json`.
 Entry: `START-FP4LOCAL-NVIDIA-W4A4.bat`, localhost port 8880. Stop the
 stable service before using the experimental entry.
 The stable launcher and executable remain available separately. The profile
