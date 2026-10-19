@@ -78,6 +78,7 @@
     "STRATA_NVFP4_F32_REUSE_TILE": "4",
     "STRATA_NVFP4_F32_CANONICAL": "1",
     "STRATA_ONE_TOKEN_COMMIT": "0",
+    "STRATA_COMMIT_BATCH": "0",
     "STRATA_NATIVE_WARM_WEIGHTS": "1",
     "STRATA_NATIVE_KV_INDEPENDENT": "1",
     "STRATA_NATIVE_SLOT_COPY": "1",
@@ -98,7 +99,7 @@
     "*"
   ],
   "sampling": {
-    "temperature": 0.7,
+    "temperature": 1.0,
     "top_p": 0.95,
     "top_k": 20,
     "min_p": 0.0,
