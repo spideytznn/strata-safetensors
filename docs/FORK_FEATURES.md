@@ -1,10 +1,10 @@
 # 当前分支与官方的维护边界
 
-2026-10-19 桌面整理：当前入口为 `Start-Strata-FP4Local-Parallel.bat` 与
-`Start-Strata-FP4Local-NVIDIA-W4A4.bat`；下文 2026-10-18 的旧桌面入口已移除。
-现役参数与稳定/实验边界以 [DESKTOP_SCOPE.md](DESKTOP_SCOPE.md)、
-[FP4_LOCAL_STABLE.md](FP4_LOCAL_STABLE.md) 和
-[FP4_LOCAL_NVIDIA_W4A4.md](FP4_LOCAL_NVIDIA_W4A4.md) 为准。
+2026-10-20：已融合上游 v0.2.0-beta，保留原生引擎改造，默认权重切回原始 NVIDIA NVFP4。
+当前桌面入口为 `Start-Strata-NVFP4-Parallel.bat`，仓库配置为 `strata-nvfp4-native.json`；
+新应用入口为 `START-APP-SAFETENSORS.bat`。FP4-Local 退为归档实验，未证明质量更优。
+现役参数与验证以 [桌面范围](DESKTOP_SCOPE.md)和 [NVFP4 部署记录](NVFP4_DEPLOYMENT_020.md)为准。
+下文为 2026-10-18 的实现边界记录；可选 FP4-Local 支持另见历史实验文档。
 
 核对日期：2026-10-18。官方基线为 v0.1.45（`477ac13c`）。
 维护分支为 `main`；当前仅保留新版 prefill / BF16 KV 单路与双路桌面入口。

@@ -35,8 +35,7 @@ td.log
 /run-*.bat
 /run-*.sh
 /strata-*.json
-!/strata-fp4local-native.json
-!/strata-fp4local-w4a4-native.json
+!/strata-nvfp4-native.json
 /data/app-v020beta/
 /strata-*.log
 /safetensors-local/

@@ -1,3 +1,17 @@
+# 当前桌面维护范围：2026-10-20，回到原始 NVFP4
+
+现役引擎为 `build-native-engine/strata-safetensors-v020beta.exe`，保留上游 0.2.0-beta 融合及本地引擎改造。
+桌面 `Start-Strata-NVFP4-Parallel.bat` 调用仓库 `START-NVFP4-PARALLEL.bat`，
+读取唯一现役配置 `strata-nvfp4-native.json`，监听 localhost:8880。
+`START-APP-SAFETENSORS.bat` 提供 localhost:8891 新界面，模型页默认选择 NVFP4 Native。
+
+配置沿用原 NVFP4 双路参数：262144 上下文、8192 prefill、BF16 KV、原专家 decode、
+native batch MTP / spec 3 / min-p 0.5、PCIe fraction 0.25、GPU BF16 视觉、1536 MiB 显存预留。
+会话缓存预算 12288 MiB，不设固定槽数。FP4-Local 两条桌面入口退役，配置移入 `config/native/`；
+保留可选引擎支持、实验历史及原模型文件，没有质量更优的结论。
+本机旧入口备份于 `G:/Strata/Strata-data/cleanup-records/nvfp4-return-20261020/`。
+当前验证见 [NVFP4 部署记录](NVFP4_DEPLOYMENT_020.md)。以下均为历史记录。
+
 # 0.2.0-beta 升级：2026-10-20
 
 当前引擎：`build-native-engine/strata-safetensors-v020beta.exe`。

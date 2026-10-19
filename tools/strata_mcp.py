@@ -1084,8 +1084,7 @@ class Strata:
     def native_model_table(self, hw: dict | None) -> list:
         """Only expose prepared native profiles; never send them to GGUF setup."""
         sizes = []
-        for tag, label, experimental in (("fp4local-native", "FP4-Local Native", False),
-                                         ("fp4local-w4a4-native", "FP4-Local W4A4 (experimental)", True)):
+        for tag, label, experimental in (("nvfp4-native", "NVFP4 Native", False),):
             cfg = self.read_config(self.root / ("strata-" + tag + ".json"))
             if cfg.get("tokenizer_format") != "safetensors":
                 continue

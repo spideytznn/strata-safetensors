@@ -9,10 +9,12 @@ BF16 KV, W4A4 prefill, two request slots and GPU vision are retained.
 `STRATA_ROUTE_TAIL_SKIP` stays off. See [upgrade notes and validation](docs/UPSTREAM_020_BETA.md).
 
 Run `START-APP-SAFETENSORS.bat` for the new application UI at
-**http://127.0.0.1:8891**. Its Models page includes the prepared stable and
-experimental FP4-Local profiles. Existing API/web launchers retain port 8880.
-The current local profiles temporarily disable MTP (`--spec 0`); this upgrade
-preserves that choice. The generic installer and automatic updater still target
+**http://127.0.0.1:8891**. Its Models page selects the original **NVFP4 Native**
+checkpoint. `START-NVFP4-PARALLEL.bat` serves the API/web UI on port 8880.
+The retained NVFP4 profile enables native batch MTP (`--spec 3`). FP4-Local
+is archived as an experiment; no quality advantage has been established.
+See [deployment and validation](docs/NVFP4_DEPLOYMENT_020.md).
+The generic installer and automatic updater still target
 upstream GGUF packages; build this native engine from this fork.
 
 strata-safetensors adapts Strata's forward pass, expert scheduler and session cache
@@ -25,7 +27,7 @@ The validated deployment is **Windows + RTX 5090 32 GB + Ryzen 9950X3D + 96 GB R
 The maintained stable line is `main`; the executable and CLI retain the name `strata`.
 The current desktop deployment uses W4A4/CUTLASS prefill at 8192 tokens,
 BF16 KV Tensor Core attention and the original expert decode/scheduling backend.
-Native MTP remains available; the current two-request profiles keep it temporarily disabled. See [desktop scope](docs/DESKTOP_SCOPE.md),
+The two-request profile enables native batch MTP. See [desktop scope](docs/DESKTOP_SCOPE.md),
 [prefill](docs/NVFP4_PREFILL_ONLY.md) and [BF16 KV](docs/CLASSIC_BF16_KV.md).
 Earlier validation records describe their own builds and settings.
 
@@ -52,7 +54,7 @@ numerical comparisons and remaining limits.
 - **Keep experts resident.** The full expert arena is CUDA-pinned and GPU-mapped,
   avoiding an extra host staging copy. Runtime SSD reads are for ngram rows,
   plus session files when explicitly saving or restoring.
-- **Use both processors.** Both desktop profiles select about 75% of cold experts on
+- **Use both processors.** The desktop profile selects about 75% of cold experts on
   CPU and 25% on GPU.
   These fractions apply to cache misses, not all model work.
   AVX-512 row-loop specialization and GPU weight reuse reduce repeated work.
@@ -113,27 +115,25 @@ a running engine; use `-OutputName` to build a separate candidate.
 
 | Entry | Config | Slots |
 |---|---|---:|
-| `START-FP4LOCAL-PARALLEL.bat` | [stable FP4-Local](strata-fp4local-native.json) | 2 |
-| `START-FP4LOCAL-NVIDIA-W4A4.bat` | [experimental W4A4](strata-fp4local-w4a4-native.json) | 2 |
+| `START-NVFP4-PARALLEL.bat` | [original NVFP4](strata-nvfp4-native.json) | 2 |
 
 These deployment-specific configs contain Windows paths; adapt model, executable,
-tokenizer and template paths on another PC. Both select 262144
+tokenizer and template paths on another PC. The active profile selects 262144
 context, 8192 prefill, BF16 KV, 1536 MiB VRAM reserve, automatic expert caching,
-adaptive promotion and PCIe fraction 0. The saved deployment currently uses
-`--spec 0` and `STRATA_BATCH_MTP=0`. The stable entry uses FP32 expert decode;
-the experiment enables FP4 activations on CPU and GPU. Both FP4-Local profiles
-enable the existing GPU BF16 image encoder, with up to 1024 tokens per picture.
-The encoder starts before the engine sizes its expert cache. FP4-Local's own
-quantized vision tensors are not used. Old single/parallel NVFP4 desktop launchers were retired
-on 2026-10-19; their configurations and executable remain for developer use.
+adaptive promotion and PCIe fraction 0.25. It uses native MTP, spec 3,
+min-p 0.5 and shared batch MTP, with FP32 expert decode. Parked conversations
+use a 12288 MiB budget without a fixed slot limit, as in the retained NVFP4 profile.
+The existing GPU BF16 image encoder allows up to 1024 tokens per picture
+and starts before the engine sizes its expert cache.
 Upstream generic setup and the config generator remain available.
 
-The experiment has not completed a model-quality evaluation, and greedy output
+FP4-Local has not completed a model-quality evaluation, and its greedy output
 can change with CPU/GPU expert placement. See the [stable baseline](docs/FP4_LOCAL_STABLE.md)
-and [experimental limitations](docs/FP4_LOCAL_NVIDIA_W4A4.md).
+and [experimental limitations](docs/FP4_LOCAL_NVIDIA_W4A4.md). Its launchers are
+retired and profiles live under `config/native/`; optional engine support remains.
 
 Start one entry at a time. Open **http://127.0.0.1:8880** for chat; API clients use
-**http://127.0.0.1:8880/v1**, model `Qwen3.8-Flash-Next-FP4-Local`.
+**http://127.0.0.1:8880/v1**, model `Qwen3.8-Flash-Next-NVFP4-Native`.
 Ctrl+C stops the foreground server. Check `/health` and `/v1/models` for readiness.
 The runner binds localhost; configure an API key before exposing it externally.
 

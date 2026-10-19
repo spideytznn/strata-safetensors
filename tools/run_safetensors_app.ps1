@@ -29,7 +29,7 @@ if (-not $env:STRATA_HARNESS_DIR) {
     }
 }
 Write-Host "Strata safetensors app: http://127.0.0.1:$Port"
-Write-Host 'Choose FP4-Local Native in Models. Stop the old model server before loading here.'
+Write-Host 'Choose NVFP4 Native in Models. Stop the old model server before loading here.'
 Write-Host 'The app has its own settings folder. Ctrl+C stops this foreground host.'
 Push-Location -LiteralPath $hostDir
 try {

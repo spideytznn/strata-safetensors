@@ -1,0 +1,78 @@
+{
+  "date": "2026-10-20",
+  "platform": "Windows / RTX 5090 32 GB / Ryzen 9950X3D / 96 GB RAM",
+  "checkpoint": "G:/moemodels/Qwen3.8-flash-next-nvfp4",
+  "engine_sha256": "8ddc64bd35b38499f99235ac82434a2a8b2b2cf0c6170f86116ef2ebf51f97de",
+  "deployment_config_sha256": "cf0888b87668c314ae2998440e5abbc8d77241de186475aa27195bc275628e0f",
+  "scope": "Functional regressions; no model-quality or performance ranking. 262K is the configured window, not a full-window retrieval test.",
+  "app_tests": {
+    "passed": 28,
+    "modified_selection_tests_rerun": 4,
+    "live_catalog": "NVFP4 Native ready and recommended; no FP4-Local entries, GGUF setup command or download cost"
+  },
+  "python_tests": {
+    "passed": 43,
+    "command": "python -m pytest tests/terminal/test_native_checkpoint.py tools/test_strata_mcp.py -q"
+  },
+  "concurrency": {
+    "passed": true,
+    "cases": [
+      "greedy",
+      "seeded",
+      "penalties",
+      "mixed_confidence",
+      "strict_confidence",
+      "cancel_resume",
+      "followup",
+      "caps",
+      "eos",
+      "kv_growth_long_slot"
+    ],
+    "context": 16384,
+    "prefill": 8192,
+    "native_batch_mtp": true,
+    "long_input_tokens": 9043,
+    "batch_adaptive": {
+      "multi_slot_rounds": 51,
+      "promoted": 4018
+    },
+    "row_layouts": [
+      [
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "post_residency_source_bytes": {
+      "expert": 0,
+      "MTP": 0
+    },
+    "exit_code": 0
+  },
+  "vision_concurrency": {
+    "status": "pass",
+    "requests": 22,
+    "pairs": 6,
+    "context": 262144,
+    "prefill": 8192,
+    "native_batch_mtp": 1,
+    "post_residency_source_bytes": {
+      "expert": 0,
+      "MTP": 0
+    },
+    "exit_code": 0
+  }
+}

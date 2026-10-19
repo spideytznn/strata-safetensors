@@ -1,5 +1,4 @@
-Current deployment was upgraded on 2026-10-20; see [0.2.0-beta integration](UPSTREAM_020_BETA.md).
-The local profile keeps MTP temporarily off. The binary hashes and validation below describe the archived baseline.
+Archived experiment as of 2026-10-20. The active deployment uses original NVIDIA NVFP4 with the upgraded engine; see [deployment](NVFP4_DEPLOYMENT_020.md). No quality advantage for FP4-Local has been established. Profiles are retained under `config/native/`; desktop launchers are retired. The records below describe historical builds and settings.
 
 # Experimental NVIDIA-style NVFP4 expert decode
 

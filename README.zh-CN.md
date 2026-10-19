@@ -5,8 +5,10 @@ W4A4 prefill、双路请求与 GPU 视觉，`STRATA_ROUTE_TAIL_SKIP` 继续关�
 取舍与验证范围见[本次升级说明](docs/UPSTREAM_020_BETA.md)。
 
 新应用入口：`START-APP-SAFETENSORS.bat`，界面地址 **http://127.0.0.1:8891**；
-模型页可选已安装的稳定版和 W4A4 实验版。原桌面 API/网页入口继续使用 8880。
-本机配置暂时关闭 MTP（`--spec 0`），此次保留这个选择。通用安装器和自动更新器仍服务于
+模型页默认选择原始 **NVFP4 Native** 权重。桌面 API/网页入口
+`START-NVFP4-PARALLEL.bat` 使用 8880，恢复旧 NVFP4 配置的 native batch MTP。
+FP4-Local 退为归档实验，没有证据证明其质量更好；引擎改造保留。
+配置及本次验证见[部署记录](docs/NVFP4_DEPLOYMENT_020.md)。通用安装器和自动更新器仍服务于
 官方 GGUF 包；原生引擎从本仓库构建。
 
 **在单张 GPU 和系统内存上，直接运行原始 NVIDIA NVFP4 safetensors 格式的 Qwen3.8-Flash-Next。**
@@ -21,7 +23,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 维护稳定线为 `main`，引擎程序和命令仍叫 `strata`。
 
 当前桌面使用 W4A4/CUTLASS 新版 prefill、8192 batch、BF16 KV Tensor Core，
-保留原专家 decode 与调度。native MTP 功能保留，当前两份本机配置暂时关闭。
+保留原专家 decode 与调度，启用 native batch MTP。
 当前入口见[桌面维护范围](docs/DESKTOP_SCOPE.md)、
 [prefill](docs/NVFP4_PREFILL_ONLY.md)及[BF16 KV](docs/CLASSIC_BF16_KV.md)。
 历史测试记录对应各自当时的程序和配置。
@@ -46,7 +48,7 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 
 - **减少搬运。** 整个专家内存区通过 CUDA 锁页并映射给 GPU，省去额外的主机 staging 复制。
   推理阶段按需读取 ngram 行；主动保存/恢复会话时另有会话文件读写。
-- **使用 CPU 和 GPU。** 两份桌面配置均选择约 75% 冷专家在 CPU 计算，25% 在 GPU 计算。
+- **使用 CPU 和 GPU。** 当前桌面配置选择约 75% 冷专家在 CPU 计算，25% 在 GPU 计算。
   比例只针对缓存未命中的专家。CPU 行循环展开、GPU 同专家多 token 权重复用减少重复工作。
 - **保证 prefill 空间。** 先实际分配并写入工作区，再分配专家缓存，同时计算 MTP 等后续分配的预算。
   启动容量不足会报错，不再静默缩小工作区。
@@ -84,15 +86,16 @@ ngram 表按需从 SSD 读取。主模型不需要先转换成 GGUF，也不生�
 .\tools\build_safetensors_engine.ps1 -Jobs 2
 ```
 
-只保留两个原生启动入口，均使用 `build-native-engine/strata-safetensors-v020beta.exe`：
+现役入口使用 `build-native-engine/strata-safetensors-v020beta.exe`：
 
-- 单路：`START-NATIVE-262K-PREFILL-TC-BF16.bat`，配置 [single](config/native/rtx5090-262k-prefill-tc-bf16.json)。
-- 两路：`START-NATIVE-262K-PREFILL-TC-BF16-PARALLEL.bat`，配置 [parallel](config/native/rtx5090-262k-prefill-tc-bf16-parallel.json)。
+- 两路：`START-NVFP4-PARALLEL.bat`，配置 [NVFP4 Native](strata-nvfp4-native.json)。
+- 新应用界面：`START-APP-SAFETENSORS.bat`，模型页选择 NVFP4 Native。
 
-两者均为 262144 上下文、8192 prefill、BF16 KV、native MTP / spec 3 / min-p 0.5，
-1536 MiB 显存预留、视觉及原专家调度。双路额外启用 `--batch-mtp`，每路最多一枚草稿。
-本机两份文件的温度均为 1.0，top_p 0.95、top_k 20；客户端参数和网页设置可以覆盖默认值。
-桌面单路/多路脚本分别调用上述入口。旧试验入口已删除。
+配置为 262144 上下文、8192 prefill、BF16 KV、native MTP / spec 3 / min-p 0.5，
+1536 MiB 显存预留、视觉及原专家调度。双路启用 `--batch-mtp`，每路最多一枚草稿。
+PCIe fraction 0.25，停放会话预算 12288 MiB、不设固定槽数，沿用保留的旧 NVFP4 配置。
+温度为 1.0，top_p 0.95、top_k 20；客户端参数和网页设置可以覆盖默认值。
+FP4-Local 桌面入口退役，配置移入 `config/native/`，实验代码及权重保留。
 
 配置含本机路径，其他机器需要修改模型、程序、tokenizer、模板及视觉资源路径。
 构建脚本自动获取固定版本 CUTLASS 到 `build-deps/cutlass`，不依赖试验仓库。

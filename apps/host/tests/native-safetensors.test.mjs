@@ -16,10 +16,11 @@ test('native resource preference preserves fully resident checkpoint experts',()
  assert.equal(saferStart(config,{ram_gb:64},{arenaGb:68},'cannot allocate pinned memory'),null);
 });
 test('source app selects a prepared native profile without changing the generic catalog',()=>{
- const catalog={recommendation:{family:'qwen',model:'IQ3_S'},families:[{family:'safetensors',sizes:[{id:'fp4local-native',model:'FP4-Local Native'}]}]};
+ const catalog={recommendation:{family:'qwen',model:'IQ3_S',download_gb:83.6,setup_command:'install GGUF'},families:[{family:'safetensors',sizes:[{id:'nvfp4-native',model:'NVFP4 Native'}]}]};
  assert.equal(preferNativeCatalog(catalog,{models:[]}),catalog);
- const preferred=preferNativeCatalog(catalog,{models:[{model:'fp4local-native',ready:true,context:262144}]});
+ const preferred=preferNativeCatalog(catalog,{models:[{model:'nvfp4-native',ready:true,context:262144}]});
  assert.equal(preferred.recommendation.family,'safetensors');assert.equal(preferred.recommendation.context,262144);
+ assert.equal(preferred.recommendation.download_gb,0);assert.equal(preferred.recommendation.setup_command,null);
  assert.equal(catalog.recommendation.family,'qwen');
 });
 test('source instance uses its private config key without an empty environment override',()=>{
