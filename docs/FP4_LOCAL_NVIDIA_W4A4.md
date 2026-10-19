@@ -79,6 +79,27 @@ the main-model W4A4 experiment does not change the image encoder arithmetic.
 
 ## CPU/GPU kernel validation
 
+### Long-context runtime incident (2026-10-19)
+
+With vision enabled and MTP temporarily disabled, a local ZCode request with
+182,472 prompt tokens and eight historical images failed after 1,016 output
+tokens. The language-model process became unavailable while the HTTP server
+remained alive. The client received only an `exit code None` error; the
+original native failure reason was not retained, so the cause is unresolved.
+
+The server now persists native stdout fatal verifier errors in the engine log
+and includes their retained reason in API stream errors. This improves
+diagnosis; it does not change native arithmetic or fix a proven kernel cause.
+Thirty-eight fatal-recovery, lifecycle, restart-waiter and concurrency checks
+pass. After restart, replaying the original messages/tools and restoring all
+eight image URLs completed 2,260 tokens with a `tool_calls` finish and no
+stream error. The replay capped output at 4,096 rather than 78,736 tokens and
+did not execute returned tools. One replay does not establish that the
+intermittent runtime failure is fixed. See
+[the incident and checks](../bench/results/2026-10-19-native-exit-diagnostics/summary.json).
+
+### Quantization checks
+
 The scalar encoding reference and AVX512 quantizer were compared against
 CUDA conversion intrinsics: 131,504 inputs cover signs, ties, neighboring
 floats, E4M3 subnormals and saturation. Nine full-row calibrated quantization

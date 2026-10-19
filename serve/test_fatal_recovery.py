@@ -27,6 +27,7 @@ for line in sys.stdin:
     kind='verify batch' if mode=='batch' else 'verify'
     print(f'ERR {kind}: timed out at layer 18; its GPU waits were released and the GPU finished (#267)',flush=True)
     print('DONE 0 1 0 1 error',flush=True)
+    if mode=='fatal-exit':break
    continue
   print('T 90\nDONE 1 1 0 1 stop',flush=True)
 '''
@@ -40,8 +41,8 @@ class FatalRecovery(unittest.TestCase):
             self.script.write_text(f'@"{sys.executable}" "{py}" %*\r\n')
         else:
             self.script=py;py.write_text('#!'+sys.executable+'\n'+FAKE);py.chmod(0o700)
-    def engine(self,mode='fatal'):
-        e=StrataEngine(str(self.script),['--state',str(self.root/'state'),'--mode',mode])
+    def engine(self,mode='fatal',log=None):
+        e=StrataEngine(str(self.script),['--state',str(self.root/'state'),'--mode',mode],log=log)
         self.addCleanup(e.close);return e
     def service(self,e):
         return Service(e,ByteTokenizer(),ChatTemplate(Path(__file__).parent/'chat_template.jinja'))
@@ -71,6 +72,7 @@ class FatalRecovery(unittest.TestCase):
                 with urllib.request.urlopen(req,timeout=5) as r:return r.read().decode()
             text=post()
             self.assertIn('"error"',text);self.assertTrue(text.rstrip().endswith('data: [DONE]'))
+            self.assertIn('timed out at layer 18',text)
             with urllib.request.urlopen(base+'/health',timeout=5) as r:self.assertFalse(json.load(r)['loaded'])
             body['stream']=False
             self.assertEqual(json.loads(post())['usage']['completion_tokens'],1)
@@ -81,6 +83,14 @@ class FatalRecovery(unittest.TestCase):
         e=self.engine('batch')
         with self.assertRaises(EngineDied):list(e.generate([1],8,{},threading.Event()))
         self.wait_dead(e)
+
+    def test_native_stdout_fatal_reason_is_retained_in_log(self):
+        log=self.root/'engine.log'
+        e=self.engine('fatal-exit',log=str(log))
+        with self.assertRaisesRegex(EngineDied,'timed out at layer 18'):
+            list(e.generate([1],8,{},threading.Event()))
+        self.assertIn('ERR verify: timed out at layer 18',log.read_text(encoding='utf-8'))
+        e.close()
 
     def feed(self,e,lines,slots):
         import queue

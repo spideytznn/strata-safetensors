@@ -1,0 +1,67 @@
+{
+  "original_incident": {
+    "client": "ZCode",
+    "prompt_tokens": 182472,
+    "image_count": 8,
+    "output_tokens_before_error": 1016,
+    "api_error": "the engine stopped unexpectedly (exit code None); the next request restarts it",
+    "native_failure_reason": "Not preserved in the original native stderr log; not conclusively established."
+  },
+  "change": "Persist native stdout fatal verifier errors in the engine log and include the retained reason in EngineDied API stream errors. Native calculation and model files are unchanged.",
+  "regression_checks": {
+    "fatal_recovery_and_lifecycle": 18,
+    "restart_waiters_and_native_concurrency": 20,
+    "result": "pass"
+  },
+  "replay": {
+    "status": "completed",
+    "images_restored": 8,
+    "max_completion_tokens": 4096,
+    "sse_events": 2215,
+    "errors": [],
+    "finish_reasons": [
+      "tool_calls"
+    ],
+    "done": true,
+    "duration_s": 78.3
+  },
+  "replay_request_metrics": {
+    "projection": null,
+    "time": 1792404691.4680035,
+    "duration_s": 77.7,
+    "finish": "stop",
+    "prompt_tokens": 182472,
+    "reused": 0,
+    "output_tokens": 2260,
+    "prompt_total": 182472,
+    "prompt_read": 182472,
+    "reasoning_recoveries": 0,
+    "reasoning_repeat_coverage": 0.0,
+    "engine_generated": 2260,
+    "prompt_ms": 37091.0,
+    "decode_ms": 40506.0,
+    "decode_tok_s": 55.8,
+    "hit_rate": 0.642,
+    "pcie_share": 0.0,
+    "ram_blobs": 423844,
+    "file_blobs": 0,
+    "file_mb": 0,
+    "drafts_offered": 0,
+    "drafts_accepted": 0
+  },
+  "recovered_service": {
+    "port": 8880,
+    "loaded": true,
+    "images": true,
+    "mtp_max": 0,
+    "native_batch_mtp": 0,
+    "batch_slots": 2
+  },
+  "limitations": [
+    "The original native exit cause was not conclusively established.",
+    "The replay restarted the engine, restored all eight original image URLs from local client artifacts and kept the original message/tool history, but capped completion at 4096 instead of 78736 tokens.",
+    "The replay completed 2260 tokens and returned tool_calls; it did not reproduce the failure. No returned tools were executed.",
+    "A single successful replay is not evidence that the underlying intermittent runtime failure is fixed.",
+    "Private request bodies and stream content remain in ignored local outputs, outside Git."
+  ]
+}

@@ -1001,6 +1001,15 @@ class StrataEngine:
                 if self.proc is proc:
                     self.silent_note = "Unrecoverable native verification failure: " + line[4:].strip()
                     self.ended = True
+                    # This protocol line was written to stdout, not the native stderr log.
+                    # Keep its cause before publishing EOF or a client only sees exit code None.
+                    log = getattr(self, "log", None)
+                    if log not in (None, subprocess.DEVNULL):
+                        try:
+                            log.write(line)
+                            log.flush()
+                        except (OSError, ValueError):
+                            pass
                 try:
                     proc.terminate()
                 except OSError:
@@ -1063,6 +1072,12 @@ class StrataEngine:
             return self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             return None
+
+    def stopped_error(self):
+        message = f"the engine stopped unexpectedly (exit code {self.exit_code()})"
+        if getattr(self, "silent_note", None):
+            message += "; " + self.silent_note
+        return EngineDied(message)
 
     def unload(self):
         """Release GPU/RAM between requests, retaining the spawn config for automatic reloading."""
@@ -1262,7 +1277,7 @@ class StrataEngine:
                 self.proc.stdin.write(text + "\n")
                 self.proc.stdin.flush()
         except (OSError, AttributeError):                # the pipe is gone (or a restart's close() took the process):
-            raise EngineDied(f"the engine stopped unexpectedly (exit code {self.exit_code()})") from None
+            raise self.stopped_error() from None
 
     def _control(self, cancel, on_token, stop_when=None, on_quiet=None):
         """Reads the control lines of the request on them (GEN / BGEN), yielding None heartbeats.  Calls on_token(id)
@@ -1288,7 +1303,7 @@ class StrataEngine:
                 continue
             beat = time.monotonic()
             if line is None:
-                raise EngineDied(f"the engine stopped unexpectedly (exit code {self.exit_code()})")
+                raise self.stopped_error()
             if not line.startswith(("PP ", "INFO")):
                 btrace("ctl<", self._ctl_mode, line.strip()[:60])
             if line.startswith("T "):
@@ -1780,7 +1795,7 @@ class StrataEngine:
                         continue
                     if line is None:
                         phase = "none"
-                        raise EngineDied(f"the engine stopped unexpectedly (exit code {self.exit_code()})")
+                        raise self.stopped_error()
                     if line.startswith("BT "):
                         t = int(line.split()[2])
                         out.append(t)
@@ -2028,7 +2043,7 @@ class StrataEngine:
             self.proc.stdin.write(f"{head} {','.join(str(int(t)) for t in ids)}\n")
             self.proc.stdin.flush()
         except OSError:                                  # the pipe is gone: the engine died (not the client)
-            raise EngineDied(f"the engine stopped unexpectedly (exit code {self.exit_code()})") from None
+            raise self.stopped_error() from None
         done = False
         # #481: how long the engine may stay silent from here.  Until the first line: the request's first prompt
         # chunk at the slowest prompt reading on top of silence_s; a PP line resets it to its own chunk's time.
@@ -2066,7 +2081,7 @@ class StrataEngine:
                     continue
                 if line is None:
                     done = True
-                    raise EngineDied(f"the engine stopped unexpectedly (exit code {self.exit_code()})")
+                    raise self.stopped_error()
                 heard = time.monotonic()                  # any line is output: T, PP, RESUME, INFO ...
                 beat = heard
                 if stall_state:
@@ -2202,7 +2217,7 @@ class StrataEngine:
             self.proc.stdin.write(f"{'SAVE' if action == 'save' else 'RESTORE'} {path}\n")
             self.proc.stdin.flush()
         except OSError:
-            raise EngineDied(f"the engine stopped unexpectedly (exit code {self.exit_code()})") from None
+            raise self.stopped_error() from None
         silence = float(self.silence_s or 0)
         heard = time.monotonic()
         want = "SAVED" if action == "save" else "RESTORED"
@@ -2235,7 +2250,7 @@ class StrataEngine:
                 raise self._silent(f"the engine said nothing for {limit:.0f} s during a session {action}"
                                    + (f" (in a blocking step allowed {allow:.0f} s)" if allow > silence else "")) from None
             if line is None:
-                raise EngineDied(f"the engine stopped unexpectedly (exit code {self.exit_code()})")
+                raise self.stopped_error()
             f = line.split()
             head = f[0] if f else ""
             if head == "SESSION":                          # a large file moving: progress, and a heartbeat
@@ -3617,6 +3632,8 @@ class Service:
     def _say_died(self, e: Exception) -> None:
         """The server window's line for an engine that died (or was ended, #481) in the middle of a request."""
         note = self.engine.death_note() if hasattr(self.engine, "death_note") else ""
+        if note and note in str(e):
+            note = ""
         log = getattr(self.engine, "log_path", None)
         print(f"[strata] {e}. {note} The next request starts the engine again."
               f"{' Its log: ' + log if log else ''}", flush=True)
