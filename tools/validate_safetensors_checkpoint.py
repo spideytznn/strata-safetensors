@@ -33,21 +33,22 @@ def main():
     descriptors={}
     manifest={}
     start=time.perf_counter()
-    for path in sorted(root.glob("*.safetensors")):
+    for path in sorted(root.rglob("*.safetensors")):
         f=path.open("rb")
-        files[path.name]=f
+        filename=path.relative_to(root).as_posix()
+        files[filename]=f
         prefix=f.read(8)
         n=struct.unpack("<Q",prefix)[0]
         raw=f.read(n)
         header=json.loads(raw)
         stat=path.stat()
-        manifest[path.name]={"bytes":stat.st_size,"mtime_ns":stat.st_mtime_ns,
+        manifest[filename]={"bytes":stat.st_size,"mtime_ns":stat.st_mtime_ns,
                             "header_sha256":hashlib.sha256(prefix+raw).hexdigest(),
                             "header_bytes":n,"tensor_count":len(header)-("__metadata__" in header)}
         for name,d in header.items():
             if name!="__metadata__":
                 assert name not in descriptors
-                descriptors[name]=(path.name,n+8,d)
+                descriptors[name]=(filename,n+8,d)
     def read(name):
         file,base,d=descriptors[name]
         f=files[file]
@@ -62,10 +63,9 @@ def main():
     with (output/"native-validation.json").open("w",encoding="utf-8") as stdout:
         subprocess.run([str(args.exe.resolve()),"verify-set",str(root),str(output)],env=env,stdout=stdout,check=True)
     native=json.loads((output/"native-validation.json").read_text(encoding="utf-8"))
-    assert native["tensor_count"]==len(descriptors)==299545
-    assert len(native["files"])==len(files)==11
+    assert native["tensor_count"]==len(descriptors)
+    assert len(native["files"])==len(files)
     assert native["model"]["nvfp4_projections"]==73728
-    assert native["model"]["ngram_first_absolute_offset"]==416370
     for entry in native["files"]:
         reference=manifest[entry["name"]]
         assert all(entry[key]==reference[key] for key in ("header_bytes","tensor_count"))
@@ -75,10 +75,11 @@ def main():
         segment,row=divmod(sample["row"],2500012)
         name=f"model.language_model.layers.1.ple.ple_embedding.ngram_embedding.shard_{segment}.weight"
         file,base,d=descriptors[name]
-        offset=base+d["data_offsets"][0]+row*160
+        row_bytes=d["shape"][1]
+        offset=base+d["data_offsets"][0]+row*row_bytes
         assert sample["tensor"]==name and sample["absolute_offset"]==offset
         files[file].seek(offset)
-        assert files[file].read(160).hex()==sample["hex"]
+        assert files[file].read(row_bytes).hex()==sample["hex"]
     fp4=np.array([0,.5,1,1.5,2,3,4,6,-0.,-.5,-1,-1.5,-2,-3,-4,-6],dtype=np.float64)
     fp8=np.empty(127,dtype=np.float64)
     for b in range(127):
@@ -105,8 +106,23 @@ def main():
             codes=np.empty((rows,half*2),dtype=np.uint8)
             codes[:,0::2]=raw&15
             codes[:,1::2]=raw>>4
-            sb,sd=read(prefix+".weight_scale")
-            scales=np.frombuffer(sb,dtype=np.uint8).reshape(sd["shape"])
+            fixed_name=prefix+".weight_scale.nvfp4_csf_fixed"
+            if fixed_name in descriptors:
+                fb,fd=read(fixed_name)
+                eb,_=read(prefix+".weight_scale.nvfp4_csf_exceptions")
+                columns=half*2//16
+                fixed=np.frombuffer(fb,dtype=np.uint8).reshape(fd["shape"])
+                packed=fixed[:,16:].reshape(-1,(columns+1)//2)[:rows]
+                shifts=np.arange(columns)*4
+                scales=(fixed[:,:16].reshape(-1,1)[:rows].astype(np.uint16)+
+                        ((packed[:,shifts//8]>>(shifts%8))&15)).astype(np.uint8)
+                exceptions=np.frombuffer(eb,dtype="<u4")
+                positions=exceptions&0xffffff
+                assert np.all(positions<rows*columns) and np.all(positions[1:]>positions[:-1])
+                scales.flat[positions]=(exceptions>>24).astype(np.uint8)
+            else:
+                sb,sd=read(prefix+".weight_scale")
+                scales=np.frombuffer(sb,dtype=np.uint8).reshape(sd["shape"])
             assert np.all(scales<=126)
             global_bytes,_=read(prefix+".weight_scale_2")
             input_bytes,_=read(prefix+".input_scale")

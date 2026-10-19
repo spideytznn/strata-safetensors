@@ -14,7 +14,7 @@ find_package(Threads REQUIRED)
 set(ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 add_library(strata_safetensors STATIC
     ${ROOT}/src/weights/safetensors.cpp
-    ${ROOT}/src/weights/nvfp4.cpp
+    ${ROOT}/src/weights/nvfp4.cpp ${ROOT}/src/weights/csf.cpp
     ${ROOT}/src/weights/qwen4.cpp
     ${ROOT}/src/weights/dense.cpp)
 target_include_directories(strata_safetensors PUBLIC ${ROOT}/include PRIVATE ${ROOT}/third_party)
@@ -24,6 +24,7 @@ target_link_libraries(strata-safetensors PRIVATE strata_safetensors)
 target_include_directories(strata-safetensors PRIVATE ${ROOT}/third_party)
 add_executable(safetensors_layout_test ${ROOT}/src/weights/layout_test.cpp)
 target_link_libraries(safetensors_layout_test PRIVATE strata_safetensors)
+target_compile_definitions(safetensors_layout_test PRIVATE CSF_FIXTURE_DIR="${ROOT}/tests/fixtures/csf")
 add_executable(safetensors_source_test ${ROOT}/src/weights/source_test.cpp)
 target_link_libraries(safetensors_source_test PRIVATE strata_safetensors)
 target_include_directories(safetensors_source_test PRIVATE ${ROOT}/third_party)
@@ -54,6 +55,14 @@ if(MSVC)
     target_compile_options(safetensors_segment_test PRIVATE /utf-8)
 endif()
 add_test(NAME safetensors_segments COMMAND safetensors_segment_test)
+add_executable(nvfp4_ple_test ${ROOT}/src/ngram/nvfp4_table_test.cpp
+    ${ROOT}/src/ngram/nvfp4_table.cpp ${ROOT}/src/ngram/ple_reader.cpp ${ROOT}/src/platform/direct_file.cpp)
+target_include_directories(nvfp4_ple_test PRIVATE ${ROOT}/include)
+target_link_libraries(nvfp4_ple_test PRIVATE Threads::Threads)
+if(MSVC)
+    target_compile_options(nvfp4_ple_test PRIVATE /utf-8)
+endif()
+add_test(NAME nvfp4_ple COMMAND nvfp4_ple_test)
 add_executable(ngram_io_bench ${ROOT}/src/weights/ngram_io_bench.cpp
     ${ROOT}/src/ngram/ple_reader.cpp ${ROOT}/src/platform/direct_file.cpp)
 target_include_directories(ngram_io_bench PRIVATE ${ROOT}/include ${ROOT}/third_party)
@@ -68,3 +77,5 @@ add_test(NAME spec_visible_boundaries COMMAND spec_visible_test)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(NAME safetensors_reader COMMAND ${Python3_EXECUTABLE}
     ${ROOT}/tools/test_safetensors_reader.py --exe $<TARGET_FILE:strata-safetensors>)
+add_test(NAME fp4local_dense_plan COMMAND ${Python3_EXECUTABLE}
+    ${ROOT}/tools/test_fp4local_dense_plan.py --exe $<TARGET_FILE:strata-safetensors>)

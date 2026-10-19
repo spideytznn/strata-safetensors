@@ -1,5 +1,6 @@
 #include "strata/kernels/mtp_fp8.hpp"
 #include "strata/weights/safetensors.hpp"
+#include "strata/weights/nvfp4.hpp"
 #include <cuda_runtime.h>
 #include <algorithm>
 #include <bit>
@@ -27,17 +28,37 @@ double dot(const uint8_t* w,const float* x,int r,int cols) {
     }
     return y;
 }
-int run(const std::filesystem::path& path) {
+int run(const std::filesystem::path& path,bool nvfp4=false) {
     try {
         std::unique_ptr<weights::SafetensorsSource> source;
         if(!path.empty()) source=std::make_unique<weights::SafetensorsSource>(path);
         constexpr int E=2,T=2,K=2;
-        std::vector<uint8_t> packed(E*kernels::kMtpFp8Expert);
+        if (source) nvfp4=source->tensor("mtp.layers.0.mlp.experts.0.gate_proj.weight").dtype==weights::DType::U8;
+        const auto expert_bytes=nvfp4?kernels::kMtpNvfp4Expert:kernels::kMtpFp8Expert;
+        std::vector<uint8_t> packed(E*expert_bytes);
+        std::vector<float> reference_weights(nvfp4?E*3*kernels::kMtpFp8Matrix:0);
         std::mt19937 rng(120);
         const char* names[]={"gate_proj","up_proj","down_proj"};
         for(int e=0;e<E;++e) for(int p=0;p<3;++p) {
-            auto* dst=packed.data()+e*kernels::kMtpFp8Expert+p*kernels::kMtpFp8Projection;
-            if(source) {
+            auto* dst=packed.data()+e*expert_bytes+p*(nvfp4?kernels::kMtpNvfp4Projection:kernels::kMtpFp8Projection);
+            if (nvfp4) {
+                const int rows=p==2?2560:640,cols=p==2?640:2560;
+                std::vector<uint8_t> w(rows*cols/2),s(rows*cols/16);
+                float global=std::ldexp(float(e+p+1),-10);
+                if (source) {
+                    const std::string stem="mtp.layers.0.mlp.experts."+std::to_string(e?511:0)+"."+names[p];
+                    w=source->read(source->tensor(stem+".weight"));s=source->read(source->tensor(stem+".weight_scale"));
+                    const auto g=source->read(source->tensor(stem+".weight_scale_2"));std::memcpy(&global,g.data(),4);
+                } else {
+                    for (auto& v:w) v=uint8_t(rng());
+                    for (auto& v:s) v=uint8_t(32+rng()%40);
+                }
+                weights::pack_nvfp4(w,s,rows,cols,{dst,kernels::kMtpNvfp4Projection});
+                std::memcpy(packed.data()+e*expert_bytes+3*kernels::kMtpNvfp4Projection+p*4,&global,4);
+                constexpr float values[]={0,.5f,1,1.5f,2,3,4,6,-0.f,-.5f,-1,-1.5f,-2,-3,-4,-6};
+                for (int i=0;i<rows*cols;++i)
+                    reference_weights[(e*3+p)*kernels::kMtpFp8Matrix+i]=float(values[(w[i/2]>>(4*(i%2)))&15]*decode(s[i/16]))*global;
+            } else if(source) {
                 const std::string stem="mtp.layers.0.mlp.experts."+std::to_string(e?511:0)+"."+names[p];
                 auto w=source->read(source->tensor(stem+".weight")),s=source->read(source->tensor(stem+".weight_scale_inv"));
                 std::memcpy(dst,w.data(),w.size()); std::memcpy(dst+kernels::kMtpFp8Matrix,s.data(),s.size());
@@ -52,16 +73,22 @@ int run(const std::filesystem::path& path) {
         uint8_t* dw=nullptr; float *dx=nullptr,*dh=nullptr,*dy=nullptr; int32_t* di=nullptr;
         ck(cudaMalloc(&dw,packed.size())); ck(cudaMalloc(&dx,x.size()*4)); ck(cudaMalloc(&dh,h.size()*4)); ck(cudaMalloc(&dy,y.size()*4)); ck(cudaMalloc(&di,sizeof(ids)));
         ck(cudaMemcpy(dw,packed.data(),packed.size(),cudaMemcpyHostToDevice)); ck(cudaMemcpy(dx,x.data(),x.size()*4,cudaMemcpyHostToDevice)); ck(cudaMemcpy(di,ids,sizeof(ids),cudaMemcpyHostToDevice));
-        kernels::mtp_fp8_experts(dw,di,dx,dh,dy,T,K,nullptr);
+        if(nvfp4) kernels::mtp_nvfp4_experts(dw,di,dx,dh,dy,T,K,nullptr);
+        else kernels::mtp_fp8_experts(dw,di,dx,dh,dy,T,K,nullptr);
         ck(cudaMemcpy(y.data(),dy,y.size()*4,cudaMemcpyDeviceToHost));
         for(int i=0;i<T*K;++i) {
-            const auto* w=packed.data()+ids[i]*kernels::kMtpFp8Expert;
+            const auto* w=packed.data()+ids[i]*expert_bytes;
+            auto dot_projection=[&](int p,const float* input,int r,int cols) {
+                if (!nvfp4) return dot(w+p*kernels::kMtpFp8Projection,input,r,cols);
+                const auto* values=reference_weights.data()+(ids[i]*3+p)*kernels::kMtpFp8Matrix+r*cols;
+                double sum=0;for(int c=0;c<cols;++c) sum+=double(values[c])*input[c];return sum;
+            };
             // FP64 dot-products, with the ABI's FP32 intermediate storage.
             for(int r=0;r<640;++r) {
-                const double g=dot(w,x.data()+(i/K)*2560,r,2560),u=dot(w+kernels::kMtpFp8Projection,x.data()+(i/K)*2560,r,2560);
+                const double g=dot_projection(0,x.data()+(i/K)*2560,r,2560),u=dot_projection(1,x.data()+(i/K)*2560,r,2560);
                 h[i*640+r]=float(g/(1+std::exp(-g))*u);
             }
-            for(int r=0;r<2560;++r) ref[i*2560+r]=float(dot(w+2*kernels::kMtpFp8Projection,h.data()+i*640,r,640));
+            for(int r=0;r<2560;++r) ref[i*2560+r]=float(dot_projection(2,h.data()+i*640,r,640));
         }
         double se=0,sr=0,mx=0,peak=0;
         for(size_t i=0;i<y.size();++i) {
@@ -69,13 +96,13 @@ int run(const std::filesystem::path& path) {
             const double d=y[i]-ref[i]; se+=d*d; sr+=double(ref[i])*ref[i]; mx=std::max(mx,std::abs(d)); peak=std::max(peak,std::abs(double(ref[i])));
         }
         const double rel=std::sqrt(se/std::max(sr,1e-30));
-        std::printf("{\"source\":\"%s\",\"outputs\":%zu,\"relative_l2\":%.9g,\"max_abs\":%.9g,\"scaled_max\":%.9g}\n",source?"checkpoint":"synthetic",y.size(),rel,mx,mx/std::max(peak,1e-30));
+        std::printf("{\"source\":\"%s\",\"outputs\":%zu,\"relative_l2\":%.9g,\"max_abs\":%.9g,\"scaled_max\":%.9g}\n",source?"checkpoint":(nvfp4?"synthetic NVFP4":"synthetic FP8"),y.size(),rel,mx,mx/std::max(peak,1e-30));
         cudaFree(dw);cudaFree(dx);cudaFree(dh);cudaFree(dy);cudaFree(di);
         return rel<5e-5 && mx/std::max(peak,1e-30)<1e-4?0:1;
     } catch(const std::exception& e) { std::fprintf(stderr,"%s\n",e.what()); return 1; }
 }
 #if defined(_WIN32)
-int wmain(int argc,wchar_t** argv) { return run(argc==2?std::filesystem::path(argv[1]):std::filesystem::path()); }
+int wmain(int argc,wchar_t** argv) { return argc==2?run(std::filesystem::path(argv[1])):(run({}) || run({},true)); }
 #else
-int main(int argc,char** argv) { return run(argc==2?std::filesystem::path(argv[1]):std::filesystem::path()); }
+int main(int argc,char** argv) { return argc==2?run(std::filesystem::path(argv[1])):(run({}) || run({},true)); }
 #endif

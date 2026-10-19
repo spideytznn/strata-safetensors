@@ -3,15 +3,19 @@
 #include "strata/kernels/iq_kernels.hpp"
 
 namespace strata::weights {
-// All four source tensors share the WeightSource lifetime. The canonical name
+// Source descriptors share the WeightSource lifetime. The canonical name
 // describes the existing projection; logical_shape is [output, input].
 struct Nvfp4Projection {
     std::string canonical_name;
     std::array<uint64_t, 2> logical_shape;
     const TensorDesc *weight, *micro_scale, *weight_scale, *input_scale;
+    const TensorDesc* csf_exceptions = nullptr; // micro_scale is fixed when non-null
 };
+// require_input_scale=false is for W4A16 projections (MTP); a missing
+// activation scale is represented by null and never used to change weights.
 Nvfp4Projection nvfp4_projection(const WeightSource&, const std::string& hf_prefix,
-                                 const std::string& canonical, uint64_t rows, uint64_t cols);
+                                 const std::string& canonical, uint64_t rows, uint64_t cols,
+                                 bool require_input_scale = true);
 // Pure byte permutation. Never quantizes, rounds, transposes, or folds scales.
 // Nonfinite/negative E4M3 scales are refused because the old UE4M3 kernels would
 // silently reinterpret them. Zero micro scales and signed FP4 zero are retained.
@@ -41,7 +45,7 @@ struct Nvfp4BatchStats {
 };
 // Reuse bounded host buffers across batches; released before inference starts.
 struct Nvfp4LoadScratch {
-    std::vector<std::array<std::array<std::vector<uint8_t>,4>,3>> experts;
+    std::vector<std::array<std::array<std::vector<uint8_t>,5>,3>> experts;
 };
 Nvfp4BatchStats load_nvfp4_expert_batch(WeightSource&, std::span<const Nvfp4ExpertBuffer>, unsigned workers = 1,
                                       Nvfp4LoadScratch* scratch = nullptr);

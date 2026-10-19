@@ -45,10 +45,16 @@ __device__ void mma(float (&d)[4], const unsigned (&a)[4], const unsigned (&b)[2
 
 template<bool DOWN, int TERMS>
 __global__ void quantize_rows(const float* x, QBlock* q, const int32_t* starts,
-    const int32_t* ng, const int32_t* tok, int cols, int ff, float global_scale, float* row_scales) {
+    const int32_t* ng, const int32_t* tok, int cols, int ff, float global_scale, float* row_scales,
+    const float* group_input_scales) {
     if (*ng==0) return;
     const int entry=blockIdx.x;
     if (entry>=starts[*ng]) return;
+    if (group_input_scales) {
+        int group=0;
+        while(group+1<*ng && entry>=starts[group+1]) ++group;
+        global_scale=group_input_scales[2*group+(DOWN?1:0)];
+    }
     const int source=DOWN ? entry : tok[entry], blocks=cols/64;
     if(threadIdx.x==0) row_scales[entry]=global_scale;
     for (int sub=threadIdx.x; sub<cols/16; sub+=blockDim.x) {
@@ -136,23 +142,24 @@ __global__ void product(NativeExpertLayout L, const unsigned long long* ptr,
 template<int TERMS>
 void launch(const NativeExpertLayout& L,const unsigned long long* ptr,const int32_t* starts,
     const int32_t* ng,const int32_t* dst,const int32_t* tok,int64_t groups,int64_t entries,
-    const float* x,void* scratch,float* out,cudaStream_t stream,float gu_scale,float down_scale,int token_tiles) {
+    const float* x,void* scratch,float* out,cudaStream_t stream,float gu_scale,float down_scale,int token_tiles,
+    const float* group_input_scales) {
     auto* qx=static_cast<QBlock*>(scratch);
     const size_t qx_bytes=aligned(size_t(entries)*TERMS*(L.n_embd/64)*sizeof(QBlock));
     auto* gu=reinterpret_cast<float*>(static_cast<unsigned char*>(scratch)+qx_bytes);
     auto* qh=reinterpret_cast<QBlock*>(reinterpret_cast<unsigned char*>(gu)+aligned(size_t(entries)*2*L.n_ff*4));
     auto* gx=reinterpret_cast<float*>(reinterpret_cast<unsigned char*>(qh)+aligned(size_t(entries)*TERMS*(L.n_ff/64)*sizeof(QBlock)));
     float* gh=gx+entries;
-    quantize_rows<false,TERMS><<<unsigned(entries),128,0,stream>>>(x,qx,starts,ng,tok,int(L.n_embd),int(L.n_ff),gu_scale,gx);
+    quantize_rows<false,TERMS><<<unsigned(entries),128,0,stream>>>(x,qx,starts,ng,tok,int(L.n_embd),int(L.n_ff),gu_scale,gx,group_input_scales);
     product<false,TERMS><<<dim3(unsigned((2*L.n_ff+63)/64),unsigned(groups),unsigned(token_tiles)),dim3(32,4),0,stream>>>(L,ptr,starts,ng,dst,qx,gu,gx);
-    quantize_rows<true,TERMS><<<unsigned(entries),128,0,stream>>>(gu,qh,starts,ng,tok,int(L.n_ff),int(L.n_ff),down_scale,gh);
+    quantize_rows<true,TERMS><<<unsigned(entries),128,0,stream>>>(gu,qh,starts,ng,tok,int(L.n_ff),int(L.n_ff),down_scale,gh,group_input_scales);
     product<true,TERMS><<<dim3(unsigned((L.n_embd+63)/64),unsigned(groups),unsigned(token_tiles)),dim3(32,4),0,stream>>>(L,ptr,starts,ng,dst,qh,out,gh);
 }
 }
 
 void nvfp4_tensor_grouped(const NativeExpertLayout& L,const unsigned long long* ptr,const int32_t* starts,
     const int32_t* ng,const int32_t* dst,const int32_t* tok,int64_t groups,int64_t entries,
-    const float* x,void* scratch,float* out,void* stream,int token_tiles) {
+    const float* x,void* scratch,float* out,void* stream,int token_tiles,const float* group_input_scales) {
     if(token_tiles<1 || token_tiles>128) throw std::invalid_argument("NVFP4 token tiles must be 1..128");
     if(!x || !ptr || !starts || !ng || !tok || !scratch || !out || L.gu_type!=40 || L.d_type!=40 || L.n_embd!=2560 || L.n_ff!=640 || !L.tail_off) throw std::invalid_argument("NVFP4 Tensor decode requires FP32 input and the supported 2560/640 expert geometry");
     if(groups<=0 || entries<=0) return;
@@ -168,8 +175,8 @@ void nvfp4_tensor_grouped(const NativeExpertLayout& L,const unsigned long long* 
         checked_device=dev;
     }
     float gs=L.input_scale_gu, ds=L.input_scale_down;
-    if(!std::isfinite(gs) || !std::isfinite(ds) || gs<=0 || ds<=0) throw std::runtime_error("invalid NVFP4 checkpoint activation scales");
-    launch<1>(L,ptr,starts,ng,dst,tok,groups,entries,x,scratch,out,static_cast<cudaStream_t>(stream),gs,ds,token_tiles);
+    if(!group_input_scales && (!std::isfinite(gs) || !std::isfinite(ds) || gs<=0 || ds<=0)) throw std::runtime_error("invalid NVFP4 checkpoint activation scales");
+    launch<1>(L,ptr,starts,ng,dst,tok,groups,entries,x,scratch,out,static_cast<cudaStream_t>(stream),gs,ds,token_tiles,group_input_scales);
     const cudaError_t error=cudaGetLastError();
     if(error!=cudaSuccess) throw std::runtime_error(std::string("NVFP4 Tensor decode: ")+cudaGetErrorString(error));
 }
@@ -188,8 +195,8 @@ __global__ void set_one_group(OneGroup* g,const uint8_t* blob,int entries) {
     g->ptr=reinterpret_cast<unsigned long long>(blob);
     g->starts[0]=0; g->starts[1]=entries; g->count=1;
 }
-struct PrefillMetadata { unsigned long long ptr[16]; int starts[17]; int count; };
-static_assert(sizeof(PrefillMetadata)<=256);
+struct PrefillMetadata { unsigned long long ptr[16]; int starts[17]; int count; float scales[32]; };
+static_assert(sizeof(PrefillMetadata)<=512);
 __global__ void set_prefill_group(PrefillMetadata* m,Nvfp4PrefillGroup g,
     const int32_t* tokens,int32_t* tok,int32_t* dst,int entries) {
     const int i=blockIdx.x*blockDim.x+threadIdx.x;
@@ -198,6 +205,8 @@ __global__ void set_prefill_group(PrefillMetadata* m,Nvfp4PrefillGroup g,
         for(int j=0;j<g.count;++j) {
             m->ptr[j]=reinterpret_cast<unsigned long long>(g.weights[j]);
             m->starts[j+1]=m->starts[j]+g.rows[j];
+            m->scales[2*j]=g.input_scale_gu[j];
+            m->scales[2*j+1]=g.input_scale_down[j];
         }
     }
     if(i>=entries) return;
@@ -208,7 +217,7 @@ __global__ void set_prefill_group(PrefillMetadata* m,Nvfp4PrefillGroup g,
 }
 }
 size_t nvfp4_tensor_prefill_bytes(int64_t entries) {
-    const size_t custom=256+2*aligned(size_t(entries)*16*sizeof(int32_t))+nvfp4_tensor_scratch_bytes(entries*16);
+    const size_t custom=512+2*aligned(size_t(entries)*16*sizeof(int32_t))+nvfp4_tensor_scratch_bytes(entries*16);
 #ifdef STRATA_NVFP4_CUTLASS_BUILT
     if(nvfp4_cutlass_enabled()) {
         const size_t official=nvfp4_cutlass_prefill_bytes(entries);
@@ -227,6 +236,14 @@ void nvfp4_tensor_prefill(const NativeExpertLayout& L,const uint8_t* blob,
 }
 void nvfp4_tensor_prefill_group(const NativeExpertLayout& L,Nvfp4PrefillGroup group,
     const int32_t* tokens,const float* x,void* scratch,float* out,void* stream) {
+    if(group.count<0 || group.count>16) throw std::invalid_argument("invalid NVFP4 prefill group count");
+    for(int i=0;i<group.count;++i) {
+        if(group.input_scale_gu[i]==0) group.input_scale_gu[i]=L.input_scale_gu;
+        if(group.input_scale_down[i]==0) group.input_scale_down[i]=L.input_scale_down;
+        if(!std::isfinite(group.input_scale_gu[i]) || group.input_scale_gu[i]<=0 ||
+           !std::isfinite(group.input_scale_down[i]) || group.input_scale_down[i]<=0)
+            throw std::invalid_argument("invalid NVFP4 expert activation scales");
+    }
 #ifdef STRATA_NVFP4_CUTLASS_BUILT
     if(nvfp4_cutlass_use_group(group)) { nvfp4_cutlass_prefill(L,group,tokens,x,scratch,out,stream); return; }
 #endif
@@ -240,10 +257,10 @@ void nvfp4_tensor_prefill_group(const NativeExpertLayout& L,Nvfp4PrefillGroup gr
         if(group.rows[i]>max_rows) max_rows=group.rows[i];
     }
     auto* meta=static_cast<PrefillMetadata*>(scratch);
-    auto* tok=reinterpret_cast<int32_t*>(static_cast<unsigned char*>(scratch)+256);
+    auto* tok=reinterpret_cast<int32_t*>(static_cast<unsigned char*>(scratch)+512);
     auto* dst=reinterpret_cast<int32_t*>(reinterpret_cast<unsigned char*>(tok)+aligned(size_t(entries)*4));
     void* work=reinterpret_cast<unsigned char*>(dst)+aligned(size_t(entries)*4);
     set_prefill_group<<<unsigned((entries+127)/128),128,0,static_cast<cudaStream_t>(stream)>>>(meta,group,tokens,tok,dst,entries);
-    nvfp4_tensor_grouped(L,meta->ptr,meta->starts,&meta->count,dst,tok,group.count,entries,x,work,out,stream,((max_rows+7)/8<8?(max_rows+7)/8:8));
+    nvfp4_tensor_grouped(L,meta->ptr,meta->starts,&meta->count,dst,tok,group.count,entries,x,work,out,stream,((max_rows+7)/8<8?(max_rows+7)/8:8),meta->scales);
 }
 }

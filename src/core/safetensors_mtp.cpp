@@ -41,7 +41,7 @@ bool MtpDrafter::load_safetensors(weights::SafetensorsSource& source,std::string
         uint64_t bytes=0;
         for(const auto& [name,t]:source.tensors()) {
             if(t.family!=Family::Mtp || name.find(".experts.")!=std::string::npos) continue;
-            if(t.dtype!=DType::BF16 || t.physical_shape.empty() || t.physical_shape.size()>2)
+            if((t.dtype!=DType::BF16 && t.dtype!=DType::F32) || t.physical_shape.empty() || t.physical_shape.size()>2)
                 throw std::runtime_error("unsupported MTP dense tensor: "+name);
             DenseBinding b;
             b.source=&t; b.name=name.substr(4);
@@ -52,6 +52,7 @@ bool MtpDrafter::load_safetensors(weights::SafetensorsSource& source,std::string
             expected.erase(shape);
             b.rows=t.physical_shape[0]; b.columns=t.physical_shape.size()==2?t.physical_shape[1]:1;
             const bool norm=t.physical_shape.size()==1;
+            if(t.dtype==DType::F32 && !norm) throw std::runtime_error("unsupported F32 MTP matrix: "+name);
             b.output=norm?DType::F32:DType::BF16;
             b.math=norm?DenseMath::AddOne:DenseMath::Identity;
             const uint64_t size=b.bytes();
@@ -69,11 +70,21 @@ bool MtpDrafter::load_safetensors(weights::SafetensorsSource& source,std::string
             };
             stream_dense(source,bindings[i],upload);
         }
-        const uint64_t total=512*kernels::kMtpFp8Expert;
+        native_nvfp4_=source.tensor("mtp.layers.0.mlp.experts.0.gate_proj.weight").dtype==DType::U8;
+        const uint64_t total=512*(native_nvfp4_?kernels::kMtpNvfp4Expert:kernels::kMtpFp8Expert);
         check(cudaMalloc(reinterpret_cast<void**>(&experts_),total)); vram_+=total;
-        const char* projections[]={"gate_proj","up_proj","down_proj"};
-        for(int e=0;e<512;++e) for(int p=0;p<3;++p) {
-            const std::string stem="mtp.layers.0.mlp.experts."+std::to_string(e)+"."+projections[p];
+        const char* projections_names[]={"gate_proj","up_proj","down_proj"};
+        if (native_nvfp4_) for (int e=0;e<512;++e) {
+            std::array<Nvfp4Projection,3> projections;
+            for (int p=0;p<3;++p) {
+                const auto stem="mtp.layers.0.mlp.experts."+std::to_string(e)+"."+projections_names[p];
+                projections[p]=nvfp4_projection(source,stem,stem,p==2?2560:640,p==2?640:2560,false);
+            }
+            const auto expert=load_nvfp4_expert(source,projections,48,false);
+            check(cudaMemcpy(experts_+e*kernels::kMtpNvfp4Expert,expert.bytes.data(),expert.bytes.size(),cudaMemcpyHostToDevice));
+        }
+        else for(int e=0;e<512;++e) for(int p=0;p<3;++p) {
+            const std::string stem="mtp.layers.0.mlp.experts."+std::to_string(e)+"."+projections_names[p];
             const auto& w=source.tensor(stem+".weight"); const auto& s=source.tensor(stem+".weight_scale_inv");
             const std::vector<uint64_t> ws=p==2?std::vector<uint64_t>{2560,640}:std::vector<uint64_t>{640,2560};
             const std::vector<uint64_t> ss=p==2?std::vector<uint64_t>{20,5}:std::vector<uint64_t>{5,20};
@@ -91,8 +102,8 @@ bool MtpDrafter::load_safetensors(weights::SafetensorsSource& source,std::string
             check(cudaMemcpy(dst+kernels::kMtpFp8Matrix,sb.data(),sb.size(),cudaMemcpyHostToDevice));
         }
         native_fp8_=true;
-        std::fprintf(stderr,"safetensors MTP: 29 dense tensors, 512 original FP8 experts; %.1f MiB, %s\n",
-                     double(bytes+total)/1048576.0,"no requantization");
+        std::fprintf(stderr,"safetensors MTP: 29 dense tensors, 512 original %s experts; %.1f MiB, %s\n",
+                     native_nvfp4_?"NVFP4":"FP8",double(bytes+total)/1048576.0,"no requantization");
         return true;
     } catch(const std::exception& e) { err=e.what(); return false; }
 }

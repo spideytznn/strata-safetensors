@@ -219,7 +219,7 @@ set(_kernel_files "")
 foreach(k IN LISTS _kernel_cu)
   list(APPEND _kernel_files src/kernels/cuda/${k}.cu)
 endforeach()
-strata_resolve(_kernels ${_kernel_files} src/kernels/ngram.cpp src/ngram/ple_reader.cpp src/platform/direct_file.cpp)
+strata_resolve(_kernels ${_kernel_files} src/kernels/ngram.cpp src/ngram/ple_reader.cpp src/ngram/nvfp4_table.cpp src/platform/direct_file.cpp)
 list(APPEND _kernels ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/cuda/qsa_prompt_attn_xmx.dp.cpp)   # port-only: the XMX prompt attention
 add_library(strata_kernels STATIC ${_kernels})
 target_include_directories(strata_kernels PRIVATE ${STRATA_ROOT}/third_party/ggml)

@@ -8,7 +8,8 @@ size_t nvfp4_tensor_scratch_bytes(int64_t entries, int64_t embd = 2560, int64_t 
 void nvfp4_tensor_grouped(const NativeExpertLayout& layout,
     const unsigned long long* ptr, const int32_t* starts, const int32_t* groups,
     const int32_t* dst, const int32_t* tok, int64_t cap_groups, int64_t cap_entries,
-    const float* x, void* scratch, float* out, void* stream, int token_tiles = 1);
+    const float* x, void* scratch, float* out, void* stream, int token_tiles = 1,
+    const float* group_input_scales = nullptr);
 // Prefill: one expert, token indices into x; output is contiguous in routing order.
 // Workspace also covers a streamed group of up to sixteen experts. No allocations.
 size_t nvfp4_tensor_prefill_bytes(int64_t entries);
@@ -17,6 +18,9 @@ void nvfp4_tensor_prefill(const NativeExpertLayout& layout, const uint8_t* blob,
 struct Nvfp4PrefillGroup {
     const uint8_t* weights[16] = {};
     int offsets[16] = {}, rows[16] = {};
+    // Zero selects the legacy layer-wide scale; otherwise original checkpoint
+    // calibration for this group's expert. Gate and up share an input.
+    float input_scale_gu[16] = {}, input_scale_down[16] = {};
     int count = 0;
 };
 // Input/output offsets refer to the full layer's routing rows. Metadata is passed

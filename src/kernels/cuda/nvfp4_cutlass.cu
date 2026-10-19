@@ -131,7 +131,7 @@ __device__ void quantize(Buffers w,Nvfp4PrefillGroup g,NativeExpertLayout L,
             w.as[e*w.as_step+layout(make_coord(row,sub*16,0))]=0;
         return;
     }
-    const float scale_global=Down?L.input_scale_down:L.input_scale_gu;
+    const float scale_global=Down?g.input_scale_down[e]:g.input_scale_gu[e];
     const float* tails=reinterpret_cast<const float*>(g.weights[e]+L.tail_off);
     const float* gu=reinterpret_cast<const float*>(reinterpret_cast<const unsigned char*>(w.gu)+e*w.gu_step)+size_t(row)*1280;
     const int source=Down?0:tokens[g.offsets[e]+row];
@@ -140,8 +140,8 @@ __device__ void quantize(Buffers w,Nvfp4PrefillGroup g,NativeExpertLayout L,
     for(int j=0;j<16;++j) {
         int col=sub*16+j;float f;
         if constexpr(Down) {
-            float gate=gu[col]*L.input_scale_gu*tails[0];
-            float up=gu[col+640]*L.input_scale_gu*tails[1];
+            float gate=gu[col]*g.input_scale_gu[e]*tails[0];
+            float up=gu[col+640]*g.input_scale_gu[e]*tails[1];
             f=(gate/(1.f+expf(-gate)))*up;
         } else f=x[size_t(source)*2560+col];
         v[j]=__fdiv_rn(f,scale_global);amax=fmaxf(amax,fabsf(v[j]));
@@ -179,7 +179,7 @@ __global__ void scale_output(Nvfp4PrefillGroup g,NativeExpertLayout L,float* out
     int e=blockIdx.y,i=blockIdx.x*blockDim.x+threadIdx.x;
     if(i<g.rows[e]*2560) {
         const float* tails=reinterpret_cast<const float*>(g.weights[e]+L.tail_off);
-        float& v=out[size_t(g.offsets[e])*2560+i];v=v*L.input_scale_down*tails[2];
+        float& v=out[size_t(g.offsets[e])*2560+i];v=v*g.input_scale_down[e]*tails[2];
     }
 }
 void check(cutlass::Status s,const char* what) {
@@ -226,10 +226,14 @@ void nvfp4_cutlass_prefill(const NativeExpertLayout& L,Nvfp4PrefillGroup g,
     const int32_t* tokens,const float* x,void* scratch,float* out,void* stream) {
     if(g.count==0)return;
     if(g.count<0 || g.count>16 || L.gu_type!=40 || L.d_type!=40 || L.n_embd!=2560 || L.n_ff!=640 ||
-       !L.tail_off || !tokens || !x || !scratch || !out || !std::isfinite(L.input_scale_gu) ||
-       !std::isfinite(L.input_scale_down) || L.input_scale_gu<=0 || L.input_scale_down<=0)
+       !L.tail_off || !tokens || !x || !scratch || !out)
         throw std::invalid_argument("CUTLASS prefill requires calibrated NVFP4 2560/640 experts");
     int rows=0;for(int e=0;e<g.count;++e) {
+        if(g.input_scale_gu[e]==0)g.input_scale_gu[e]=L.input_scale_gu;
+        if(g.input_scale_down[e]==0)g.input_scale_down[e]=L.input_scale_down;
+        if(!std::isfinite(g.input_scale_gu[e]) || g.input_scale_gu[e]<=0 ||
+           !std::isfinite(g.input_scale_down[e]) || g.input_scale_down[e]<=0)
+            throw std::invalid_argument("invalid CUTLASS expert activation scales");
         if(!g.weights[e] || g.rows[e]<=0 || g.offsets[e]<0)throw std::invalid_argument("invalid CUTLASS group");
         if(g.rows[e]>rows)rows=g.rows[e];
     }

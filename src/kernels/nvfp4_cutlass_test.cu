@@ -63,11 +63,18 @@ try {
     dw.upload(weights);dx.upload(x);dt.upload(tokens);
     cudaStream_t st;ck(cudaStreamCreateWithFlags(&st,cudaStreamNonBlocking));
     std::printf("groups,max_rows,skewed,relative_l2,custom_us,cutlass_us,speedup\n");
-    for(int skew:{0,1})for(int count:{1,4,16})for(int rows:{1,8,16,32,37,64,80,129,513}) {
+    for(int skew:{0,1,2})for(int count:{1,4,16})for(int rows:{1,8,16,32,37,64,80,129,513}) {
+        // Vary calibration independently of pointer order, token routing and
+        // output offsets; compare the batch against one-expert launches too.
+        if(skew==2 && (count!=16 || rows!=129))continue;
         if(skew && (count==1 || rows<129))continue;
         if(initcheck && (skew || (count!=1 && count!=16) || rows!=1))continue;
         Nvfp4PrefillGroup g{};g.count=count;
         for(int i=0;i<count;++i) {g.weights[i]=dw.p+((i*7+3)%E)*L.bytes;g.offsets[i]=i*T;g.rows[i]=skew && i>0?1:std::max(1,rows-i%3);}
+        if(skew==2)for(int i=0;i<count;++i) {
+            g.input_scale_gu[i]=L.input_scale_gu*(.5f+float(i)/13);
+            g.input_scale_down[i]=L.input_scale_down*(.4f+float(i)/7);
+        }
         ck(cudaMemsetAsync(a.p,0,E*T*2560*4,st));ck(cudaMemsetAsync(b.p,0,E*T*2560*4,st));
         auto old=[&]{nvfp4_tensor_prefill_group(L,g,dt.p,dx.p,oldwork.p,a.p,st);};
         auto official=[&]{nvfp4_cutlass_prefill(L,g,dt.p,dx.p,newwork.p,b.p,st);};
@@ -79,6 +86,16 @@ try {
         }
         double rel=std::sqrt(num/std::max(1e-30,den));
         if(rel>2e-3) {std::printf("FAIL %d %d relative L2 %.9g\n",count,rows,rel);return 1;}
+        if(skew==2) {
+            ck(cudaMemsetAsync(b.p,0,E*T*2560*4,st));
+            for(int i=0;i<count;++i) {
+                auto single=L;single.input_scale_gu=g.input_scale_gu[i];single.input_scale_down=g.input_scale_down[i];
+                nvfp4_tensor_prefill(single,g.weights[i],dt.p+g.offsets[i],g.rows[i],dx.p,oldwork.p,b.p+size_t(g.offsets[i])*2560,st);
+            }
+            ck(cudaStreamSynchronize(st));auto individual=b.read(E*T*2560);
+            if(std::memcmp(individual.data(),ref.data(),ref.size()*sizeof(float)))
+                throw std::runtime_error("per-expert scale batch differs from individual calibrated launches");
+        }
         double old_us=check_only?0:timing(old,st),new_us=check_only?0:timing(official,st);
         std::printf("%d,%d,%d,%.9g,%.3f,%.3f,%.3f\n",count,rows,skew,rel,old_us,new_us,new_us>0?old_us/new_us:0);std::fflush(stdout);
     }

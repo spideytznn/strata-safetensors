@@ -76,6 +76,7 @@ bench/results/2026-10-11-upstream-v0142/serial-mtp/**/session.bin
 
 # Local experiments, dumps, and web sampling state are not source.
 /work/
+/outputs/
 /bench/results/local-*/
 /config/native/*.shared-settings.json
 /.venv-native/

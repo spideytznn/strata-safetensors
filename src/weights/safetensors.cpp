@@ -53,12 +53,23 @@ struct File {
     }
 };
 fs::path contained_file(const fs::path& root, const std::string& name) {
-    // Basenames only. Refuse Windows drive/ADS/UNC syntax on every platform.
-    require(!name.empty() && name != "." && name != ".." &&
-            name.find_first_of("/\\:") == std::string::npos && name.find('\0') == std::string::npos &&
-            name.back() != '.' && name.back() != ' ', "unsafe model filename: " + name);
+    // HF indexes may use tensors/model-*.safetensors. Accept relative POSIX
+    // components, while refusing traversal, drive/ADS/UNC and Windows aliases.
+    require(!name.empty() && name.front() != '/' && name.find_first_of("\\:") == std::string::npos &&
+            name.find('\0') == std::string::npos, "unsafe model filename: " + name);
+    for (size_t first=0;first<name.size();) {
+        const auto end=name.find('/',first);
+        const auto part=name.substr(first,end==std::string::npos ? end : end-first);
+        require(!part.empty() && part!="." && part!=".." && part.back()!='.' && part.back()!=' ',
+                "unsafe model filename: " + name);
+        if(end==std::string::npos) break;
+        first=end+1;
+        require(first<name.size(),"unsafe model filename: " + name);
+    }
     const auto resolved = fs::canonical(root / utf8_path(name));
-    require(resolved.parent_path() == root, "model file escapes root (symlink/junction): " + name);
+    const auto relative=resolved.lexically_relative(root);
+    require(!relative.empty() && !relative.is_absolute() && *relative.begin()!=fs::path(".."),
+            "model file escapes root (symlink/junction): " + name);
     require(fs::is_regular_file(resolved), "model source is not a regular file");
     return resolved;
 }
@@ -137,16 +148,21 @@ SafetensorsSource::SafetensorsSource(const fs::path& dir) : impl_(std::make_uniq
         names.insert(name);
     }
     // Check paths once per file, not once per tensor (~300,000 tensors).
-    for (const auto& name : names) contained_file(p.root, name);
-    for (const auto& e : fs::directory_iterator(p.root)) {
+    std::set<fs::path> directories{p.root}, indexed;
+    for (const auto& name : names) {
+        const auto path=contained_file(p.root,name);
+        require(indexed.insert(path).second,"multiple shard names resolve to the same file");
+        directories.insert(path.parent_path());
+    }
+    for (const auto& directory:directories) for (const auto& e : fs::directory_iterator(directory)) {
         if (e.path().extension() == ".safetensors") {
-            const auto utf8 = e.path().filename().u8string();
-            require(names.contains(std::string(utf8.begin(), utf8.end())), "unindexed safetensors file");
+            require(indexed.contains(fs::canonical(e.path())), "unindexed safetensors file");
         }
     }
     for (const auto& name : names) {
         if (trace) std::fprintf(stderr, "safetensors: reading header %s\n", name.c_str());
         ShardDesc s;
+        s.relative_name = name;
         s.path = contained_file(p.root, name);
         auto file = std::make_unique<File>(s.path);
         s.file_bytes = file->size;
@@ -210,6 +226,10 @@ SafetensorsSource::SafetensorsSource(const fs::path& dir) : impl_(std::make_uniq
     if (trace) std::fprintf(stderr, "safetensors: all headers validated\n");
 }
 SafetensorsSource::~SafetensorsSource() = default;
+const TensorDesc* SafetensorsSource::find_tensor(const std::string& n) const {
+    const auto it = impl_->tensors.find(n);
+    return it == impl_->tensors.end() ? nullptr : &it->second;
+}
 const TensorDesc& SafetensorsSource::tensor(const std::string& n) const {
     const auto it = impl_->tensors.find(n);
     require(it != impl_->tensors.end(), "missing tensor: " + n);

@@ -13,8 +13,10 @@ struct DenseBinding {
     DType output = DType::BF16;
     DenseMath math = DenseMath::Identity;
     bool native_projection = false;
+    const TensorDesc* block_scale = nullptr; // MXFP8 UE8M0 [source_rows,columns/32]
     uint64_t bytes() const { return rows * columns * dtype_bytes(output); }
 };
+uint16_t mxfp8_bf16(uint8_t weight, uint8_t scale);
 class Qwen4DensePlan {
 public:
     explicit Qwen4DensePlan(SafetensorsSource&);

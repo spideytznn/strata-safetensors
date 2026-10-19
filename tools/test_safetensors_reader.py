@@ -119,10 +119,21 @@ class Reader(unittest.TestCase):
 
     def test_path_traversal_absolute_and_ads(self):
         for name in ["../权重.safetensors", "..\\权重.safetensors", "/x.safetensors", "C:\\x.safetensors",
-                     "x:y.safetensors", "\\\\host\\x.safetensors", "x\0.safetensors"]:
+                     "x:y.safetensors", "\\\\host\\x.safetensors", "x\0.safetensors", "tensors/../x.safetensors", "tensors//x.safetensors",
+                     "tensors./x.safetensors", "tensors/./x.safetensors"]:
             with self.subTest(name=name):
                 self.fixture(index={"weight_map":{"x":name}})
                 self.run_reader(ok=False,error="unsafe model filename")
+
+    def test_nested_shards_and_u32(self):
+        self.fixture({"x":tensor("U32",[1],0,4)})
+        nested=self.root/"tensors"/self.shard.name
+        nested.parent.mkdir()
+        self.shard.rename(nested)
+        (self.root/"model.safetensors.index.json").write_text(json.dumps({"weight_map":{"x":"tensors/"+nested.name}}),encoding="utf-8")
+        self.assertEqual(self.run_reader("read","x",0,4)["hex"],"000180ff")
+        (nested.parent/"extra.safetensors").write_bytes(nested.read_bytes())
+        self.run_reader(ok=False,error="unindexed safetensors file")
 
     def test_symlink_escape(self):
         with tempfile.TemporaryDirectory() as external:

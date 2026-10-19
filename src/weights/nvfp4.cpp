@@ -1,4 +1,5 @@
 #include "strata/weights/nvfp4.hpp"
+#include "strata/weights/csf.hpp"
 #include "json_checked.hpp"
 #include <cmath>
 #include <cstring>
@@ -13,16 +14,27 @@
 namespace strata::weights {
 using namespace detail;
 Nvfp4Projection nvfp4_projection(const WeightSource& s, const std::string& prefix,
-                                 const std::string& canonical, uint64_t rows, uint64_t cols) {
+                                 const std::string& canonical, uint64_t rows, uint64_t cols, bool require_input_scale) {
     require(rows > 0 && cols > 0 && cols % 64 == 0, "invalid NVFP4 projection geometry");
     auto get = [&](const char* suffix, DType dtype, std::vector<uint64_t> shape) -> const TensorDesc* {
         const auto& t = s.tensor(prefix + suffix);
         require(t.dtype == dtype && t.physical_shape == shape, "NVFP4 dtype/shape mismatch: " + t.name);
         return &t;
     };
-    return {canonical, {rows, cols}, get(".weight", DType::U8, {rows, cols / 2}),
-            get(".weight_scale", DType::F8_E4M3, {rows, cols / 16}),
-            get(".weight_scale_2", DType::F32, {}), get(".input_scale", DType::F32, {})};
+    const auto* fixed = s.find_tensor(prefix + ".weight_scale.nvfp4_csf_fixed");
+    const auto* exceptions = s.find_tensor(prefix + ".weight_scale.nvfp4_csf_exceptions");
+    require(bool(fixed) == bool(exceptions), "incomplete NVFP4 CSF components: " + prefix);
+    require(!fixed || !s.find_tensor(prefix + ".weight_scale"), "ambiguous plain and CSF scales: " + prefix);
+    require(!s.find_tensor(prefix + ".weight_scale.csf32_bases"), "unsupported CSF encoding csf_32x2_v1: " + prefix);
+    const TensorDesc* scales;
+    if (fixed) {
+        scales = get(".weight_scale.nvfp4_csf_fixed", DType::U8, {(rows+15)/16,16*(1+(cols/16+1)/2)});
+        require(exceptions->dtype == DType::U32 && exceptions->physical_shape.size() == 1,
+                "invalid CSF exceptions: " + prefix);
+    } else scales = get(".weight_scale", DType::F8_E4M3, {rows,cols/16});
+    return {canonical, {rows, cols}, get(".weight", DType::U8, {rows, cols / 2}), scales,
+            get(".weight_scale_2", DType::F32, {}),
+            (require_input_scale || s.find_tensor(prefix+".input_scale")) ? get(".input_scale", DType::F32, {}) : nullptr, exceptions};
 }
 namespace {
 uint64_t check_sizes(uint64_t rows, uint64_t cols, size_t w, size_t s, size_t p) {
@@ -101,14 +113,15 @@ NativeExpert load_nvfp4_expert(WeightSource& source, const std::array<Nvfp4Proje
     l.up_off = ff * l.gu_row; l.down_off = 2 * l.up_off;
     l.tail_off = l.down_off + hidden * l.d_row; l.bytes = l.tail_off + 16;
     result.bytes.resize(l.bytes);
-    // Read all 12 ranges together; the source sorts/coalesces them. This is a
+    // Read all source ranges together; the source sorts/coalesces them. This is a
     // bounded single-expert adapter, not the eventual full-arena streaming loader.
-    std::array<std::array<std::vector<uint8_t>, 4>, 3> raw;
+    std::array<std::array<std::vector<uint8_t>, 5>, 3> raw;
     std::vector<ReadRequest> reads;
     for (size_t i = 0; i < 3; ++i) {
         const auto& p = projections[i];
-        const TensorDesc* parts[] = {p.weight, p.micro_scale, p.weight_scale, p.input_scale};
-        for (size_t j = 0; j < 4; ++j) {
+        const TensorDesc* parts[] = {p.weight, p.micro_scale, p.weight_scale, p.input_scale, p.csf_exceptions};
+        for (size_t j = 0; j < 5; ++j) {
+            if (!parts[j]) continue;
             raw[i][j].resize(static_cast<size_t>(parts[j]->bytes));
             reads.push_back({parts[j], 0, raw[i][j]});
         }
@@ -119,7 +132,8 @@ NativeExpert load_nvfp4_expert(WeightSource& source, const std::array<Nvfp4Proje
         const auto [rows, cols] = projections[i].logical_shape;
         const auto dst = std::span<uint8_t>(result.bytes).subspan(offsets[i], offsets[i+1] - offsets[i]);
         const float global = scalar(raw[i][2]);
-        result.input_scales[i] = scalar(raw[i][3]);
+        result.input_scales[i] = projections[i].input_scale ? scalar(raw[i][3]) : 1.0f;
+        if (projections[i].csf_exceptions) raw[i][1] = csf_decode(raw[i][1], raw[i][4], rows, cols);
         pack_nvfp4(raw[i][0], raw[i][1], rows, cols, dst);
         std::memcpy(result.bytes.data() + l.tail_off + i * 4, &global, 4);
         if (verify) {
@@ -127,8 +141,8 @@ NativeExpert load_nvfp4_expert(WeightSource& source, const std::array<Nvfp4Proje
             unpack_nvfp4(dst, rows, cols, w, s);
             require(w == raw[i][0] && s == raw[i][1], "NVFP4 lossless roundtrip failed");
             require(std::memcmp(result.bytes.data() + l.tail_off + i*4, raw[i][2].data(), 4) == 0 &&
-                    std::memcmp(&result.input_scales[i], raw[i][3].data(), 4) == 0, "FP32 scale bits changed");
-            result.roundtrip_bytes += w.size() + s.size() + 8;
+                    (!projections[i].input_scale || std::memcmp(&result.input_scales[i], raw[i][3].data(), 4) == 0), "FP32 scale bits changed");
+            result.roundtrip_bytes += w.size() + s.size() + 4 + raw[i][3].size();
         }
     }
     // The current optional TC ABI has one gate/up activation scale. Keep both
@@ -159,11 +173,11 @@ Nvfp4BatchStats load_nvfp4_expert_batch(WeightSource& source,
             const auto& projection = (*target.projections)[p];
             require(projection.logical_shape == (p == 2 ? std::array<uint64_t,2>{2560,640} :
                                                         std::array<uint64_t,2>{640,2560}), "unsupported expert geometry");
-            require(projection.weight && projection.micro_scale && projection.weight_scale && projection.input_scale,
+            require(projection.weight && projection.micro_scale && projection.weight_scale,
                     "null NVFP4 projection tensor");
             check_sizes(projection.logical_shape[0], projection.logical_shape[1],
-                        projection.weight->bytes, projection.micro_scale->bytes, projection_bytes);
-            require(projection.weight_scale->bytes == 4 && projection.input_scale->bytes == 4,
+                        projection.weight->bytes, projection.csf_exceptions ? mul(projection.logical_shape[0],projection.logical_shape[1])/16 : projection.micro_scale->bytes, projection_bytes);
+            require(projection.weight_scale->bytes == 4 && (!projection.input_scale || projection.input_scale->bytes == 4),
                     "invalid NVFP4 scalar byte size");
         }
     }
@@ -176,11 +190,12 @@ Nvfp4BatchStats load_nvfp4_expert_batch(WeightSource& source,
     raw.resize(targets.size());
     std::vector<ReadRequest> reads;
     Nvfp4BatchStats stats;
-    reads.reserve(targets.size() * 12);
+    reads.reserve(targets.size() * 15);
     for (size_t i = 0; i < targets.size(); ++i) for (size_t p = 0; p < 3; ++p) {
         const auto& projection = (*targets[i].projections)[p];
-        const TensorDesc* parts[] = {projection.weight, projection.micro_scale, projection.weight_scale, projection.input_scale};
-        for (size_t j = 0; j < 4; ++j) {
+        const TensorDesc* parts[] = {projection.weight, projection.micro_scale, projection.weight_scale, projection.input_scale, projection.csf_exceptions};
+        for (size_t j = 0; j < 5; ++j) {
+            if (!parts[j]) { raw[i][p][j].clear(); continue; }
             raw[i][p][j].resize(static_cast<size_t>(parts[j]->bytes));
             stats.scratch_bytes += parts[j]->bytes;
             reads.push_back({parts[j], 0, raw[i][p][j]});
@@ -198,8 +213,11 @@ Nvfp4BatchStats load_nvfp4_expert_batch(WeightSource& source,
             for (size_t p = 0; p < 3; ++p) {
                 const auto& projection = (*target.projections)[p];
                 const float global = scalar(raw[i][p][2]);
-                (*target.input_scales)[p] = scalar(raw[i][p][3]);
-                pack_nvfp4(raw[i][p][0], raw[i][p][1], projection.logical_shape[0], projection.logical_shape[1],
+                (*target.input_scales)[p] = projection.input_scale ? scalar(raw[i][p][3]) : 1.0f;
+                std::vector<uint8_t> decoded;
+                if (projection.csf_exceptions) decoded = csf_decode(raw[i][p][1],raw[i][p][4],
+                    projection.logical_shape[0],projection.logical_shape[1]);
+                pack_nvfp4(raw[i][p][0], projection.csf_exceptions ? std::span<const uint8_t>(decoded) : std::span<const uint8_t>(raw[i][p][1]), projection.logical_shape[0], projection.logical_shape[1],
                            target.bytes.subspan(p * projection_bytes, projection_bytes));
                 std::memcpy(target.bytes.data() + 3 * projection_bytes + p * 4, &global, 4);
             }
@@ -215,6 +233,12 @@ Nvfp4BatchStats load_nvfp4_expert_batch(WeightSource& source,
         // Future destruction joins the other workers even if a worker throws.
         // No reader thread touches WeightSource or its counters.
         for (auto& job : jobs) job.get();
+    }
+    for (unsigned i=0;i<workers;++i) {
+        uint64_t peak=0;
+        for (size_t e=i;e<targets.size();e+=workers) for (const auto& p:*targets[e].projections)
+            if (p.csf_exceptions) peak=std::max(peak,mul(p.logical_shape[0],p.logical_shape[1])/16);
+        stats.scratch_bytes+=peak;
     }
     stats.pack_ms = std::chrono::duration<double,std::milli>(Clock::now()-pack_start).count();
     return stats;

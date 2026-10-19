@@ -5,6 +5,7 @@ namespace strata::weights {
 struct NgramSegment {
     const TensorDesc* tensor;
     uint64_t first_row, row_count;
+    const TensorDesc* micro_scale = nullptr;
 };
 struct Qwen4Config {
     uint64_t layers = 48, hidden = 2560, experts = 512, top_k = 10, ff = 640, vocab = 248320;
@@ -22,6 +23,7 @@ public:
     const TensorDesc *ngram_scale, *ngram_offsets, *ngram_vocab_sizes;
     const TensorDesc* ngram_multipliers;
     uint64_t expert_arena_bytes = 0, ngram_rows = 0;
+    bool ngram_nvfp4 = false;
     const std::array<Nvfp4Projection, 3>& expert(size_t layer, size_t id) const;
     ReadRequest ngram_row(uint64_t row, std::span<uint8_t> destination) const;
     // Read checkpoint metadata; never regenerate offsets from a random seed.

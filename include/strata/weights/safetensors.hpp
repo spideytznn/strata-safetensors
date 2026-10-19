@@ -29,6 +29,7 @@ struct TensorDesc {
 };
 struct ShardDesc {
     std::filesystem::path path;
+    std::string relative_name;
     uint64_t file_bytes = 0, header_bytes = 0, data_offset = 0;
     size_t tensor_count = 0;
 };
@@ -45,6 +46,7 @@ class WeightSource {
 public:
     virtual ~WeightSource() = default;
     virtual const TensorDesc& tensor(const std::string&) const = 0;
+    virtual const TensorDesc* find_tensor(const std::string&) const = 0;
     // Destination spans belong to the caller. Source descriptions live as long
     // as the source; reads are synchronous and serial (not thread-safe).
     virtual void read_many(std::span<const ReadRequest>) = 0;
@@ -58,6 +60,7 @@ public:
     SafetensorsSource(const SafetensorsSource&) = delete;
     SafetensorsSource& operator=(const SafetensorsSource&) = delete;
     const TensorDesc& tensor(const std::string&) const override;
+    const TensorDesc* find_tensor(const std::string&) const override;
     const std::map<std::string, TensorDesc>& tensors() const;
     const std::vector<ShardDesc>& shards() const;
     void read_many(std::span<const ReadRequest>) override;

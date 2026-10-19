@@ -14,6 +14,30 @@ uint64_t permute(uint64_t i, uint64_t head) {
     return ((h % 16) * 3 + h / 16) * head + i % head;
 }
 }
+uint16_t mxfp8_bf16(uint8_t weight, uint8_t scale) {
+    if ((weight & 127) == 127 || scale == 255) throw std::runtime_error("nonfinite MXFP8 weight/UE8M0 scale");
+    const uint16_t sign = uint16_t(weight & 128) << 8;
+    const int e = (weight >> 3) & 15;
+    unsigned significand = weight & 7;
+    int exponent = int(scale) + e - 7; // BF16 biased exponent
+    if (e) significand = 128 + significand * 16;
+    else {
+        if (!significand) return sign;
+        exponent = int(scale) - 2;
+        while (significand < 128) { significand <<= 1; --exponent; }
+    }
+    if (exponent >= 255) throw std::runtime_error("MXFP8 weight overflows BF16");
+    if (exponent <= 0) {
+        const int shift = 1 - exponent;
+        if (shift > 8) return sign;
+        // BF16 subnormal rounding, ties to even; regular checkpoint values
+        // need no rounding because E4M3 has fewer significand bits than BF16.
+        const unsigned half = 1u << (shift-1);
+        significand = (significand + half-1 + ((significand >> shift)&1)) >> shift;
+        return static_cast<uint16_t>(sign | significand);
+    }
+    return static_cast<uint16_t>(sign | (exponent << 7) | (significand-128));
+}
 Qwen4DensePlan::Qwen4DensePlan(SafetensorsSource& source) {
     Qwen4Config::load(source);
     std::set<std::string> bound;
@@ -25,11 +49,21 @@ Qwen4DensePlan::Qwen4DensePlan(SafetensorsSource& source) {
         const auto& t = source.tensor(hf);
         const auto total_rows = source_rows ? source_rows : rows;
         const auto& s = t.physical_shape;
-        require(t.dtype == DType::BF16 && (s == std::vector<uint64_t>{total_rows,cols} ||
+        const bool mxfp8 = t.dtype == DType::F8_E4M3;
+        require((t.dtype == DType::BF16 || mxfp8 || (t.dtype == DType::F32 && output == DType::F32)) && (s == std::vector<uint64_t>{total_rows,cols} ||
             (cols == 1 && s == std::vector<uint64_t>{total_rows}) ||
             s == std::vector<uint64_t>{total_rows,1,cols}), "invalid dense shape/dtype: " + hf);
         require(first + rows <= total_rows, "invalid dense row slice");
         tensors.push_back({name,&t,rows,cols,first,head,prefix,col_head,output,math,native});
+        if (mxfp8) {
+            require(hf.ends_with(".weight") && cols % 32 == 0 && s.size() == 2,
+                    "unsupported MXFP8 dense geometry: " + hf);
+            const auto& scale = source.tensor(hf.substr(0,hf.size()-7)+".weight_scale");
+            require(scale.dtype == DType::U8 && scale.physical_shape == std::vector<uint64_t>{total_rows,cols/32},
+                    "invalid MXFP8 UE8M0 scale: " + scale.name);
+            tensors.back().block_scale = &scale;
+            bound.insert(scale.name);
+        }
         bound.insert(hf);
     };
     add(root+"embed_tokens.weight","token_embd.weight",248320,2560);
@@ -101,15 +135,22 @@ const DenseBinding& Qwen4DensePlan::find(const std::string& name) const {
 }
 void stream_dense(WeightSource& source, const DenseBinding& b,
                   const std::function<void(uint64_t,std::span<const uint8_t>)>& emit, uint64_t tile_bytes) {
-    require(b.source && b.source->dtype == DType::BF16 && b.rows && b.columns &&
+    const bool mxfp8 = b.source && b.source->dtype == DType::F8_E4M3;
+    const bool f32 = b.source && b.source->dtype == DType::F32;
+    require(b.source && (b.source->dtype == DType::BF16 || mxfp8 || (f32 && b.output == DType::F32)) && b.rows && b.columns &&
         (b.output == DType::BF16 || b.output == DType::F32), "invalid dense stream binding");
     require(b.math == DenseMath::Identity || b.output == DType::F32, "dense arithmetic must output FP32");
     require(b.row_prefix <= b.rows && (!b.row_head_size || b.rows-b.row_prefix == 48*b.row_head_size) &&
         (!b.column_head_size || b.columns == 48*b.column_head_size), "invalid GDN permutation geometry");
-    const auto input_row = b.columns*2, output_row = b.columns*dtype_bytes(b.output);
+    if (mxfp8) require(b.block_scale && b.block_scale->dtype == DType::U8 && b.columns % 32 == 0 &&
+        b.block_scale->physical_shape == std::vector<uint64_t>{b.source->physical_shape.at(0),b.columns/32},
+        "invalid MXFP8 stream scales");
+    const auto input_row = b.columns*dtype_bytes(b.source->dtype), output_row = b.columns*dtype_bytes(b.output);
     require(tile_bytes >= input_row && tile_bytes <= 64*1024*1024, "invalid dense tile budget");
-    const auto tile_rows = std::max<uint64_t>(1,tile_bytes / (input_row+output_row));
+    const auto scale_row = mxfp8 ? b.columns/32 : 0;
+    const auto tile_rows = std::max<uint64_t>(1,tile_bytes / (input_row+output_row+scale_row));
     std::vector<uint8_t> input(tile_rows*input_row), output(tile_rows*output_row);
+    std::vector<uint8_t> scales(tile_rows*scale_row);
     std::vector<ReadRequest> reads;
     for (uint64_t first = 0; first < b.rows; first += tile_rows) {
         const auto count = std::min(tile_rows,b.rows-first);
@@ -120,15 +161,20 @@ void stream_dense(WeightSource& source, const DenseBinding& b,
                 src_row = b.row_prefix+permute(src_row-b.row_prefix,b.row_head_size);
             reads.push_back({b.source,(src_row+b.first_row)*input_row,
                              std::span(input).subspan(row*input_row,input_row)});
+            if (mxfp8) reads.push_back({b.block_scale,(src_row+b.first_row)*scale_row,
+                                       std::span(scales).subspan(row*scale_row,scale_row)});
         }
         source.read_many(reads);
         for (uint64_t row = 0; row < count; ++row) for (uint64_t col = 0; col < b.columns; ++col) {
             const auto src_col = b.column_head_size ? permute(col,b.column_head_size) : col;
-            uint16_t bits; std::memcpy(&bits,input.data()+row*input_row+src_col*2,2);
+            uint16_t bits = 0;
+            if (mxfp8) bits = mxfp8_bf16(input[row*input_row+src_col],scales[row*scale_row+src_col/32]);
+            else if (!f32) std::memcpy(&bits,input.data()+row*input_row+src_col*2,2);
             auto* dst = output.data()+row*output_row+col*dtype_bytes(b.output);
             if (b.output == DType::BF16) std::memcpy(dst,&bits,2);
             else {
                 float value = std::bit_cast<float>(static_cast<uint32_t>(bits)<<16);
+                if (f32) std::memcpy(&value,input.data()+row*input_row+src_col*4,4);
                 if (b.math == DenseMath::AddOne) value += 1.0f;
                 else if (b.math == DenseMath::NegativeExp) value = -std::exp(value);
                 require(std::isfinite(value),"non-finite dense arithmetic: "+b.name);

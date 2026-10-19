@@ -10,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <array>
+#include <vector>
 
 namespace strata::kernels::cpu {
 
@@ -33,6 +35,9 @@ struct NativeFmt {
     /// drops to ~1e-5 and its q8 block scale becomes an FP16 subnormal (expert error 2-12% instead of 1.1%).
     size_t tail_off = 0;
     float input_scale_gu = 0, input_scale_down = 0;
+    // Nonuniform safetensors calibration, indexed by expert. Empty retains
+    // the previous layer-wide scales and packed-weight ABI.
+    std::vector<std::array<float,3>> expert_input_scales;
     bool fp32_activations = false;     ///< native safetensors: preserve input and intermediate precision
 };
 constexpr int kNvfp4Type = 40;

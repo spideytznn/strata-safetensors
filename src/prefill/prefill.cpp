@@ -4456,6 +4456,12 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                     native_group.weights[native_count] = blob_dev;
                                     native_group.offsets[native_count] = m.off[size_t(e)];
                                     native_group.rows[native_count] = m.cnt[size_t(e)];
+                                    const auto& f = lay.fmt.at(size_t(l));
+                                    if (!f.expert_input_scales.empty()) {
+                                        const auto& scales=f.expert_input_scales.at(size_t(e));
+                                        native_group.input_scale_gu[native_count]=scales[0];
+                                        native_group.input_scale_down[native_count]=scales[2];
+                                    }
                                     native_group.count = ++native_count;
                                     if (slot >= 0) native_slots[native_nslots++] = slot;
                                     if (native_count == native_group_limit || j + 1 == order.size()) flush_native();
@@ -4464,6 +4470,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 const auto& f=lay.fmt.at(size_t(l));
                                 auto L=strata::kernels::native_expert_layout(f.gu_type,f.d_type,f.n_embd,f.n_ff);
                                 L.layer=int(l); L.input_scale_gu=f.input_scale_gu; L.input_scale_down=f.input_scale_down;
+                                if (!f.expert_input_scales.empty()) {
+                                    L.input_scale_gu=f.expert_input_scales.at(size_t(e))[0];
+                                    L.input_scale_down=f.expert_input_scales.at(size_t(e))[2];
+                                }
                                 const int o0=m.off[size_t(e)], ne=m.cnt[size_t(e)];
                                 pt.mark(kPfGemmGU,cs);
                                 strata::kernels::nvfp4_tensor_prefill(L,blob_dev,m.src_dev+o0,ne,m.mixed,

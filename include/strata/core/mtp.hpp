@@ -180,7 +180,8 @@ public:
 
 private:
     bool load_safetensors(weights::SafetensorsSource&, std::string& err);
-    bool native_fp8_ = false;
+    bool native_fp8_ = false; // native BF16 dense path, with FP8 or NVFP4 experts
+    bool native_nvfp4_ = false;
     const int32_t* mrope_table_ = nullptr;
     float* fp8_hidden_ = nullptr;
     bool record_forward(int T, int step_row0, cudaStream_t cs, std::string& err);

@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <stdexcept>
+#include <string_view>
 
 namespace strata::core {
 namespace {
@@ -31,10 +32,11 @@ SafetensorsModel::SafetensorsModel(const std::string& path) : source_(u8path(pat
     plan_.validate_ngram_constants(source_);
     std::vector<SessionModelFile> files;
     for (const auto& shard:source_.shards()) {
-        const auto p=shard.path.u8string(),name=shard.path.filename().u8string();
-        files.push_back({std::string(name.begin(),name.end()),std::string(p.begin(),p.end())});
+        const auto p=shard.path.u8string();
+        files.push_back({shard.relative_name,std::string(p.begin(),p.end())});
     }
     for (const auto* name:{"config.json","hf_quant_config.json","model.safetensors.index.json","tokenizer.json","tokenizer_config.json"}) {
+        if (std::string_view(name)=="hf_quant_config.json" && !std::filesystem::exists(u8path(path)/name)) continue;
         const auto p=(u8path(path)/name).u8string(); files.push_back({name,std::string(p.begin(),p.end())});
     }
     std::string err;
@@ -112,6 +114,15 @@ strata::kernels::PleConsts SafetensorsModel::ple_constants() {
 }
 bool SafetensorsModel::open_ple(strata::kernels::PleTable& table,const strata::kernels::PleIoOptions& io,std::string& err) {
     try {
+        if (plan_.ngram_nvfp4) {
+            std::vector<strata::ngram::Nvfp4Segment> spans;
+            auto path=[&](size_t id) {const auto p=source_.shards().at(id).path.u8string();return std::string(p.begin(),p.end());};
+            for (const auto& s:plan_.ngram)
+                spans.push_back({s.first_row,s.row_count,path(s.tensor->file_id),path(s.micro_scale->file_id),
+                                 s.tensor->offset,s.micro_scale->offset});
+            const auto raw=source_.read(*plan_.ngram_scale);float scale;std::memcpy(&scale,raw.data(),4);
+            return table.open_nvfp4_segments(spans,scale,err,io);
+        }
         std::vector<strata::ngram::PleReader::Segment> spans;
         const auto id=plan_.ngram.front().tensor->file_id;
         for (const auto& s : plan_.ngram) {
@@ -215,11 +226,9 @@ bool SafetensorsModel::load_experts(FileExpertSource& s,std::string& err) {
                 std::memcpy(static_cast<uint8_t*>(s.complement_arena_)+off,expert.bytes.data(),expert.bytes.size());
                 s.complement_offsets_[index]=off; input_scales_[index]=expert.input_scales;
             }
-            const auto& scales=input_scales_[layer*512];
-            bool uniform=scales[0] == scales[1];
-            for (int id=1;id<512;++id) uniform=uniform && input_scales_[layer*512+id] == scales;
-            if (!uniform) throw std::runtime_error("per-expert activation scales need a grouped ABI extension");
-            strata::kernels::cpu::expert_layout_nvfp4_scales(layer,scales[0],scales[2]);
+            const auto begin=input_scales_.begin()+layer*512;
+            strata::kernels::cpu::expert_layout_nvfp4_scales(layer,
+                std::vector<std::array<float,3>>(begin,begin+512));
             std::fprintf(stderr,"safetensors: resident experts %d/48 layers (elapsed %.2f s, read %.2f s, pack %.2f s)\n",
                          layer+1,elapsed(),batch>1 ? read_ms/1000 : -1,batch>1 ? pack_ms/1000 : -1);
         }

@@ -1,10 +1,13 @@
 #include "strata/weights/qwen4.hpp"
+#include "strata/weights/dense.hpp"
 #include "json_checked.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <bit>
+#include <cstring>
 
 namespace w = strata::weights;
 using w::detail::Json;
@@ -27,17 +30,16 @@ std::string hex_bytes(std::span<const uint8_t> bytes) {
 }
 int run(const std::vector<std::string>& args) {
     try {
-        require(args.size() >= 3, "usage: strata-safetensors headers|inspect MODEL | verify MODEL LAYER EXPERT [TEST_BLOB] | verify-set MODEL [TEST_DIRECTORY] | read MODEL TENSOR OFFSET BYTES");
+        require(args.size() >= 3, "usage: strata-safetensors headers|inspect|dense-plan MODEL | verify MODEL LAYER EXPERT [TEST_BLOB] | verify-set MODEL [TEST_DIRECTORY] | read MODEL TENSOR OFFSET BYTES");
         const auto start = std::chrono::steady_clock::now();
         const auto& mode = args[1];
-        require(mode == "headers" || mode == "inspect" || mode == "verify" || mode == "verify-set" || mode == "read", "unknown command");
+        require(mode == "headers" || mode == "dense-plan" || mode == "dense-probe" || mode == "inspect" || mode == "verify" || mode == "verify-set" || mode == "read", "unknown command");
         w::SafetensorsSource source(w::detail::utf8_path(args[2]));
         const auto opened = std::chrono::steady_clock::now();
         Json out{{"schema_version",1},{"mode",mode},{"tensor_count",source.tensors().size()},
                  {"scope","weight source validation; not full model inference"}};
         for (const auto& s : source.shards()) {
-            const auto u8 = s.path.filename().u8string();
-            out["files"].push_back({{"name",std::string(u8.begin(),u8.end())},{"file_bytes",s.file_bytes},
+            out["files"].push_back({{"name",s.relative_name},{"file_bytes",s.file_bytes},
                 {"header_bytes",s.header_bytes},{"data_offset",s.data_offset},{"tensor_count",s.tensor_count}});
         }
         std::array<uint64_t,5> bytes{}, counts{};
@@ -94,19 +96,46 @@ int run(const std::vector<std::string>& args) {
                 out["expert_read_guard"] = sealed;
                 // Include a row crossing a 4 KiB boundary, logical segment
                 // transitions, a nonadjacent shard and the very last row.
-                const uint64_t rows[] = {0, (4096-plan.ngram[0].tensor->offset%4096)/160,
+                const uint64_t row_bytes=plan.ngram_nvfp4?80:160;
+                const uint64_t rows[] = {0, (4096-plan.ngram[0].tensor->offset%4096)/row_bytes,
                     2500011,2500012,2500013,2500012ull*10-1,2500012ull*10,plan.ngram_rows-1};
                 std::array<std::array<uint8_t,160>,8> buffers{};
                 std::vector<w::ReadRequest> reads;
-                for (size_t i=0;i<8;++i) reads.push_back(plan.ngram_row(rows[i],buffers[i]));
+                for (size_t i=0;i<8;++i) reads.push_back(plan.ngram_row(rows[i],std::span(buffers[i]).first(row_bytes)));
                 const auto expert_bytes_before=source.io_stats().data_bytes[static_cast<size_t>(w::Family::Expert)];
                 source.read_many(reads);
                 require(source.io_stats().data_bytes[static_cast<size_t>(w::Family::Expert)]==expert_bytes_before,
                         "ngram lookup read expert data");
                 for (size_t i=0;i<8;++i) out["ngram_row_samples"].push_back({{"row",rows[i]},
                     {"tensor",reads[i].tensor->name},{"absolute_offset",reads[i].tensor->offset+reads[i].relative_offset},
-                    {"hex",hex_bytes(buffers[i])}});
+                    {"hex",hex_bytes(std::span(buffers[i]).first(row_bytes))}});
             } else require(args.size() == 3, "inspect takes only MODEL");
+        } else if (mode == "dense-probe") {
+            require(args.size()>3,"dense-probe needs MODEL BINDING [BINDING ...]");
+            w::Qwen4DensePlan plan(source);
+            for(size_t a=3;a<args.size();++a) {
+                const auto& b=plan.find(args[a]);
+                require(b.output==w::DType::BF16,"dense-probe requires BF16 projection output");
+                std::vector<double> y0(b.rows),y1(b.rows);
+                w::stream_dense(source,b,[&](uint64_t offset,std::span<const uint8_t> data) {
+                    for(size_t i=0;i<data.size()/2;++i) {
+                        uint16_t bits;std::memcpy(&bits,data.data()+i*2,2);
+                        const double v=std::bit_cast<float>(uint32_t(bits)<<16);
+                        const auto index=offset/2+i,row=index/b.columns,col=index%b.columns;
+                        y0[row]+=v*double(int(col%31)-15)/16;
+                        y1[row]+=v*double(int((col*17)%97)-48)/64;
+                    }
+                });
+                out["projections"].push_back({{"name",b.name},{"source",b.source->name},
+                    {"rows",b.rows},{"columns",b.columns},{"y0",y0},{"y1",y1}});
+            }
+        } else if (mode == "dense-plan") {
+            require(args.size()==3,"dense-plan takes only MODEL");
+            w::Qwen4DensePlan plan(source);
+            out["dense_bindings"]=plan.tensors.size();
+            std::map<std::string,uint64_t> dtypes;
+            for(const auto& b:plan.tensors) ++dtypes[w::dtype_name(b.source->dtype)];
+            out["dense_source_dtypes"]=dtypes;
         } else if (mode == "read") {
             require(args.size() == 6, "read needs TENSOR OFFSET BYTES");
             const auto offset = number(args[4]), n = number(args[5]);

@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <string>
 #include "strata/ngram/ple_reader.hpp"
+#include "strata/ngram/nvfp4_table.hpp"
 
 namespace strata::kernels {
 
@@ -181,6 +182,9 @@ public:
     // Validated native FP8 spans in one source shard; no whole-table mapping.
     bool open_fp8_segments(const std::string& path, const std::vector<strata::ngram::PleReader::Segment>&,
                            float scale, std::string& err, const PleIoOptions& io);
+
+    bool open_nvfp4_segments(const std::vector<strata::ngram::Nvfp4Segment>&,
+                             float scale, std::string& err, const PleIoOptions& io);
 
     /// The split the plan asks for: `issue` as soon as the token id is known, `collect` just before layer 1
     /// needs the rows. `gather` is `issue` followed by `collect`. In Mmap mode `issue` only prefetches.

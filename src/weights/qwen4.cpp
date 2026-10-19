@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 
 namespace strata::weights {
 using namespace detail;
@@ -26,7 +27,7 @@ Qwen4Config Qwen4Config::load(SafetensorsSource& source) {
     expect("split_ngram_parts",128); expect("ple_embed_dim",2560); expect("heads_per_ngram",8);
     expect("ngram_size",3); expect("ple_conv_kernel_size",4); expect("mtp_num_hidden_layers",1);
     require(t.at("mamba_ssm_dtype") == "float32" && t.at("dtype") == "bfloat16" &&
-            t.at("hidden_act") == "silu" && t.at("norm_topk_prob") == true &&
+            t.at("hidden_act") == "silu" && t.value("norm_topk_prob",true) == true &&
             t.at("output_gate_type") == "sigmoid" && t.at("tie_word_embeddings") == false &&
             t.at("ple_layer_ids") == Json::array({2}) && t.at("rms_norm_eps") == 1e-6 &&
             t.at("partial_rotary_factor") == 0.25, "unsupported qwen4_exp precision/PLE configuration");
@@ -38,10 +39,24 @@ Qwen4Config Qwen4Config::load(SafetensorsSource& source) {
     require(c.layer_types.size() == 48, "invalid layer_types count");
     for (size_t i = 0; i < c.layer_types.size(); ++i)
         require(c.layer_types[i] == (i % 4 == 3 ? "full_attention" : "linear_attention"), "unsupported layer order");
-    const auto quant = parse(source.metadata_text("hf_quant_config.json"));
-    require(quant.at("producer").at("name") == "modelopt" &&
-            quant.at("quantization").at("quant_algo") == "MIXED_PRECISION" &&
-            uint64(quant.at("quantization").at("group_size")) == 16, "unsupported quantization recipe");
+    if (j.contains("quantization_config")) {
+        const auto& q=j.at("quantization_config");
+        require((q.at("quant_method")=="modelopt" || q.at("quant_method")=="modelopt_mixed") &&
+                q.at("quant_algo")=="MIXED_PRECISION", "unsupported quantization recipe");
+        // Tensor names are authoritative. Recipe encodings only diagnose a mismatch.
+        if (q.contains("quantized_layers")) for (const auto& [prefix,recipe]:q.at("quantized_layers").items()) {
+            if (!recipe.contains("weight_scale_encoding")) continue;
+            const auto name=prefix+".0.gate_proj.weight_scale.nvfp4_csf_fixed";
+            const bool csf=source.find_tensor(name)!=nullptr;
+            if (csf != (recipe.at("weight_scale_encoding")=="csf"))
+                std::fprintf(stderr,"safetensors warning: scale encoding recipe disagrees with tensor names: %s\n",prefix.c_str());
+        }
+    } else {
+        const auto quant = parse(source.metadata_text("hf_quant_config.json"));
+        require(quant.at("producer").at("name") == "modelopt" &&
+                quant.at("quantization").at("quant_algo") == "MIXED_PRECISION" &&
+                uint64(quant.at("quantization").at("group_size")) == 16, "unsupported quantization recipe");
+    }
     return c;
 }
 Qwen4WeightPlan::Qwen4WeightPlan(SafetensorsSource& source) : config(Qwen4Config::load(source)) {
@@ -59,20 +74,27 @@ Qwen4WeightPlan::Qwen4WeightPlan(SafetensorsSource& source) : config(Qwen4Config
     }
     expert_arena_bytes = 48ull * 512 * (3ull * 2560 * 640 / 64 * 36 + 16);
     const std::string ple = "model.language_model.layers.1.ple.ple_embedding.";
+    ngram_nvfp4 = source.tensor(ple+"ngram_embedding.shard_0.weight").dtype == DType::U8;
     for (uint64_t i = 0; i < 128; ++i) {
         const auto& tensor = source.tensor(ple + "ngram_embedding.shard_" + std::to_string(i) + ".weight");
-        require(tensor.dtype == DType::F8_E4M3 && tensor.physical_shape == std::vector<uint64_t>{2500012, 160},
+        require(tensor.dtype == (ngram_nvfp4 ? DType::U8 : DType::F8_E4M3) && tensor.physical_shape == std::vector<uint64_t>{2500012, ngram_nvfp4 ? 80ull : 160ull},
                 "unsupported ngram segment shape/dtype");
         ngram.push_back({&tensor, ngram_rows, tensor.physical_shape[0]});
+        if (ngram_nvfp4) {
+            const auto& scale=source.tensor(ple+"ngram_embedding.shard_"+std::to_string(i)+".weight_scale");
+            require(scale.dtype==DType::F8_E4M3 && scale.physical_shape==std::vector<uint64_t>{2500012,10},
+                    "invalid NVFP4 ngram micro scales");
+            ngram.back().micro_scale=&scale;
+        }
         ngram_rows += tensor.physical_shape[0];
     }
-    ngram_scale = &source.tensor(ple + "ngram_embedding.weight_scale");
+    ngram_scale = &source.tensor(ple + (ngram_nvfp4 ? "ngram_embedding.weight_scale_2" : "ngram_embedding.weight_scale"));
     ngram_offsets = &source.tensor(ple + "ngram_heads_offsets");
     ngram_vocab_sizes = &source.tensor(ple + "ngram_heads_vocab_sizes");
     ngram_multipliers = &source.tensor(ple + "layer_multipliers");
     require(ngram_multipliers->dtype == DType::I64 && ngram_multipliers->physical_shape == std::vector<uint64_t>{3},
             "invalid ngram multiplier descriptor");
-    require(ngram_scale->dtype == DType::BF16 && ngram_scale->physical_shape == std::vector<uint64_t>{1},
+    require(ngram_scale->dtype == (ngram_nvfp4 ? DType::F32 : DType::BF16) && ngram_scale->physical_shape == std::vector<uint64_t>{1},
             "invalid ngram scale descriptor");
     for (const auto* t : {ngram_offsets, ngram_vocab_sizes})
         require(t->dtype == DType::I64 && t->physical_shape == std::vector<uint64_t>{16}, "invalid ngram head descriptor");
@@ -82,12 +104,12 @@ const std::array<Nvfp4Projection, 3>& Qwen4WeightPlan::expert(size_t layer, size
     return experts.at(layer * config.experts + id);
 }
 ReadRequest Qwen4WeightPlan::ngram_row(uint64_t row, std::span<uint8_t> destination) const {
-    require(row < ngram_rows && destination.size() == 160, "ngram row or destination out of range");
+    require(row < ngram_rows && destination.size() == (ngram_nvfp4 ? 80 : 160), "ngram row or destination out of range");
     auto it = std::upper_bound(ngram.begin(), ngram.end(), row,
                               [](uint64_t r, const NgramSegment& s) { return r < s.first_row; });
     --it;
     require(row - it->first_row < it->row_count, "ngram segment gap");
-    return {it->tensor, (row - it->first_row) * 160, destination};
+    return {it->tensor, (row - it->first_row) * (ngram_nvfp4 ? 80 : 160), destination};
 }
 void Qwen4WeightPlan::validate_ngram_constants(WeightSource& source) const {
     const auto offsets = source.read(*ngram_offsets), sizes = source.read(*ngram_vocab_sizes), scale = source.read(*ngram_scale);
@@ -100,9 +122,13 @@ void Qwen4WeightPlan::validate_ngram_constants(WeightSource& source) const {
         expected += size;
     }
     require(static_cast<uint64_t>(expected) <= ngram_rows, "ngram head range exceeds table");
-    uint16_t bits; std::memcpy(&bits, scale.data(), 2);
-    const uint32_t fp32 = static_cast<uint32_t>(bits) << 16;
-    float value; std::memcpy(&value, &fp32, 4);
-    require(std::isfinite(value) && value > 0, "invalid ngram BF16 scale");
+    float value;
+    if (ngram_nvfp4) std::memcpy(&value,scale.data(),4);
+    else {
+        uint16_t bits; std::memcpy(&bits, scale.data(), 2);
+        const uint32_t fp32 = static_cast<uint32_t>(bits) << 16;
+        std::memcpy(&value, &fp32, 4);
+    }
+    require(std::isfinite(value) && value > 0, "invalid ngram global scale");
 }
 } // namespace strata::weights

@@ -285,6 +285,7 @@ bool MtpDrafter::load(const std::string& rt_dir, const ModelGeometry& g, Session
         experts_ = shared->experts_;
         tensors_ = shared->tensors_;
         native_fp8_ = shared->native_fp8_;
+        native_nvfp4_ = shared->native_nvfp4_;
         owns_weights_ = false;
         owns_draft_head_ = false;
     }
@@ -1158,7 +1159,8 @@ bool MtpDrafter::record_rest(int step_row, cudaStream_t cs, std::string& err) {
         }
         g_mp.stamp(9, cs);
         if (native_fp8_) {
-            mtp_fp8_experts(experts_, ids_, mixed_, fp8_hidden_, parts_, T, (int) K, cs);
+            if (native_nvfp4_) mtp_nvfp4_experts(experts_, ids_, mixed_, fp8_hidden_, parts_, T, (int) K, cs);
+            else mtp_fp8_experts(experts_, ids_, mixed_, fp8_hidden_, parts_, T, (int) K, cs);
         } else {
         moe_group_resident(ids_, (int) (T * K), (int) K, experts_, (int64_t) strata::kernels::cpu::BLOB, grp_ptr_,
                            grp_start_, grp_counts_, hit_dst_, hit_slot_, cs);
@@ -1795,7 +1797,7 @@ bool MtpDrafter::warm_native_weights(void* scratch, size_t scratch_bytes, std::s
     const auto start = Clock::now();
     uint64_t dense_bytes = 0;
     for (const auto& tensor : tensors_) dense_bytes = std::max(dense_bytes, tensor.off + tensor.bytes);
-    const uint64_t expert_bytes = 512ull * strata::kernels::kMtpFp8Expert;
+    const uint64_t expert_bytes = 512ull * (native_nvfp4_ ? strata::kernels::kMtpNvfp4Expert : strata::kernels::kMtpFp8Expert);
     auto read = [&](const uint8_t* source, uint64_t bytes) {
         for (uint64_t off = 0; off < bytes;) {
             const size_t count = (size_t) std::min<uint64_t>(scratch_bytes, bytes - off);

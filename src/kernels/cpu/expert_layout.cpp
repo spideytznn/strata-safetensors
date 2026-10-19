@@ -387,6 +387,17 @@ void native_down_rows(const NativeFmt&, const uint8_t*, const void* const*, int,
 void expert_layout_nvfp4_scales(int layer, float gate_up, float down) {
     auto& f=g_layout.fmt.at(static_cast<size_t>(layer));
     f.input_scale_gu=gate_up; f.input_scale_down=down;
+    f.expert_input_scales.clear();
+}
+void expert_layout_nvfp4_scales(int layer, const std::vector<std::array<float,3>>& scales) {
+    if (scales.size()!=512) throw std::invalid_argument("NVFP4 needs 512 expert activation scales");
+    bool uniform=true;
+    for (const auto& s:scales) {
+        if (s[0]!=s[1]) throw std::invalid_argument("NVFP4 W4A4 requires equal gate/up activation scales per expert");
+        uniform=uniform && s==scales.front();
+    }
+    expert_layout_nvfp4_scales(layer,uniform?scales[0][0]:0,uniform?scales[0][2]:0);
+    if (!uniform) g_layout.fmt.at(static_cast<size_t>(layer)).expert_input_scales=scales;
 }
 bool expert_layout_nvfp4(std::string& err) {
     ExpertLayout l;

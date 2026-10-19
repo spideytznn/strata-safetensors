@@ -10,6 +10,10 @@ Earlier v0.1.43 validation remains in [UPSTREAM_V0143](UPSTREAM_V0143.md).
 
 ## Weight and memory contract
 
+FP4-Local CSF/MXFP8 loading and its additional PLE/MTP formats are described
+in [FP4_LOCAL](FP4_LOCAL.md), including real-checkpoint tests, generation and
+runtime limitations. The contract below describes the original checkpoint.
+
 The loader validates fixed model geometry, tensor types, ranges and layouts.
 Expert repacking preserves NVFP4 codes and scales. Dense weights remain BF16;
 ngram data remain FP8. No main-model GGUF, persistent expert pack or converted

@@ -23,6 +23,8 @@
 #include <thread>
 #include <vector>
 #include <stdexcept>
+#include <future>
+#include <memory>
 
 #if defined(_WIN32)
 // `PrefetchVirtualMemory` (memoryapi.h, Windows 8+) is the whole point of the change in `gather` below.
@@ -211,6 +213,8 @@ struct PleTable::Impl {
     // from an unbuffered SSD read into `raw`.
     PleIo mode = PleIo::Mmap;
     strata::ngram::PleReader reader;
+    std::unique_ptr<strata::ngram::Nvfp4Table> nvfp4;
+    std::future<std::vector<float>> nvfp4_pending;
     strata::ngram::PleReader::Ticket ticket;
     bool pending = false;
     bool locked = false;
@@ -231,6 +235,16 @@ struct PleTable::Impl {
 
 PleTable::PleTable() : impl_(new Impl) {}
 PleTable::~PleTable() { close(); delete impl_; }
+
+bool PleTable::open_nvfp4_segments(const std::vector<strata::ngram::Nvfp4Segment>& segments,
+    float scale, std::string& err, const PleIoOptions& io) {
+    close();
+    if (io.mode != PleIo::Direct || io.lock) { err="native NVFP4 PLE requires direct I/O"; return false; }
+    auto table=std::make_unique<strata::ngram::Nvfp4Table>();
+    if (!table->open(segments,scale,io.max_inflight,io.cache_rows,io.io_thread,err)) return false;
+    impl_->n_rows=table->rows(); impl_->nvfp4=std::move(table);
+    impl_->mode=PleIo::Direct; impl_->rb=90; return true;
+}
 
 bool PleTable::open_fp8_segments(const std::string& path,
     const std::vector<strata::ngram::PleReader::Segment>& segments, float scale,
@@ -466,6 +480,8 @@ void PleTable::prefetch_rows(const uint32_t* rows16) {
 }
 
 void PleTable::close() {
+    if (impl_->nvfp4_pending.valid()) { try { impl_->nvfp4_pending.get(); } catch (...) {} }
+    impl_->nvfp4.reset();
     wait_prefetches();
     impl_->reader.close();
     impl_->pending = false;
@@ -481,15 +497,21 @@ void PleTable::close() {
     impl_->bytes_read = 0;
 }
 
-bool PleTable::is_open() const { return impl_->data != nullptr || impl_->reader.is_open(); }
+bool PleTable::is_open() const { return impl_->nvfp4 || impl_->data != nullptr || impl_->reader.is_open(); }
 bool PleTable::locked() const { return impl_->locked; }
-const char* PleTable::format() const { return impl_->fmt->name; }
+const char* PleTable::format() const { return impl_->nvfp4 ? "NVFP4" : impl_->fmt->name; }
 PleIo PleTable::mode() const { return impl_->mode; }
 uint64_t PleTable::rows() const { return impl_->n_rows; }
 uint64_t PleTable::bytes_read() const { return impl_->bytes_read; }
 
 void PleTable::read_row(uint32_t row, float* out160) const {
     std::lock_guard<std::recursive_mutex> lk(impl_->mu);
+    if (impl_->nvfp4) {
+        if (impl_->nvfp4_pending.valid()) impl_->nvfp4_pending.wait();
+        std::string err;
+        if (!impl_->nvfp4->gather({&row,1},{out160,160},err)) throw std::runtime_error(err);
+        impl_->bytes_read+=90;return;
+    }
     if (impl_->mode == PleIo::Direct && impl_->reader.is_open()) {
         uint8_t raw[PLE_ROW_BYTES_MAX];
         std::string err;
@@ -512,6 +534,16 @@ void PleTable::read_row(uint32_t row, float* out160) const {
 
 bool PleTable::issue(const uint32_t* rows16) {
     std::lock_guard<std::recursive_mutex> lk(impl_->mu);
+    if (impl_->nvfp4) {
+        if (impl_->pending) return false;
+        std::vector<uint32_t> rows(rows16,rows16+PLE_N_HEADS);
+        impl_->nvfp4_pending=std::async(std::launch::async,[this,rows=std::move(rows)] {
+            std::vector<float> result(2560);std::string err;
+            if (!impl_->nvfp4->gather(rows,result,err)) throw std::runtime_error(err);
+            return result;
+        });
+        impl_->pending=true;return true;
+    }
     wait_prefetches();
     std::memcpy(impl_->rows, rows16, sizeof impl_->rows);
     if (impl_->mode == PleIo::Direct) {
@@ -541,6 +573,12 @@ bool PleTable::collect(float* out2560, std::string& err) {
     std::lock_guard<std::recursive_mutex> lk(impl_->mu);
     if (!impl_->pending) { err = "PleTable::collect without issue"; return false; }
     impl_->pending = false;
+    if (impl_->nvfp4) {
+        try {
+            const auto result=impl_->nvfp4_pending.get();std::copy(result.begin(),result.end(),out2560);
+            impl_->bytes_read+=16*90;return true;
+        } catch(const std::exception& e) {err=e.what();return false;}
+    }
     if (impl_->mode == PleIo::Direct) {
         if (!impl_->reader.collect(impl_->ticket, err)) return false;
         for (int h = 0; h < PLE_N_HEADS; ++h)
@@ -556,6 +594,11 @@ bool PleTable::gather_batch(const uint32_t* rows, size_t n_tokens, float* out, s
     std::lock_guard<std::recursive_mutex> lk(impl_->mu);
     if (impl_->pending) { err = "PleTable::gather_batch while a token is in flight"; return false; }
     const size_t n = n_tokens * (size_t) PLE_N_HEADS;
+    if (impl_->nvfp4) {
+        const bool ok=impl_->nvfp4->gather({rows,n},{out,n*160},err);
+        if (ok) impl_->bytes_read+=n*90;
+        return ok;
+    }
     // a prompt chunk (256 tokens or more): the batch readers; the rows that have landed are decoded while the rest
     // are read
     if (impl_->mode == PleIo::Direct && impl_->reader.batch_readers() > 0 && n_tokens >= 256) {
