@@ -5,6 +5,13 @@ namespace strata::kernels {
 // Original weight codes/scales, one E2M1 activation term, E4M3 scale per 16
 // values and checkpoint activation global scale. No residual compensation.
 size_t nvfp4_tensor_scratch_bytes(int64_t entries, int64_t embd = 2560, int64_t ff = 640);
+// Decode plans may start after the resident groups. Recover each group's
+// calibration from its routed destination, not its cache slot or pointer order.
+void nvfp4_tensor_decode(const NativeExpertLayout& layout,
+    const unsigned long long* ptr, const int32_t* starts, const int32_t* groups,
+    const int32_t* dst, const int32_t* tok, const int32_t* routed_ids,
+    const float* expert_scales, int64_t capacity, const float* x,
+    void* scratch, float* group_scales, float* out, void* stream);
 void nvfp4_tensor_grouped(const NativeExpertLayout& layout,
     const unsigned long long* ptr, const int32_t* starts, const int32_t* groups,
     const int32_t* dst, const int32_t* tok, int64_t cap_groups, int64_t cap_entries,

@@ -13,10 +13,12 @@ namespace strata::kernels::cpu {
 
 /// Whether rows of `n` values fit the kernels (whole 64-value blocks, at most 64 of them).
 bool nvfp4_512_fits(int n);
+// E2M1/E4M3 quantization, 16 activation values per SIMD register.
+void nvfp4_512_quantize_w4a4(const float*, float*, int, float);
 void nvfp4_512_f32_gu_rows(const uint8_t*, size_t, size_t, int, const void* const*, int,
-                          float* const*, int, int, float, float);
+                          float* const*, int, int, float, float, float activation_scale = 1.f);
 void nvfp4_512_f32_rows(const uint8_t*, size_t, int, const void* const*, int,
-                       float* const*, int, int, float);
+                       float* const*, int, int, float, float activation_scale = 1.f);
 /// Explicit experiment for parity/timing; production enables it only with
 /// STRATA_NVFP4_F32_UNROLL=1. Both layouts retain the original FP32 FMA order.
 void nvfp4_512_f32_rows_layout(const uint8_t*, size_t, int, const void* const*, int,

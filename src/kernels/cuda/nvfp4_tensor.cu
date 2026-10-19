@@ -49,7 +49,7 @@ __global__ void quantize_rows(const float* x, QBlock* q, const int32_t* starts,
     const float* group_input_scales) {
     if (*ng==0) return;
     const int entry=blockIdx.x;
-    if (entry>=starts[*ng]) return;
+    if (entry<starts[0] || entry>=starts[*ng]) return;
     if (group_input_scales) {
         int group=0;
         while(group+1<*ng && entry>=starts[group+1]) ++group;
@@ -179,6 +179,25 @@ void nvfp4_tensor_grouped(const NativeExpertLayout& L,const unsigned long long* 
     launch<1>(L,ptr,starts,ng,dst,tok,groups,entries,x,scratch,out,static_cast<cudaStream_t>(stream),gs,ds,token_tiles,group_input_scales);
     const cudaError_t error=cudaGetLastError();
     if(error!=cudaSuccess) throw std::runtime_error(std::string("NVFP4 Tensor decode: ")+cudaGetErrorString(error));
+}
+
+namespace {
+__global__ void decode_scales(const int32_t* starts, const int32_t* ng,
+    const int32_t* dst, const int32_t* ids, const float* table, float* scales) {
+    const int group=blockIdx.x*blockDim.x+threadIdx.x;
+    if(group>=*ng) return;
+    const int expert=ids[dst[starts[group]]];
+    scales[2*group]=table[2*expert];
+    scales[2*group+1]=table[2*expert+1];
+}
+}
+void nvfp4_tensor_decode(const NativeExpertLayout& L,
+    const unsigned long long* ptr,const int32_t* starts,const int32_t* groups,
+    const int32_t* dst,const int32_t* tok,const int32_t* ids,const float* table,
+    int64_t capacity,const float* x,void* scratch,float* scales,float* out,void* stream) {
+    if(capacity<=0) return;
+    decode_scales<<<unsigned((capacity+127)/128),128,0,static_cast<cudaStream_t>(stream)>>>(starts,groups,dst,ids,table,scales);
+    nvfp4_tensor_grouped(L,ptr,starts,groups,dst,tok,capacity,capacity,x,scratch,out,stream,1,scales);
 }
 
 size_t nvfp4_tensor_scratch_bytes(int64_t entries,int64_t embd,int64_t ff) {

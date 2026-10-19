@@ -6,6 +6,7 @@
 #include "strata/core/remote_experts.hpp"
 #include "strata/core/peer_experts.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
+#include "strata/kernels/nvfp4_decode_policy.hpp"
 #include "strata/artifact/gguf_reader.hpp"
 
 #include "strata/core/pinned.hpp"
@@ -3883,7 +3884,7 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
         // STRATA_ROUTE_TAIL_SKIP=R (default 0, explicit opt-in; changes the output): a missed expert that EVERY token of the window routes
         // only at rank >= R (the smallest weights of the top-10) is neither copied nor computed; its contribution is
         // zero, without renormalisation (the others keep the weight the router gave them).  Less PCIe and CPU work.
-        const int tail_rank = tail_skip_rank();
+        const int tail_rank = strata::kernels::nvfp4_w4a4_decode() ? 0 : tail_skip_rank();
         bool skip_d[kMaxWindowEntries];
         for (int q = 0; q < nd; ++q) skip_d[q] = false;
         if (tail_rank > 0 && d.peer == nullptr && d.remote_count == 0) {
@@ -4155,6 +4156,7 @@ void expert_pool_dispatch_multi(ExpertDispatch& d, const float* x_f, const int32
                 }
                 jo = (int16_t) njobs++;
                 ExpertJobMulti& nj = d.jobs_multi[(size_t) jo];
+                nj.expert_id = int(e);
                 nj.blob = b;
                 nj.nt = 0;
             }

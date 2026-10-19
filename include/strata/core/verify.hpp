@@ -627,6 +627,8 @@ private:
     uint8_t* nat_xq_ = nullptr;   // plan v0.3 P6: q8_1 activations for a native pack's grouped experts
     float* hit_xs_ = nullptr;
     void* hit_scratch_ = nullptr;
+    float *nvfp4_decode_scales_ = nullptr, *nvfp4_group_scales_ = nullptr;
+    void* nvfp4_decode_scratch_ = nullptr;
     float *head_mixed_ = nullptr, *head_inj_ = nullptr, *head_logits_ = nullptr;
     uint16_t* sh_bf16_ = nullptr;
     uint8_t* arg_scratch_ = nullptr;   ///< argmax_rows' partials and counters

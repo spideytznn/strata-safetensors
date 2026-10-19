@@ -1,0 +1,28 @@
+{
+  "repeat_cpu_tokens_equal": true,
+  "cpu_gpu_tokens_equal": false,
+  "repeat_cpu_state_equal": true,
+  "cpu_gpu_state_equal": false,
+  "first_cpu_gpu_token_difference": 22,
+  "exe_sha256": "29ca0b5b0bf3a7eff78f14d1079e018d8569c09923e93d1cb007994dd7d17f43",
+  "adaptive_promotions": false,
+  "mtp": false,
+  "expert_cache": 1024,
+  "request_tokens": 256,
+  "pcie_fractions": [
+    0,
+    1,
+    0
+  ],
+  "actual_offloaded_routes": [
+    0,
+    102578,
+    0
+  ],
+  "cached_prefix_tokens": [
+    0,
+    0,
+    0
+  ],
+  "scope": "Fixed CPU placement repeatability passes; cross-device bitwise equivalence fails. Initial harness metrics-field error was corrected and this report was recomputed from all three completed requests and their state hashes. The first differing arithmetic operation has not been isolated."
+}

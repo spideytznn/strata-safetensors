@@ -1,0 +1,29 @@
+{
+  "implementation": "CPU AVX512 / GPU SM120 W4A4 hybrid",
+  "context": 4096,
+  "prefill": 256,
+  "expert_cache": 1024,
+  "pcie_frac": 0,
+  "adaptive_promotions": false,
+  "status": "pass",
+  "variants": {
+    "0": {
+      "status": "pass",
+      "completed_requests": 17,
+      "main_state_equal": true,
+      "exe_sha256": "29ca0b5b0bf3a7eff78f14d1079e018d8569c09923e93d1cb007994dd7d17f43"
+    },
+    "1": {
+      "status": "pass",
+      "completed_requests": 17,
+      "main_state_equal": true,
+      "exe_sha256": "29ca0b5b0bf3a7eff78f14d1079e018d8569c09923e93d1cb007994dd7d17f43"
+    },
+    "2": {
+      "status": "pass",
+      "completed_requests": 17,
+      "main_state_equal": true,
+      "exe_sha256": "29ca0b5b0bf3a7eff78f14d1079e018d8569c09923e93d1cb007994dd7d17f43"
+    }
+  }
+}

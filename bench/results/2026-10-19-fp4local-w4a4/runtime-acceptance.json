@@ -1,0 +1,28 @@
+{
+  "status": "pass",
+  "context": 4096,
+  "prefill": 256,
+  "expert_cache": 1024,
+  "adaptive_promotions": false,
+  "variants": {
+    "0": {
+      "status": "pass",
+      "completed_requests": 17,
+      "main_state_equal": true,
+      "exe_sha256": "4918b770d0bc21b735fd11100c5b6d81a2fc4e41b6f81c67e3916c7a9273b6ed"
+    },
+    "1": {
+      "status": "pass",
+      "completed_requests": 17,
+      "main_state_equal": true,
+      "exe_sha256": "4918b770d0bc21b735fd11100c5b6d81a2fc4e41b6f81c67e3916c7a9273b6ed"
+    },
+    "2": {
+      "status": "pass",
+      "completed_requests": 17,
+      "main_state_equal": true,
+      "exe_sha256": "4918b770d0bc21b735fd11100c5b6d81a2fc4e41b6f81c67e3916c7a9273b6ed"
+    }
+  },
+  "implementation": "Earlier GPU-only W4A4 prototype, before CPU W4A4"
+}

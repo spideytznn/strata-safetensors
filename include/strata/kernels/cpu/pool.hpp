@@ -55,6 +55,7 @@ struct ExpertJob {
 /// Plan v0.3 P6: one expert for the `nt` tokens of a verify window that were routed to it.  Every token's output
 /// is bitwise the single-token job's.
 struct ExpertJobMulti {
+    int expert_id = -1; // calibration table index; required for experimental W4A4
     const uint8_t* blob = nullptr;
     int nt = 0;
     const ActQ* act[MAXT] = {};
@@ -298,6 +299,9 @@ private:
         ActQ a2[MAXT];
         alignas(64) uint8_t hq[MAXT][kNativeHBytes];   // plan v0.3 P6: native down activations
     };
+    struct W4A4Buf { alignas(64) float act[MAXT][H]; float gu_scale=1, down_scale=1; };
+    std::vector<W4A4Buf> w4a4_; // allocated only for the opt-in experiment
+    bool w4a4_active_ = false;
     const NativeFmt* nfmt_ = nullptr;
     std::vector<SplitBufMulti> split_multi_;
     PoolAffinity affinity_ = PoolAffinity::All;

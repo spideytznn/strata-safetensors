@@ -28,6 +28,10 @@
 #include "strata/kernels/bf16_gemv.hpp"
 #include "strata/kernels/native_router.hpp"
 #include "strata/kernels/native_moe.hpp"
+#include "strata/kernels/nvfp4_decode_policy.hpp"
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+#include "strata/kernels/nvfp4_tensor.hpp"
+#endif
 #include "strata/kernels/cpu/expert.hpp"
 #include "strata/kernels/elementwise.hpp"
 #include "strata/kernels/qsa_prompt_attn.hpp"
@@ -781,6 +785,31 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
         sink_.ctx = this;
     }
 
+    // Keep calibration immutable and graph-resident. The opt-in path adds no
+    // allocations or arithmetic changes to the stable FP32 path.
+    std::vector<float> nvfp4_calibration;
+    if (strata::kernels::nvfp4_w4a4_decode()) {
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+        const auto& layout = strata::kernels::cpu::expert_layout();
+        if (!layout.native || g.n_embd != 2560 || g.n_ff != 640) {
+            err = "W4A4 decode requires native 2560/640 experts";
+            return false;
+        }
+        for (const auto& f : layout.fmt) {
+            if (f.gu_type != 40 || f.d_type != 40) { err = "W4A4 decode requires NVFP4 experts"; return false; }
+            for (int e=0; e<g.n_expert; ++e) {
+                const auto scales = f.expert_input_scales.empty()
+                    ? std::array<float,3>{f.input_scale_gu,f.input_scale_gu,f.input_scale_down}
+                    : f.expert_input_scales.at(e);
+                if (scales[0]!=scales[1] || !std::isfinite(scales[0]) || !std::isfinite(scales[2]) ||
+                    scales[0]<=0 || scales[2]<=0) { err="invalid W4A4 expert calibration"; return false; }
+                nvfp4_calibration.push_back(scales[0]); nvfp4_calibration.push_back(scales[2]);
+            }
+        }
+#else
+        err = "W4A4 decode requires the SM120 NVFP4 CUDA build"; return false;
+#endif
+    }
     // ---- the device arena: the same sequence counted, then carved
     auto carve = [&](Bump& b) {
         tok_ = b.take<int32_t>(T); step_ = b.take<int32_t>(T * strata::kernels::kStepCount);
@@ -810,6 +839,13 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
         if (!diagnostic_path_.empty()) diagnostic_ = b.take<float>(g.n_layers*diagnostic_stride_);
         hit_xq_ = b.take<uint8_t>(T * (N / 32) * 34); hit_xs_ = b.take<float>(T * (N / 32));
         nat_xq_ = b.take<uint8_t>(T * (N / 32) * 36);
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+        if (!nvfp4_calibration.empty()) {
+            nvfp4_decode_scales_ = b.take<float>(nvfp4_calibration.size());
+            nvfp4_group_scales_ = b.take<float>(2*T*K);
+            nvfp4_decode_scratch_ = b.take<uint8_t>(strata::kernels::nvfp4_tensor_scratch_bytes(T*K));
+        }
+#endif
         hit_scratch_ = b.take<uint8_t>(std::max<uint64_t>(
             strata::kernels::moe_hit_grouped_scratch_bytes((int64_t) (T * K), g.n_embd, g.n_ff),
             strata::kernels::native_expert_scratch_bytes((int64_t) (T * K), g.n_ff)));
@@ -862,6 +898,10 @@ bool Verifier::init(const WeightTable& wt, const ModelGeometry& g, SessionState&
     Bump real;
     real.base = (uint8_t*) arena_;
     carve(real);
+    if (!nvfp4_calibration.empty() && cudaMemcpy(nvfp4_decode_scales_, nvfp4_calibration.data(),
+        nvfp4_calibration.size()*sizeof(float), cudaMemcpyHostToDevice)!=cudaSuccess) {
+        err="W4A4 decode calibration upload failed"; return false;
+    }
     {
         const int32_t one = 1;
         if (cudaMemcpy(one_, &one, sizeof one, cudaMemcpyHostToDevice) != cudaSuccess) {
@@ -2049,6 +2089,14 @@ bool Verifier::record_window(int T, cudaStream_t cs, std::string& err) {
                 L.layer = int(l);
                 L.input_scale_gu = f.input_scale_gu;
                 L.input_scale_down = f.input_scale_down;
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+                if (nvfp4_decode_scales_) {
+                    nvfp4_tensor_decode(L,gp,gs,gn,p_dst,p_tok,ids_+tb*K,
+                        nvfp4_decode_scales_+2*l*g.n_expert,cap,mixed_+tb*N,
+                        nvfp4_decode_scratch_,nvfp4_group_scales_,dst_buf,cs);
+                    return;
+                }
+#endif
                 native_expert_grouped(L, gp, gs, gn, p_dst, p_tok, cap, cap,
                                       nat_xq_ + (size_t) tb * (N / 32) * 36, hit_scratch_, dst_buf, cs, gy, mixed_ + (size_t) tb * N);
             } else {

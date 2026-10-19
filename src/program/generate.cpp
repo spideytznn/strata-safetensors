@@ -1,4 +1,5 @@
 #include "strata/core/logit_bias.hpp"
+#include "strata/kernels/nvfp4_decode_policy.hpp"
 // src/program/generate.cpp - P2.S6: `strata generate`.
 //
 // THE DRIVER, and the first program in this project that answers a question.  Everything below it is a
@@ -3476,6 +3477,20 @@ int strata_main(int argc, char** argv) {
 
     std::string err;
     std::unique_ptr<strata::core::SafetensorsModel> safetensors;
+    if (strata::kernels::nvfp4_w4a4_decode()) {
+#ifdef STRATA_NVFP4_PREFILL_BUILT
+        if (o.safetensors.empty() || !o.layer_split.empty() || o.peer_device>=0 || o.expert_cache_remote[0]>0 ||
+            o.expert_cache_remote[1]>0 || o.expert_cache_remote[2]>0 || o.pcie_mode!="kernel") {
+            std::fprintf(stderr,"W4A4 decode requires single-GPU safetensors and --pcie-mode kernel\n"); return 2;
+        }
+        if (!strata::kernels::cpu::cpu_avx512_ok()) {
+            std::fprintf(stderr,"Experimental CPU W4A4 requires AVX512\n"); return 2;
+        }
+        std::fprintf(stderr,"EXPERIMENTAL NVFP4 W4A4 decode: SM120 Tensor Core experts, per-expert calibrated activations, FP32 accumulation; CPU AVX512 W4A4 for misses, adaptive hot-expert GPU cache\n");
+#else
+        std::fprintf(stderr,"W4A4 decode requires the SM120 NVFP4 CUDA build\n"); return 2;
+#endif
+    }
     if (!o.safetensors.empty()) {
         try { safetensors = std::make_unique<strata::core::SafetensorsModel>(o.safetensors); }
         catch (const std::exception& e) { std::fprintf(stderr,"safetensors: %s\n",e.what()); return 1; }
@@ -9527,6 +9542,8 @@ int strata_main(int argc, char** argv) {
                         c.switches.emplace_back("native_nvfp4_cpu_gpu_order",1);
                     if (prefill_nvfp4_tc)
                         c.switches.emplace_back("native_nvfp4_prefill_only_w4a4_bf16",1);
+                    if (strata::kernels::nvfp4_w4a4_decode())
+                        c.switches.emplace_back("native_nvfp4_decode_w4a4",2);
                     if (bf16_kv_tc)
                         c.switches.emplace_back("native_bf16_kv_tc_qk_pv",1);
                     const char* one_commit = std::getenv("STRATA_ONE_TOKEN_COMMIT");

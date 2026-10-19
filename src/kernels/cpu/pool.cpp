@@ -1,5 +1,8 @@
 // src/kernels/cpu/pool.cpp - P2.S3: the CPU expert pool.  Read pool.hpp first; it explains the protocol.
 #include "strata/kernels/cpu/pool.hpp"
+#include "strata/kernels/cpu/nvfp4_w4a4.hpp"
+#include "strata/kernels/cpu/nvfp4_avx512.hpp"
+#include "strata/kernels/nvfp4_decode_policy.hpp"
 #include "strata/core/progress.hpp"
 #include "strata/platform/aux_cpus.hpp"
 #include "strata/kernels/cpu/expert_layout.hpp"
@@ -7,6 +10,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
 #include <chrono>
 #include <immintrin.h>
 #if defined(_MSC_VER)
@@ -729,6 +733,15 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
                 } else if (mode_ == 5) {
                     float* ff[MAXT];
                     for (int t = 0; t < mjobs_[e].nt; ++t) ff[t] = sb.ff[t];
+#ifdef STRATA_NATIVE_EXPERTS
+                    if (w4a4_active_) {
+                        const void* act[MAXT];
+                        for(int t=0;t<mjobs_[e].nt;++t) act[t]=w4a4_[e].act[t];
+                        float tail[4]; std::memcpy(tail,mjobs_[e].blob+nfmt_->tail_off,sizeof tail);
+                        nvfp4_512_f32_gu_rows(mjobs_[e].blob,nfmt_->gu_row,nfmt_->up_off,int(nfmt_->n_embd),
+                            act,mjobs_[e].nt,ff,r0,r1,tail[0],tail[1],w4a4_[e].gu_scale);
+                    } else
+#endif
                     native_gu_rows(*nfmt_, mjobs_[e].blob, mjobs_[e].nact, mjobs_[e].nt, ff, r0, r1);
                 } else if (q2_native_kernels(nfmt_->d_type)) {
                     // Q2_0 down (most IQ layers): the AVX-512 kernel, ggml-cpu has only a scalar one on x86
@@ -739,6 +752,13 @@ void ExpertPool::drain(int id, ExpertScratch& scratch, uint32_t epoch) {
                 } else {
                     const void* hq[MAXT];
                     for (int t = 0; t < mjobs_[e].nt; ++t) hq[t] = sb.hq[t];
+#ifdef STRATA_NATIVE_EXPERTS
+                    if (w4a4_active_) {
+                        float sd; std::memcpy(&sd,mjobs_[e].blob+nfmt_->tail_off+8,4);
+                        nvfp4_512_f32_rows(mjobs_[e].blob+nfmt_->down_off,nfmt_->d_row,int(nfmt_->n_ff),
+                            hq,mjobs_[e].nt,mjobs_[e].out,r0,r1,sd,w4a4_[e].down_scale);
+                    } else
+#endif
                     native_down_rows(*nfmt_, mjobs_[e].blob, hq, mjobs_[e].nt, mjobs_[e].out, r0, r1);
                 }
                 r += r1 - r0;
@@ -846,6 +866,22 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         const int nb = (std::min)(kMaxSplitMulti, n - b0);
         mjobs_ = jobs + b0;
         nfmt_ = &f;
+#ifdef STRATA_NATIVE_EXPERTS
+        w4a4_active_ = strata::kernels::nvfp4_w4a4_decode() && f.fp32_activations && f.gu_type==kNvfp4Type;
+        if(w4a4_active_) {
+            if(!cpu_avx512_ok()) throw std::runtime_error("CPU W4A4 requires AVX512");
+            if(w4a4_.empty()) w4a4_.resize(kMaxSplitMulti);
+            for(int e=0;e<nb;++e) {
+                auto& q=w4a4_[e]; q.gu_scale=f.input_scale_gu; q.down_scale=f.input_scale_down;
+                if(!f.expert_input_scales.empty()) {
+                    const auto& scales=f.expert_input_scales.at(mjobs_[e].expert_id);
+                    q.gu_scale=scales[0]; q.down_scale=scales[2];
+                }
+                for(int t=0;t<mjobs_[e].nt;++t)
+                    nvfp4_512_quantize_w4a4(static_cast<const float*>(mjobs_[e].nact[t]),q.act[t],int(f.n_embd),q.gu_scale);
+            }
+        }
+#endif
         mrows_ = (int64_t) nb * f.n_ff;
         mtasks_ = phase_tasks(mrows_);
         const auto a = std::chrono::steady_clock::now();
@@ -854,6 +890,10 @@ void ExpertPool::run_split_multi_native(const NativeFmt& f, ExpertJobMulti* jobs
         for (int e = 0; e < nb; ++e)
             for (int t = 0; t < mjobs_[e].nt; ++t)
                 if (q2_native_kernels(f.d_type)) act_quant_any(split_multi_[(size_t) e].ff[t], FF, split_multi_[(size_t) e].a2[t]);
+#ifdef STRATA_NATIVE_EXPERTS
+                else if(w4a4_active_) nvfp4_512_quantize_w4a4(split_multi_[e].ff[t],
+                    reinterpret_cast<float*>(split_multi_[e].hq[t]),int(f.n_ff),w4a4_[e].down_scale);
+#endif
                 else native_quant_h(f, split_multi_[(size_t) e].ff[t], split_multi_[(size_t) e].hq[t]);
         const auto c = std::chrono::steady_clock::now();
         mrows_ = (int64_t) nb * f.n_embd;

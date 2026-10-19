@@ -1,0 +1,33 @@
+{
+  "hardware": "Ryzen 9 9950X3D / RTX 5090, Windows, CUDA 13 SM120",
+  "encoding_cases": 131504,
+  "calibrated_rows": 9,
+  "quantization_bit_exact": true,
+  "gpu_decode_vs_cutlass_relative_l2": 0,
+  "cpu_pool_vs_cutlass_relative_l2": 2.15730486e-08,
+  "cpu_pool_vs_cutlass_max_abs": 3.05175781e-05,
+  "cpu_token_grouping_bit_exact": true,
+  "cpu_configurations": [
+    "default",
+    "STRATA_NVFP4_F32_CANONICAL=1, STRATA_NVFP4_F32_UNROLL=1"
+  ],
+  "scope": "Synthetic randomized packed weights, broad block-scale range, shuffled expert IDs, expert-specific activation calibration; not a model-quality benchmark.",
+  "real_expert_exports": {
+    "unique_experts": 6,
+    "amplitudes": [
+      0.125,
+      1,
+      8,
+      64
+    ],
+    "cpu_gpu_gu_bit_exact": true,
+    "cpu_gpu_down_quant_bit_exact": true,
+    "cpu_pool_vs_cutlass_relative_l2": 0
+  },
+  "silu_probe": {
+    "values": 8388608,
+    "cpu_canonical_vs_gpu_expf_fp4_differences": 0,
+    "cpu_canonical_vs_gpu_canonical_fp4_differences": 0,
+    "scope": "Sampled activations, not proof of equivalence for every input"
+  }
+}

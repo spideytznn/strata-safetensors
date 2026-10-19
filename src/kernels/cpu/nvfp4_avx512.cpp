@@ -8,6 +8,7 @@
 //
 // Needs AVX512F/BW/VL and VNNI - what cpu_avx512_ok() checks before anything here is called.
 #include "strata/kernels/cpu/nvfp4_avx512.hpp"
+#include "strata/kernels/cpu/nvfp4_w4a4.hpp"
 
 #define GGML_COMMON_DECL_CPP
 #define GGML_COMMON_IMPL_CPP
@@ -20,6 +21,28 @@
 #include <cstring>
 
 namespace strata::kernels::cpu {
+
+void nvfp4_512_quantize_w4a4(const float* x, float* out, int n, float global) {
+    const __m512 values=_mm512_setr_ps(0,.5f,1,1.5f,2,3,4,6,0,.5f,1,1.5f,2,3,4,6);
+    const __m512i sign_mask=_mm512_set1_epi32(int(0x80000000u));
+    constexpr float midpoint[]={.25f,.75f,1.25f,1.75f,2.5f,3.5f,5.f};
+    for(int base=0;base<n;base+=16) {
+        const __m512 v=_mm512_div_ps(_mm512_loadu_ps(x+base),_mm512_set1_ps(global));
+        const __m512 a=_mm512_castsi512_ps(_mm512_andnot_si512(sign_mask,_mm512_castps_si512(v)));
+        const float scale=nvfp4_e4m3_value(nvfp4_e4m3_code(_mm512_reduce_max_ps(a)/6.f));
+        const __m512 q=_mm512_mul_ps(a,_mm512_set1_ps(scale>0 ? 1.f/scale : 0.f));
+        __m512i code=_mm512_setzero_si512();
+        for(int j=0;j<7;++j) {
+            const __mmask16 advance=(j&1) ? _mm512_cmp_ps_mask(q,_mm512_set1_ps(midpoint[j]),_CMP_GE_OQ)
+                                         : _mm512_cmp_ps_mask(q,_mm512_set1_ps(midpoint[j]),_CMP_GT_OQ);
+            code=_mm512_mask_add_epi32(code,advance,code,_mm512_set1_epi32(1));
+        }
+        __m512 rounded=_mm512_permutexvar_ps(code,values);
+        rounded=_mm512_castsi512_ps(_mm512_or_si512(_mm512_castps_si512(rounded),
+            _mm512_and_si512(_mm512_castps_si512(v),sign_mask)));
+        _mm512_storeu_ps(out+base,_mm512_mul_ps(rounded,_mm512_set1_ps(scale)));
+    }
+}
 namespace {
 
 // A compile-time table, not a constructor: this file is compiled for a wide ISA, and a namespace-scope object with a
@@ -300,7 +323,7 @@ void f32_dot(const uint8_t* row,int n,const void* const* acts,int nt,float* out,
 }
 }
 void nvfp4_512_f32_gu_rows(const uint8_t* blob,size_t stride,size_t up,int n,const void* const* acts,int nt,
-                          float* const* ff,int r0,int r1,float sg,float su) {
+                          float* const* ff,int r0,int r1,float sg,float su,float activation_scale) {
     float g[8],u[8];
     const bool unroll=f32_unroll_on();
     const bool gpu_order=f32_gpu_order_on();
@@ -308,19 +331,19 @@ void nvfp4_512_f32_gu_rows(const uint8_t* blob,size_t stride,size_t up,int n,con
     for(int r=r0;r<r1;++r) {
         f32_dot(blob+r*stride,n,acts,nt,g,unroll,gpu_order); f32_dot(blob+up+r*stride,n,acts,nt,u,unroll,gpu_order);
         for(int t=0;t<nt;++t) {
-            const float v=g[t]*sg;
+            const float v=(activation_scale==1.f ? g[t] : g[t]*activation_scale)*sg;
             const float e=canonical?static_cast<float>(std::exp(-static_cast<double>(v))):std::exp(-v);
-            ff[t][r]=(v/(1.f+e))*(u[t]*su);
+            ff[t][r]=(v/(1.f+e))*((activation_scale==1.f ? u[t] : u[t]*activation_scale)*su);
         }
     }
 }
 void nvfp4_512_f32_rows(const uint8_t* w,size_t stride,int n,const void* const* acts,int nt,
-                       float* const* out,int r0,int r1,float scale) {
-    if(f32_gpu_order_on()) {
+                       float* const* out,int r0,int r1,float scale,float activation_scale) {
+    if(f32_gpu_order_on() || activation_scale!=1.f) {
         float y[8];
         for(int r=r0;r<r1;++r) {
             f32_dot(w+r*stride,n,acts,nt,y,true,true);
-            for(int t=0;t<nt;++t) out[t][r]=y[t]*scale;
+            for(int t=0;t<nt;++t) out[t][r]=(activation_scale==1.f ? y[t] : y[t]*activation_scale)*scale;
         }
         return;
     }

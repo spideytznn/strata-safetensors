@@ -1,5 +1,8 @@
 # FP4-Local loader
 
+See [the stable checkpoint](FP4_LOCAL_STABLE.md) and the separate
+[experimental NVIDIA-style W4A4 decode](FP4_LOCAL_NVIDIA_W4A4.md).
+
 Implementation and local validation: 2026-10-19, based on `5d9a4db2`.
 
 The loader accepts the NVIDIA FP4-Local formats alongside the previous
